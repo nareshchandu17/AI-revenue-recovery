@@ -7,8 +7,327 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ----------------------------------------------------------------
-// Domain models will be added incrementally in future tasks.
-// Planned: Merchant, Customer, Payment, Checkout, Subscription,
-//          RecoveryCase, RecoveryAttempt, AgentDecision, AuditEvent
-// ----------------------------------------------------------------
+// =================================================================
+// AI Revenue Recovery — Domain Schema
+//
+// Money representation: All monetary amounts are stored as integers
+// representing the smallest currency unit (paise for INR, cents for
+// USD, etc.). This avoids floating-point precision issues entirely.
+// Divide by 100 to get the human-readable amount.
+// =================================================================
+
+// --- Enums --------------------------------------------------------
+
+enum PaymentStatus {
+  created
+  authorized
+  captured
+  refunded
+  failed
+  cancelled
+}
+
+enum PaymentMethod {
+  upi
+  card
+  netbanking
+  wallet
+  emi
+}
+
+enum CheckoutStatus {
+  created
+  completed
+  abandoned
+  expired
+}
+
+enum SubscriptionStatus {
+  active
+  paused
+  cancelled
+  past_due
+  trialing
+}
+
+enum RecoveryCaseStatus {
+  detected
+  diagnosing
+  diagnosed
+  awaiting_approval
+  executing
+  completed
+  failed
+  dismissed
+}
+
+enum RecoveryAction {
+  retry_payment
+  send_reminder
+  offer_discount
+  update_payment_method
+  cancel_and_refund
+  escalate_to_merchant
+  no_action
+}
+
+enum RecoveryAttemptStatus {
+  pending
+  in_progress
+  succeeded
+  failed
+  skipped
+}
+
+enum DecisionStatus {
+  pending
+  approved
+  rejected
+  overridden
+  expired
+}
+
+enum RiskCategory {
+  payment_failed
+  payment_expired
+  checkout_abandoned
+  subscription_lapsed
+  refund_requested
+  other
+}
+
+enum Priority {
+  low
+  medium
+  high
+  critical
+}
+
+enum AuditActorType {
+  system
+  ai_agent
+  merchant
+  webhook
+}
+
+// --- Models -------------------------------------------------------
+
+model Merchant {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  industry  String   @default("ecommerce")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customers    Customer[]
+  payments     Payment[]
+  checkouts    Checkout[]
+  subscriptions Subscription[]
+  recoveryCases RecoveryCase[]
+
+  @@index([email])
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  merchantId    String
+  email         String
+  phone         String   @default("")
+  displayName   String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  merchant     Merchant      @relation(fields: [merchantId], references: [id])
+  payments     Payment[]
+  checkouts    Checkout[]
+  subscriptions Subscription[]
+
+  @@unique([merchantId, email])
+  @@index([merchantId])
+  @@index([email])
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  merchantId       String
+  customerId       String
+  // External reference from the payment provider (e.g. Razorpay payment_id)
+  externalId       String        @default("")
+  amount           Int           // in paise
+  currency         String        @default("INR")
+  status           PaymentStatus @default(created)
+  method           PaymentMethod?
+  // Short failure reason from the provider, e.g. "TIMED_OUT"
+  failureCode      String        @default("")
+  failureReason    String        @default("")
+  amountRefunded   Int           @default(0) // in paise
+  description      String        @default("")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  merchant       Merchant       @relation(fields: [merchantId], references: [id])
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  recoveryCase   RecoveryCase?
+
+  @@index([merchantId, status])
+  @@index([customerId])
+  @@index([externalId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Checkout {
+  id          String         @id @default(cuid())
+  merchantId  String
+  customerId  String
+  amount      Int            // in paise
+  currency    String         @default("INR")
+  status      CheckoutStatus @default(created)
+  // Items in the cart as a JSON string — kept minimal, expanded later if needed
+  itemsJson   String         @default("[]")
+  abandonedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([merchantId, status])
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  merchantId     String
+  customerId     String
+  // External subscription ID from the payment provider
+  externalId     String             @default("")
+  amount         Int                // in paise, per billing cycle
+  currency       String             @default("INR")
+  status         SubscriptionStatus @default(active)
+  // How many times a payment retry has been attempted
+  retryCount     Int                @default(0)
+  currentPeriodStart DateTime       @default(now())
+  currentPeriodEnd   DateTime       @default(now())
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([merchantId, status])
+  @@index([customerId])
+  @@index([status])
+}
+
+model RecoveryCase {
+  id                   String             @id @default(cuid())
+  merchantId           String
+  // Which entity triggered this case — one of these will be non-null
+  paymentId            String?           @unique
+  checkoutId           String?
+  subscriptionId       String?
+  // Amount at risk (in paise)
+  amountAtRisk         Int
+  currency             String             @default("INR")
+  category             RiskCategory
+  priority             Priority           @default(medium)
+  status               RecoveryCaseStatus @default(detected)
+  recoveryProbability  Float              @default(0)
+  // Net amount actually recovered (in paise)
+  recoveredAmount      Int                @default(0)
+  detectedAt           DateTime           @default(now())
+  resolvedAt           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  merchant          Merchant          @relation(fields: [merchantId], references: [id])
+  payment           Payment?           @relation(fields: [paymentId], references: [id])
+  agentDecisions    AgentDecision[]
+  recoveryAttempts  RecoveryAttempt[]
+  auditEvents       AuditEvent[]
+
+  @@index([merchantId, status])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([detectedAt])
+}
+
+model AgentDecision {
+  id                   String         @id @default(cuid())
+  recoveryCaseId       String
+  // What the agent observed about the case
+  observation          String
+  // Root cause identified
+  diagnosis            String
+  // Structured reasoning as JSON — flexible for future AI output
+  reasoningJson        String         @default("{}")
+  recommendedAction    RecoveryAction
+  // 0.0 to 1.0
+  confidence           Float
+  // 0.0 to 1.0
+  recoveryProbability  Float          @default(0)
+  status               DecisionStatus @default(pending)
+  // If a merchant approved/rejected, who and when
+  reviewedBy           String         @default("")
+  reviewedAt           DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+
+  @@index([recoveryCaseId])
+  @@index([status])
+}
+
+model RecoveryAttempt {
+  id                 String               @id @default(cuid())
+  recoveryCaseId     String
+  action             RecoveryAction
+  status             RecoveryAttemptStatus @default(pending)
+  // Amount recovered by this specific attempt (in paise)
+  recoveredAmount    Int                   @default(0)
+  // Short reason if the attempt failed
+  failureReason      String               @default("")
+  // External reference (e.g. Razorpay refund_id, retry payment_id)
+  externalRef        String               @default("")
+  attemptedAt        DateTime             @default(now())
+  completedAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+
+  @@index([recoveryCaseId])
+  @@index([status])
+  @@index([attemptedAt])
+}
+
+model AuditEvent {
+  id         String         @id @default(cuid())
+  // The recovery case this event relates to (null for system-level events)
+  caseId     String?
+  actorType  AuditActorType @default(system)
+  actorId    String         @default("")
+  eventType  String
+  entityType String         @default("")
+  entityId   String         @default("")
+  action     String
+  // Human-readable description
+  details    String         @default("")
+  // Structured metadata as JSON
+  metadataJson String        @default("{}")
+  createdAt  DateTime       @default(now())
+
+  recoveryCase RecoveryCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([eventType])
+  @@index([actorType])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}

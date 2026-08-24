@@ -32,3 +32,33 @@ Stage Summary:
 - No real credentials or secrets were created
 - Database layer is clean and ready for incremental model additions
 - Service abstraction boundaries defined for AI and Razorpay integrations
+
+---
+Task ID: 2
+Agent: lead-engineer
+Task: Database domain model + realistic seed data
+
+Work Log:
+- Designed 9-model normalized Prisma schema with 11 enums
+- Models: Merchant, Customer, Payment, Checkout, Subscription, RecoveryCase, AgentDecision, RecoveryAttempt, AuditEvent
+- All monetary fields use Int (paise) — no floating-point money
+- Added @unique on RecoveryCase.paymentId for one-to-one Payment relation
+- Created 25 date references (d1-d25) spanning Jan-Jun 2025 for deterministic timestamps
+- Created prisma/seed.ts: fully deterministic, idempotent, no Math.random()
+- Added `db:seed` script and `prisma.seed` config to package.json
+- Verified DB can be recreated from scratch (drop → push → seed → counts verified)
+- Verified referential integrity: 7 payment-linked cases, 6 completed cases, Rs.26,344 recovered
+
+Stage Summary:
+- 2 merchants (TechNova Electronics ecommerce, FitLife Subscriptions SaaS)
+- 24 customers (14 TechNova, 10 FitLife)
+- 52 payments across all statuses (captured, failed, refunded, cancelled) and methods (upi, card, netbanking, wallet, emi)
+- 26 checkouts (completed, abandoned with abandonedAt, expired)
+- 7 subscriptions (active, past_due with retries, cancelled, paused)
+- 16 recovery cases covering: payment_failed, checkout_abandoned, subscription_lapsed
+- 18 agent decisions with all DecisionStatus variants (pending, approved, rejected, overridden, expired)
+- 20 recovery attempts with multi-attempt retry chains
+- 25 audit events covering system, ai_agent, merchant, webhook actor types
+- Total at risk: Rs.63,033 | Total recovered: Rs.26,344 (41.8% recovery rate)
+- Realistic mix: some cases recovered, some failed, some in-progress, some dismissed
+- ESLint: clean | Dev server: HTTP 200 | Browser: app shell renders correctly
