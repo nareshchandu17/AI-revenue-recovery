@@ -1,0 +1,14 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------
+// Domain models will be added incrementally in future tasks.
+// Planned: Merchant, Customer, Payment, Checkout, Subscription,
+//          RecoveryCase, RecoveryAttempt, AgentDecision, AuditEvent
+// ----------------------------------------------------------------
