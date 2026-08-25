@@ -1,0 +1,849 @@
+     1→import { IMap, INormalizeError, RazorpayPaginationOptions, PartialOptional } from "./api";
+     2→import { Orders } from "./orders";
+     3→import { Refunds } from "./refunds"
+     4→import { Tokens } from "./tokens";
+     5→import { Transfers } from "./transfers"
+     6→import { VirtualAccounts } from "./virtualAccounts"
+     7→
+     8→export declare namespace Payments {
+     9→    interface RazorpayPaymentBaseRequestBody {
+    10→        /**
+    11→         * The payment amount represented in smallest unit of the currency passed. 
+    12→         * For example, amount = 100 translates to 100 paise, that is ₹1 (default currency is INR).
+    13→         */
+    14→        amount: number | string;
+    15→        /**
+    16→         * The currency in which the customer should be charged for the item. For example, `INR`.
+    17→         */
+    18→        currency: string;
+    19→        /**
+    20→         * The unique identifier of the order
+    21→         */
+    22→        order_id: string;
+    23→        /**
+    24→         * Customer email address used for the payment.
+    25→         */
+    26→        email: string;
+    27→        /**
+    28→         * Customer contact number used for the payment.
+    29→         */
+    30→        contact: string | number;
+    31→        /**
+    32→         * Key-value pair you can use to store additional information about the entity. 
+    33→         * Maximum of 15 key-value pairs, 256 characters each.
+    34→         */
+    35→        notes: { [key: string]: string }
+    36→        /**
+    37→         * A user-entered description for the payment. 
+    38→         * For example, `Creating recurring payment for Gaurav Kumar`.
+    39→         */
+    40→        description?: string;
+    41→        /**
+    42→         * The unique identifier of the customer you want to charge.
+    43→         */
+    44→        customer_id: string;
+    45→        /**
+    46→         * The unique identifier of the subscription.
+    47→         */
+    48→        subscription_id?: string;
+    49→        /**
+    50→         * The authentication channel for the payment. Possible value is `browser` or `app`
+    51→         */
+    52→        authentication?: {
+    53→            authentication_channel: string;
+    54→        };
+    55→    }
+    56→
+    57→    interface RazorpayPaymentCreateRequestBody extends RazorpayPaymentBaseRequestBody { }
+    58→
+    59→    interface RazorpayPaymentUpdateRequestBody extends Pick<RazorpayPaymentBaseRequestBody, "notes"> { }
+    60→
+    61→    interface RazorpayRefundPaymentLinkAccountCreateRequestBody extends Pick<RazorpayPaymentBaseRequestBody, "amount"> {
+    62→        /**
+    63→         * Reverses transfer made to a linked account.Possible values.
+    64→         * `1` - Reverses transfer made to a linked account.
+    65→         * `0` - Does not reverse transfer made to a linked account.
+    66→         */
+    67→        reverse_all?: boolean | 0 | 1;
+    68→    }
+    69→
+    70→    interface RazorpayPayment extends RazorpayPaymentCreateRequestBody {
+    71→        /**
+    72→         * Unique identifier of the payment.
+    73→         */
+    74→        id: string;
+    75→        /**
+    76→         * Indicates the type of entity.
+    77→         */
+    78→        entity: 'payment';
+    79→        /**
+    80→         * The status of the payment
+    81→         */
+    82→        status: 'created' | 'authorized' | 'captured' | 'refunded' | 'failed';
+    83→        /**
+    84→         * Unique identifier of the invoice.
+    85→         */
+    86→        invoice_id: string | null;
+    87→        /**
+    88→         * Indicates whether the payment is done via an international card or a domestic one.
+    89→         */
+    90→        international: boolean;
+    91→        /**
+    92→         * The refund status of the payment.
+    93→         */
+    94→        refund_status: 'null' | 'partial' | 'full';
+    95→        /**
+    96→         * The amount refunded in smallest unit of the currency passed.
+    97→         * For example, if `amount_refunded` = 100, here 100 stands for 100 paise, 
+    98→         * which is equal to ₹1. INR is the default currency.
+    99→         */
+   100→        amount_refunded?: number;
+   101→        /**
+   102→         *  Indicates if the payment is captured.
+   103→         */
+   104→        captured: boolean;
+   105→        /**
+   106→         * The 4-character bank code which the customer's account is associated with. 
+   107→         * For example, UTIB for Axis Bank.
+   108→         */
+   109→        bank: string;
+   110→        /**
+   111→         * The unique identifier of the card used by the customer to make the payment.
+   112→         */
+   113→        card_id: string | null;
+   114→        /**
+   115→         * The name of the wallet used by the customer to make the payment. 
+   116→         * For example, `payzapp`.
+   117→         */
+   118→        wallet: string | null;
+   119→        /**
+   120→         * The customer's VPA (Virtual Payment Address) or UPI id used to make the payment. 
+   121→         * For example, `gauravkumar@exampleupi`.
+   122→         */
+   123→        vpa: string | null;
+   124→        /**
+   125→         * GST charged for the payment.
+   126→         */
+   127→        tax: number;
+   128→        /**
+   129→         * Unique identifier of the token.
+   130→         */
+   131→        token_id: string | null;
+   132→        /**
+   133→         *  Fee (including GST) charged by Razorpay.
+   134→         */
+   135→        fee: number;
+   136→        /**
+   137→         * Error that occurred during payment. For example, `BAD_REQUEST_ERROR`.
+   138→         */
+   139→        error_code: string | null;
+   140→        /**
+   141→         * The point of failure. For example, `customer`
+   142→         */
+   143→        error_source: string | null;
+   144→        /**
+   145→         * Description of the error that occurred during payment. For example, 
+   146→         * Payment processing failed because of incorrect OTP.
+   147→         */
+   148→        error_description: string | null;
+   149→        /**
+   150→         * The stage where the transaction failure occurred. 
+   151→         * The stages can vary depending on the payment method used to complete the transaction. 
+   152→         * For example, `payment_authentication`.
+   153→         */
+   154→        error_step: string | null;
+   155→        /**
+   156→         * The exact error reason. For example, `incorrect_otp`.
+   157→         */
+   158→        error_reason: string | null;
+   159→        /**
+   160→         *  A dynamic array consisting of a unique reference numbers.
+   161→         */
+   162→        acquirer_data: {
+   163→            /**
+   164→             * A unique bank reference number provided by the banking partner when a refund is processed. 
+   165→             * This reference number can be used by the customer to track the status of the refund with 
+   166→             * the bank.
+   167→             */
+   168→            rrn?: string;
+   169→            /**
+   170→             * A unique reference number generated for RuPay card payments.
+   171→             */
+   172→            authentication_reference_number?: string;
+   173→            /**
+   174→             * A unique reference number provided by the banking partner in case of netbanking payments.
+   175→             */
+   176→            bank_transaction_id?: string;
+   177→            auth_code?: string;
+   178→            upi_transaction_id?: string;
+   179→        }
+   180→        emi?: {
+   181→            issuer: string;
+   182→            type: string;
+   183→            rate: string;
+   184→            duration: string;
+   185→        };
+   186→        /**
+   187→         * Timestamp, in UNIX format, on which the payment was created.
+   188→         */
+   189→        created_at: number;
+   190→        /**
+   191→         * The payment method used to make the payment. 
+   192→         * If this parameter is not passed, customers will be able to make 
+   193→         * payments using both netbanking and UPI payment methods
+   194→         */
+   195→        method: string;
+   196→        token?: Tokens.RazorpayToken;
+   197→        offers: {
+   198→            entity: string;
+   199→            count: number;
+   200→            items: { id: string }[]
+   201→
+   202→        }
+   203→        card?: RazorpayCard;
+   204→    }
+   205→
+   206→    interface RazorpayCardBaseRequestBody {
+   207→        /**
+   208→         * Unformatted card number.
+   209→         */
+   210→        number: string;
+   211→        /**
+   212→         * Name of the cardholder.
+   213→         */
+   214→        name: string;
+   215→        /**
+   216→         * Expiry month for card in MM format.
+   217→         */
+   218→        expiry_month: string | number;
+   219→        /**
+   220→         * Expiry year for card in YY format.
+   221→         */
+   222→        expiry_year: string | number;
+   223→        /**
+   224→         * CVV printed on the back of card.
+   225→         */
+   226→        cvv: string | number;
+   227→        /**
+   228→         * The cryptogram value for the token.
+   229→         */
+   230→        cryptogram_value?: string;
+   231→        /**
+   232→         * Indicates if the payment is made using tokenised card or actual card. Possible values are `true` or `false`
+   233→         */
+   234→        tokenised?: boolean;
+   235→        /**
+   236→         * The name of the aggregator that provided the token
+   237→         */
+   238→        token_provider?: string;
+   239→        /**
+   240→         * The last 4 digits of the tokenised card.
+   241→         */
+   242→        last4?: string;
+   243→        /**
+   244→         * The name of the aggregator that provided the token. Possible values are `Visa`, `Mastercard`, `Amex` or `HDFC for Diners`
+   245→         */
+   246→        provider_type?: string;
+   247→    }
+   248→
+   249→    interface RazorpayCardCreateRequest extends RazorpayCardBaseRequestBody { }
+   250→
+   251→    interface RazorpayCard extends RazorpayCardCreateRequest {
+   252→        /**
+   253→         * The unique identifier of the card used by the customer to make the payment.
+   254→         */
+   255→        id: string;
+   256→        /**
+   257→         * Indicates the type of entity.
+   258→         */
+   259→        entity: string;
+   260→        /**
+   261→         * The last 4 digits of the card number.
+   262→         */
+   263→        last4: string;
+   264→        /**
+   265→         * The card network.
+   266→         */
+   267→        network:
+   268→        | "American Express"
+   269→        | "Diners Club"
+   270→        | "Maestro"
+   271→        | "MasterCard"
+   272→        | "RuPay"
+   273→        | "Unknown"
+   274→        | "Visa";
+   275→        /**
+   276→         * The card type.
+   277→         */
+   278→        type: "credit" | "debit" | "prepaid" | "unknown";
+   279→        /**
+   280→         * The card issuer. The 4-character code denotes the issuing bank.
+   281→         */
+   282→        issuer: string;
+   283→        /**
+   284→         * This attribute is set to `true` if the card can be used for EMI payment method.
+   285→         */
+   286→        emi: boolean;
+   287→        /**
+   288→         * The sub-type of the customer's card. 
+   289→         */
+   290→        sub_type: 'customer' | 'business';
+   291→        token_iin: string | null;
+   292→        /**
+   293→         * The transaction flow details.
+   294→         */
+   295→        flows: {
+   296→            otp?: boolean;
+   297→            recurring: boolean;
+   298→        }
+   299→        international: boolean;
+   300→        cobranding_partner?: string | null
+   301→    }
+   302→
+   303→    interface RazorpayPaymentDowntime {
+   304→        /**
+   305→         * Unique identifier of the downtime's occurrence.
+   306→         */
+   307→        id: string;
+   308→        /**
+   309→         * Indicates the type of entity.
+   310→         */
+   311→        entity: string;
+   312→        /**
+   313→         * The payment method that is experiencing the downtime. Possible values include:
+   314→         * `card`, `netbanking`, `wallet`, `upi`
+   315→         */
+   316→        method: string;
+   317→        /**
+   318→         * Timestamp (in Unix) that indicates the start of the downtime. 
+   319→         * Applicable for both scheduled and unscheduled downtimes.
+   320→         */
+   321→        begin: number | null;
+   322→        /**
+   323→         * Timestamp (in Unix) that indicates the end of the downtime.
+   324→         * Available only for scheduled downtimes, where the end-time is known. 
+   325→         * Set to null when the end-time in unknown, possibly during unscheduled downtimes.
+   326→         */
+   327→        end: number | null;
+   328→        /**
+   329→         * Status of the downtime.
+   330→         */
+   331→        status: 'scheduled' | 'started' | 'resolved' | 'cancelled';
+   332→        /**
+   333→         * `true` - This is a scheduled downtime by the issuer, 
+   334→         * network, or the bank, which was informed to Razorpay.
+   335→         * `false` - This is an unscheduled downtime.
+   336→         */
+   337→        scheduled: boolean;
+   338→        /**
+   339→         * Severity of the downtime.
+   340→         */
+   341→        severity: 'high' | 'medium' | 'low';
+   342→        /**
+   343→         * Payment method that is under performing.
+   344→         */
+   345→        instrument: RazorpayPaymentDowntimeInstrument
+   346→        /**
+   347→         * Timestamp (in Unix) that indicates the time at which the 
+   348→         * downtime was recorded in Razorpay servers.
+   349→         */
+   350→        created_at: number;
+   351→        /**
+   352→         * Timestamp (in Unix) that indicates the time at which the 
+   353→         * downtime record was updated in Razorpay servers.
+   354→         */
+   355→        updated_at: number;
+   356→    }
+   357→
+   358→    interface RazorpayPaymentDowntimeInstrument {
+   359→        /**
+   360→         * Bank code of the affected bank.
+   361→         */
+   362→        bank?: string;
+   363→        /**
+   364→         * Code of the affected Payment Service Provider (PSP). 
+   365→         * This is populated only when VPA handles associated with the PSP are down. 
+   366→         * If a PSP is associated with multiple VPA handles,
+   367→         * it is marked down only when all the handles associated with it are down. 
+   368→         * For example, `google_pay` is marked down only when all Google Pay handles
+   369→         * `oksbi`, `okhdfcbank`, `okicici` and `okaxis` are down.
+   370→         */
+   371→        psp?: 'google_pay' | 'phonepe' | 'paytm' | 'bhim';
+   372→        /**
+   373→         * Affected VPA handle. For example, `@oksbi`. To learn about the possible values, 
+   374→         * refer to the [list of handles supported by NPCI](https://www.npci.org.in/what-we-do/upi/3rd-party-apps). 
+   375→         * If the entire UPI system is experiencing a downtime, the value `ALL` is displayed.
+   376→         */
+   377→        vpa_handle?: string;
+   378→        /**
+   379→         * Affected wallet code.
+   380→         */
+   381→        wallet?: string;
+   382→    }
+   383→
+   384→    interface RazorpayRecurringPaymentCreateRequestBody extends Payments.RazorpayPaymentBaseRequestBody {
+   385→        /**
+   386→         * he `token_id` generated when the customer successfully completes the authorization payment. 
+   387→         * Different payment instruments for the same customer have different `token_id`.
+   388→         */
+   389→        token: string;
+   390→        /**
+   391→         * Determines whether recurring payment is enabled or not.
+   392→         */
+   393→        recurring: boolean | 1 | 0 | string;
+   394→    }
+   395→
+   396→    interface RazorpayPaymentThirdPartyCreateRequestBody extends Omit<RazorpayPaymentBaseRequestBody, 'customer_id' | 'notes' | 'description'> {
+   397→        /**
+   398→         * The customer's bank code. For example, `HDFC`.
+   399→         */
+   400→        bank?: string;
+   401→        /**
+   402→         * The payment method that is experiencing the downtime. Possible values include:
+   403→         * `card`, `netbanking`, `wallet`, `upi`
+   404→         */
+   405→        method: string;
+   406→    }
+   407→
+   408→    interface RazorpayPaymentUpiCreateRequestBody extends PartialOptional<RazorpayPaymentBaseRequestBody, 'customer_id'> {
+   409→        method: string;
+   410→        /**
+   411→         * Specifies if the VPA should be stored as tokens.
+   412→         * `1` Saves the VPA details.
+   413→         * `0`(default) - Does not save the VPA details.
+   414→         */
+   415→        save?: boolean | 1 | 0;
+   416→        /**
+   417→         * The customer's IP address.
+   418→         */
+   419→        ip: string;
+   420→        /**
+   421→         * URL where Razorpay will submit the final payment status.
+   422→         */
+   423→        callback_url?: string;
+   424→        /**
+   425→         * Value of referer header passed by the client's browser. 
+   426→         * For example,`https://example.com/`
+   427→         */
+   428→        referer: string;
+   429→        /**
+   430→         * Value of `user_agent` header passed by the client's browser.
+   431→         * For example, 
+   432→         * Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) 
+   433→         * Chrome/79.0.3945.130 Safari/537.36
+   434→         */
+   435→        user_agent: string;
+   436→        /**
+   437→         * Details of the expiry of the UPI link
+   438→         */
+   439→        upi?: {
+   440→            /**
+   441→             * Specify the type of the UPI payment flow.
+   442→             * Possible values: `collect` (default), `intent`
+   443→             */
+   444→            flow: string;
+   445→            vpa?: string;
+   446→            /**
+   447→             * Period of time (in minutes) after which the link will expire. 
+   448→             * The default value is 5.
+   449→             */
+   450→            expiry_time?: number;
+   451→        }
+   452→        /**
+   453→         * Token of the saved VPA.
+   454→         */
+   455→        token?: string;
+   456→    }
+   457→
+   458→    interface RazorpayPaymentQuery extends RazorpayPaginationOptions {
+   459→        'expand[]'?: string;
+   460→    }
+   461→
+   462→    interface RazorpayCardS2SMethod extends RazorpayCardBaseRequestBody {
+   463→        /**
+   464→         * Details of the authentication channel.
+   465→         */
+   466→        authentication?: {
+   467→            /**
+   468→             * The authentication channel for the payment.
+   469→             */
+   470→            authentication_channel: 'browser' | 'app'
+   471→        }
+   472→    }
+   473→
+   474→    interface BrowserInfo {
+   475→        /**
+   476→         * Indicates whether the customer's browser supports Java. 
+   477→         * Obtained from the `navigator` HTML DOM object.
+   478→         */
+   479→        java_enabled: boolean;
+   480→        /**
+   481→         * Indicates whether the customer's browser is able to execute JavaScript.
+   482→         * Obtained from the `navigator` HTML DOM object.
+   483→         */
+   484→        javascript_enabled: boolean;
+   485→        /**
+   486→         * Time difference between UTC time and the cardholder browser local time. 
+   487→         * Obtained from the `getTimezoneOffset()` method applied to Date object.
+   488→         */
+   489→        timezone_offset: number | string;
+   490→        /**
+   491→         * Total width of the payer's screen in pixels. 
+   492→         * Obtained from the `screen.width` HTML DOM property.
+   493→         */
+   494→        screen_width: number | string;
+   495→        /**
+   496→         * Obtained from the `navigator` HTML DOM object.
+   497→         */
+   498→        screen_height: number | string;
+   499→        /**
+   500→         * Obtained from payer's browser using 
+   501→         * the `screen.colorDepth` HTML DOM property.
+   502→         */
+   503→        color_depth: number | string;
+   504→        /**
+   505→         * Obtained from payer's browser using the navigator.
+   506→         * language HTML DOM property. Maximum limit of 8 characters.
+   507→         */
+   508→        language: string;
+   509→    }
+   510→
+   511→    interface RazorpayPaymentS2SCreateRequestBody extends RazorpayPaymentBaseRequestBody {
+   512→        save: boolean | number;
+   513→        /**
+   514→         *  Pass the unique token id created when the customer made the first payment.
+   515→         */
+   516→        token?: string;
+   517→        /**
+   518→         * Pass the sub-merchant's unique identifier.
+   519→         */
+   520→        account_id?: string;
+   521→        card: Partial<RazorpayCardS2SMethod>;
+   522→        /**
+   523→         * The customer's IP address.
+   524→         */
+   525→        ip: string;
+   526→        /**
+   527→         * Referrer header passed by the client's browser.
+   528→         */
+   529→        referer?: string;
+   530→        /**
+   531→         * The User-Agent header of the user's browser. 
+   532→         * Default value will be passed by Razorpay if not provided by merchant.
+   533→         */
+   534→        user_agent: string | null;
+   535→        provider_name?: string;
+   536→        /**
+   537→         * Information regarding the customer's browser. 
+   538→         * This parameter need not be passed when `authentication_channel=app`.
+   539→         */
+   540→        browser?: Partial<BrowserInfo>
+   541→    }
+   542→
+   543→    interface RazorpayPaymentS2SJson {
+   544→        /**
+   545→         * Unique identifier of the payment. Present for all responses.
+   546→         */
+   547→        razorpay_payment_id: string;
+   548→        /**
+   549→         * A list of action objects available to you to continue the payment process. 
+   550→         * Present when the payment requires further processing.
+   551→         */
+   552→        next: [
+   553→            {
+   554→                [key: string]: string
+   555→            }
+   556→        ];
+   557→        metadata?: {
+   558→            [key: string]: string
+   559→        }
+   560→    }
+   561→
+   562→    interface RazorpayPaymentDetails {
+   563→        id: string;
+   564→        entity: string;
+   565→        payment_id: string;
+   566→        mode: string;
+   567→        bank_reference: string;
+   568→        amount: number | string;
+   569→        payer_bank_account: RazorpayBankAccount;
+   570→        virtual_account_id: string;
+   571→        virtual_account: VirtualAccounts.RazorpayVirtualAccount;
+   572→    }
+   573→
+   574→    interface RazorpayBankAccount extends Orders.RazorpayBankAccount {
+   575→        id: string;
+   576→        entity: string;
+   577→    }
+   578→
+   579→    interface ExpandDetails {
+   580→        'expand[]': 'card' | 'emi' | 'offers' | 'upi'
+   581→    }
+   582→
+   583→}
+   584→
+   585→declare function payments(api: any): {
+   586→    /**
+   587→    * Get all payments
+   588→    *
+   589→    * @param params
+   590→    *
+   591→    */
+   592→    all(params?: Payments.RazorpayPaymentQuery): Promise<{
+   593→        entity: string;
+   594→        count: number;
+   595→        items: Array<Payments.RazorpayPayment>;
+   596→    }>
+   597→    all(params: Payments.RazorpayPaymentQuery, callback: (err: INormalizeError | null, data: {
+   598→        entity: string,
+   599→        count: number,
+   600→        items: Array<Payments.RazorpayPayment>
+   601→    }) => void): void
+   602→    /**
+   603→    * Fetch a payment
+   604→    *
+   605→    * @param paymentId - The unique identifier of the payment.
+   606→    * @param params - Check [doc](https://razorpay.com/docs/api/payments/#fetch-a-payment) for required params
+   607→    *
+   608→    */
+   609→    fetch(paymentId: string, params?: Payments.ExpandDetails): Promise<Payments.RazorpayPayment>
+   610→    fetch(paymentId: string, params: Payments.ExpandDetails, callback: (err: INormalizeError | null, data: Payments.RazorpayPayment) => void): void
+   611→    /**
+   612→    * Capture payment
+   613→    *
+   614→    * @param paymentId - The unique identifier of the payment.
+   615→    * @param amount - The amount to be captured (should be equal to the authorised amount, 
+   616→    * in the smallest unit of the chosen currency).
+   617→    * @param currency - ISO code of the currency in which the payment was made.
+   618→    *
+   619→    */
+   620→    capture(paymentId: string, amount: number | string, currency: string): Promise<Payments.RazorpayPayment>
+   621→    capture(paymentId: string, amount: number | string, currency: string, callback: (err: INormalizeError | null, data: Payments.RazorpayPayment) => void): void
+   622→    /**
+   623→    * Edit a payment given Payment ID
+   624→    *
+   625→    * @param paymentId - The unique identifier of the payment. 
+   626→    * @param params - Check [doc](https://razorpay.com/docs/api/payments/#update-the-payment) for required params
+   627→    * 
+   628→    */
+   629→    edit(paymentId: string, params: { notes: IMap<string | number> }): Promise<Payments.RazorpayPayment>
+   630→    edit(paymentId: string, params: { notes: IMap<string | number> }, callback: (err: INormalizeError | null, data: Payments.RazorpayPayment) => void): void
+   631→    /**
+   632→    * Create payment json
+   633→    *
+   634→    * @param params - Check [doc](https://razorpay.com/docs/payments/payment-gateway/s2s-integration/json/v2/build-integration/cards/#12-create-a-payment) for required params
+   635→    * 
+   636→    */
+   637→    createPaymentJson(params: Payments.RazorpayPaymentS2SCreateRequestBody | Payments.RazorpayPaymentThirdPartyCreateRequestBody): Promise<Payments.RazorpayPaymentS2SJson>
+   638→    createPaymentJson(params: Payments.RazorpayPaymentS2SCreateRequestBody | Payments.RazorpayPaymentThirdPartyCreateRequestBody, callback: (err: INormalizeError | null, data: Payments.RazorpayPaymentS2SJson) => void): void
+   639→    /**
+   640→    * Create a recurring payment
+   641→    *
+   642→    * @param params
+   643→    * @link https://razorpay.com/docs/api/payments/recurring-payments/emandate/create-subsequent-payments#32-create-a-recurring-payment
+   644→    * @link https://razorpay.com/docs/api/payments/recurring-payments/cards/create-subsequent-payments#32-create-a-recurring-payment
+   645→    * @link https://razorpay.com/docs/api/payments/recurring-payments/paper-nach/create-subsequent-payments#32-create-a-recurring-payment
+   646→    * @link https://razorpay.com/docs/api/payments/recurring-payments/upi/create-subsequent-payments#32-create-a-recurring-payment
+   647→    * 
+   648→    */
+   649→    createRecurringPayment(params: Payments.RazorpayRecurringPaymentCreateRequestBody): Promise<{
+   650→        razorpay_payment_id?: string;
+   651→        razorpay_order_id?: string;
+   652→        razorpay_signature?: string;
+   653→    }>
+   654→    createRecurringPayment(params: Payments.RazorpayRecurringPaymentCreateRequestBody, callback: (err: INormalizeError | null, data: {
+   655→        razorpay_payment_id?: string;
+   656→        razorpay_order_id?: string;
+   657→        razorpay_signature?: string;
+   658→    }) => void): void
+   659→    /**
+   660→    * Generate otp
+   661→    *
+   662→    * @param paymentId - The unique identifier of the payment.
+   663→    * 
+   664→    */
+   665→    otpGenerate(paymentId: string): Promise<Payments.RazorpayPaymentS2SJson>
+   666→    otpGenerate(paymentId: string, callback: (err: INormalizeError | null, data: Payments.RazorpayPaymentS2SJson) => void): void
+   667→    /**
+   668→    * Otp submit
+   669→    *
+   670→    * @param paymentId - The unique identifier of the payment.
+   671→    * @param params - Check [doc](https://razorpay.com/docs/payments/payment-gateway/s2s-integration/json/v2/build-integration/cards/#response-on-submitting-otp) for required params
+   672→    *
+   673→    */
+   674→    otpSubmit(paymentId: string, params: { otp: string }): Promise<{
+   675→        razorpay_payment_id: string;
+   676→        razorpay_order_id: string;
+   677→        razorpay_signature: string;
+   678→    }>
+   679→    otpGenerate(paymentId: string, params: { otp: string }, callback: (err: INormalizeError | null, data: {
+   680→        razorpay_payment_id: string;
+   681→        razorpay_order_id: string;
+   682→        razorpay_signature: string;
+   683→    }) => void): void
+   684→    /**
+   685→    * OTP Resend
+   686→    *
+   687→    * @param paymentId - The unique identifier of the payment.
+   688→    *
+   689→    */
+   690→    otpResend(paymentId: string): Promise<{
+   691→        "next": string[];
+   692→        "razorpay_payment_id": string;
+   693→    }>
+   694→    otpResend(paymentId: string, callback: (err: INormalizeError | null, data: {
+   695→        "next": string[];
+   696→        "razorpay_payment_id": string;
+   697→    }) => void): void
+   698→    /** 
+   699→    * Create Payment UPI s2s / VPA token (Third party validation)
+   700→    *
+   701→    * @param params
+   702→    * @link https://razorpay.com/docs/payments/third-party-validation/s2s-integration/upi/collect#step-14-initiate-a-payment
+   703→    * @link https://razorpay.com/docs/payments/third-party-validation/s2s-integration/upi/intent/#step-2-initiate-a-payment
+   704→    *
+   705→    */
+   706→    createUpi(params: Payments.RazorpayPaymentUpiCreateRequestBody): Promise<{ razorpay_payment_id: string; link?: string; }>
+   707→    createUpi(params: Payments.RazorpayPaymentUpiCreateRequestBody, callback: (err: INormalizeError | null, data: {
+   708→        razorpay_payment_id: string;
+   709→        link?: string
+   710→    }) => void): void
+   711→    /** 
+   712→    * Validate vpa
+   713→    *
+   714→    * @param params - Check [doc](https://razorpay.com/docs/payments/third-party-validation/s2s-integration/upi/collect#step-13-validate-the-vpa) for required params
+   715→    *
+   716→    */
+   717→    validateVpa(params: { vpa: string }): Promise<{
+   718→        vpa: string;
+   719→        success: boolean;
+   720→        customer_name: string;
+   721→    }>
+   722→    validateVpa(params: { vpa: string }, callback: (err: INormalizeError | null, data: {
+   723→        vpa: string;
+   724→        success: boolean;
+   725→        customer_name: string;
+   726→    }) => void): void
+   727→    /** 
+   728→    * Fetch payment methods
+   729→    * 
+   730→    * @link https://razorpay.com/docs/payments/third-party-validation/s2s-integration/methods-api/#fetch-payment-methods
+   731→    * 
+   732→    */
+   733→    fetchPaymentMethods(): Promise<{ [key: string]: string }>
+   734→    fetchPaymentMethods(callback: (err: INormalizeError | null, data: {
+   735→        [key: string]: string;
+   736→    }) => void): void
+   737→    /** 
+   738→    * Create a normal/instant instant refund.
+   739→    * 
+   740→    * Refund payments and reverse transfer from a linked account
+   741→    *
+   742→    * @param paymentId - The unique identifier of the payment. 
+   743→    * @param params - Check [doc](https://razorpay.com/docs/api/refunds/#create-a-normal-refund) for required params
+   744→    * @param params - Check [doc](https://razorpay.com/docs/api/payments/route/transfers#refund-payments-and-reverse-transfer-from-a-linked) for required params
+   745→    */
+   746→    refund(paymentId: string, params: Payments.RazorpayRefundPaymentLinkAccountCreateRequestBody | Refunds.RazorpayRefundCreateRequestBody): Promise<Refunds.RazorpayRefund>
+   747→    refund(paymentId: string, params: Payments.RazorpayRefundPaymentLinkAccountCreateRequestBody | Refunds.RazorpayRefundCreateRequestBody, callback: (err: INormalizeError | null, data: Refunds.RazorpayRefund) => void): void
+   748→    /** 
+   749→    * Fetch multiple refunds for a payment
+   750→    *
+   751→    * @param paymentId - The unique identifier of the payment. 
+   752→    * @param params - Check [doc](https://razorpay.com/docs/api/refunds/#fetch-multiple-refunds-for-a-payment) for required params
+   753→    *
+   754→    */
+   755→    fetchMultipleRefund(paymentId: string, params?: RazorpayPaginationOptions): Promise<{
+   756→        entity: string;
+   757→        count: number;
+   758→        items: Array<Refunds.RazorpayRefund>;
+   759→    }>
+   760→    fetchMultipleRefund(paymentId: string, params: RazorpayPaginationOptions, callback: (err: INormalizeError | null, data: {
+   761→        entity: string;
+   762→        count: number;
+   763→        items: Array<Refunds.RazorpayRefund>;
+   764→    }) => void): void
+   765→
+   766→    /** 
+   767→    * Fetch a specific refund for a payment
+   768→    *
+   769→    * @param paymentId - The unique identifier of the payment.
+   770→    * @param refundId - The unique identifier of the refund.
+   771→    *
+   772→    */
+   773→    fetchRefund(paymentId: string, refundId: string): Promise<Refunds.RazorpayRefund>
+   774→    fetchRefund(paymentId: string, refundId: string, callback: (err: INormalizeError | null, data: Refunds.RazorpayRefund) => void): void
+   775→    /**
+   776→    * Fetch transfers for a payment
+   777→    *
+   778→    * @param paymentId - The unique identifier of the payment.
+   779→    *
+   780→    */
+   781→    fetchTransfer(paymentId: string): Promise<{
+   782→        entity: string;
+   783→        count: number;
+   784→        items: Array<Transfers.RazorpayTransfer>;
+   785→    }>
+   786→    fetchTransfer(paymentId: string, callback: (err: INormalizeError | null, data: {
+   787→        entity: string;
+   788→        count: number;
+   789→        items: Array<Transfers.RazorpayTransfer>;
+   790→    }) => void): void
+   791→
+   792→    /**
+   793→    * Create transfers from payment
+   794→    *
+   795→    * @param paymentId - The unique identifier of the payment.
+   796→    * @param params - Check [doc](https://razorpay.com/docs/api/payments/route/transfers/#create-transfers-from-payments) for required params
+   797→    * 
+   798→    */
+   799→    transfer(paymentId: string, params: { transfers: Transfers.RazorpayPaymentCreateRequestBody[] }): Promise<{
+   800→        entity: string;
+   801→        count: number;
+   802→        items: Array<Transfers.RazorpayTransfer>;
+   803→    }>
+   804→    transfer(paymentId: string, params: { transfers: Transfers.RazorpayPaymentCreateRequestBody[] }, callback: (err: INormalizeError | null, data: {
+   805→        entity: string;
+   806→        count: number;
+   807→        items: Array<Transfers.RazorpayTransfer>;
+   808→    }) => void): void
+   809→    /**
+   810→    * Fetch payment details using id and transfer method
+   811→    *
+   812→    * @param paymentId - The unique identifier of the payment. 
+   813→    * 
+   814→    */
+   815→    bankTransfer(paymentId: string): Promise<Payments.RazorpayPaymentDetails>
+   816→    bankTransfer(paymentId: string, callback: (err: INormalizeError | null, data: Payments.RazorpayPaymentDetails) => void): void
+   817→    /**
+   818→    * Fetch card details with paymentId
+   819→    *
+   820→    * @param paymentId - The unique identifier of the payment.
+   821→    * 
+   822→    */
+   823→    fetchCardDetails(paymentId: string): Promise<Payments.RazorpayCard>
+   824→    fetchCardDetails(paymentId: string, callback: (err: INormalizeError | null, data: Payments.RazorpayCard) => void): void
+   825→    /**
+   826→    * Fetch Payment Downtime Details
+   827→    */
+   828→    fetchPaymentDowntime(): Promise<{
+   829→        entity: string;
+   830→        count: number;
+   831→        items: Array<Payments.RazorpayPaymentDowntime>
+   832→    }>
+   833→    fetchPaymentDowntime(callback: (err: INormalizeError | null, data: {
+   834→        entity: string;
+   835→        count: number;
+   836→        items: Array<Payments.RazorpayPaymentDowntime>
+   837→    }) => void): void
+   838→    /**
+   839→    * Fetch Payment Downtime
+   840→    *
+   841→    * @param downtimeId - The unique identifier of the payment.
+   842→    * 
+   843→    */
+   844→    fetchPaymentDowntimeById(downtimeId: string): Promise<Payments.RazorpayPaymentDowntime>
+   845→    fetchPaymentDowntimeById(downtimeId: string, callback: (err: INormalizeError | null, data: Payments.RazorpayPaymentDowntime) => void): void
+   846→}
+   847→
+   848→export default payments
+   849→

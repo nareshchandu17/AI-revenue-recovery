@@ -153,7 +153,7 @@ model Payment {
   merchantId       String
   customerId       String
   // External reference from the payment provider (e.g. Razorpay payment_id)
-  externalId       String        @default("")
+  externalId       String        @unique @default("")
   amount           Int           // in paise
   currency         String        @default("INR")
   status           PaymentStatus @default(created)
@@ -172,7 +172,6 @@ model Payment {
 
   @@index([merchantId, status])
   @@index([customerId])
-  @@index([externalId])
   @@index([status])
   @@index([createdAt])
 }
