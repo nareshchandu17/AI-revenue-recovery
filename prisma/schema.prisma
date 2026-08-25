@@ -73,10 +73,12 @@ enum RecoveryAction {
 
 enum RecoveryAttemptStatus {
   pending
-  in_progress
+  queued
+  running
   succeeded
   failed
-  skipped
+  cancelled
+  blocked
 }
 
 enum DecisionStatus {
@@ -278,6 +280,7 @@ model AgentDecision {
   updatedAt            DateTime       @updatedAt
 
   recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  recoveryAttempts RecoveryAttempt[]
 
   @@index([recoveryCaseId])
   @@index([status])
@@ -286,24 +289,38 @@ model AgentDecision {
 model RecoveryAttempt {
   id                 String               @id @default(cuid())
   recoveryCaseId     String
+  agentDecisionId    String?
   action             RecoveryAction
   status             RecoveryAttemptStatus @default(pending)
+  // Sequential attempt number for this recovery case (1-based)
+  attemptNumber      Int                   @default(1)
   // Amount recovered by this specific attempt (in paise)
   recoveredAmount    Int                   @default(0)
   // Short reason if the attempt failed
   failureReason      String               @default("")
   // External reference (e.g. Razorpay refund_id, retry payment_id)
   externalRef        String               @default("")
+  // BullMQ job ID for tracing
+  jobId              String               @default("")
+  // Whether this execution was simulated (test mode)
+  simulated          Boolean              @default(false)
+  // When this attempt was scheduled for execution
+  scheduledAt        DateTime?
+  // When the worker started processing
+  startedAt          DateTime?
   attemptedAt        DateTime             @default(now())
   completedAt        DateTime?
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
-  recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  recoveryCase  RecoveryCase  @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  agentDecision AgentDecision? @relation(fields: [agentDecisionId], references: [id])
 
   @@index([recoveryCaseId])
+  @@index([agentDecisionId])
   @@index([status])
   @@index([attemptedAt])
+  @@index([recoveryCaseId, attemptNumber])
 }
 
 model AuditEvent {

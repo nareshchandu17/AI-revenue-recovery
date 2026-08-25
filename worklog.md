@@ -180,3 +180,45 @@ Stage Summary:
 - Existing detection tests: 45/45 still pass
 - Browser: app shell renders correctly with sidebar, header, footer
 - Security: AI recommendation ≠ financial execution; agent produces recommendations only; no money movement; no real customer messages; no payment retries
+
+---
+Task ID: 6
+Agent: lead-engineer
+Task: Bounded Recovery Execution Engine + Redis/BullMQ
+
+Work Log:
+- Installed bullmq@6.2.1 and ioredis@6.0.0
+- Updated Prisma schema: RecoveryAttemptStatus enum (pending→queued→running→succeeded/failed/cancelled/blocked), added fields to RecoveryAttempt (agentDecisionId, attemptNumber, jobId, simulated, scheduledAt, startedAt), added AgentDecision→RecoveryAttempt relation, updated seed data to use new enum values
+- Created src/services/execution/redis.ts — Redis singleton connection with graceful unavailable handling, health check, close/reset
+- Created src/services/execution/types.ts — Full type system: VALID_TRANSITIONS state machine, REQUIRES_MERCHANT_APPROVAL mapping, RecoveryJobData/RecoveryJobResult for BullMQ, ExecutorContext/ExecutorResult/ActionExecutor interface, GateResult, ExecuteResult, ApprovalResult, error hierarchy (ExecutionError, InvalidStateTransitionError, ExecutionGateError, IdempotencyError, QueueUnavailableError), STOP_REASONS constants
+- Created src/services/execution/executors/ — 6 isolated executors: NoActionExecutor, ReminderExecutor, AlternativePaymentExecutor, MerchantEscalationExecutor, RetryPaymentExecutor, PaymentLinkExecutor; base.ts registry with getExecutor/registerExecutor/resetExecutors/MockExecutor
+- Created src/services/execution/gate.ts — Execution gate: validates case state, decision status, payment status, amount, recovery probability, retry limit, duplicate attempts, cooldown
+- Created src/services/execution/queue.ts — BullMQ Queue with bounded exponential backoff (3 attempts), queue stats, graceful close
+- Created src/services/execution/worker.ts — BullMQ worker: 10-step job processing (load attempt→verify state→re-check case→re-check gate→mark running→call executor→persist result→audit→update case), concurrency=5, rate limiting 20/min
+- Created src/services/execution/service.ts — Main orchestrator: validates case→loads decision→approval gate→execution gate→creates RecoveryAttempt→transitions to QUEUED→enqueues job→returns immediately (never synchronous)
+- Created src/services/execution/approval.ts — approveDecision/rejectDecision with status validation, audit trail (RECOVERY_ACTION_APPROVED/RECOVERY_ACTION_REJECTED)
+- Created src/worker/index.ts — Standalone worker process entry point with graceful shutdown (SIGINT/SIGTERM)
+- Created API routes: POST /api/recovery/cases/:id/execute, POST /api/recovery/decisions/:id/approve, POST /api/recovery/decisions/:id/reject
+- Created src/services/execution/__tests__/execution.test.ts — 31 tests (17 required + 14 bonus), all mocked, 275 total assertions across 115 tests
+- Added 'worker' script to package.json
+
+Stage Summary:
+- Files created: 19 new files (17 execution engine, 1 worker entry, 1 test file)
+- Files modified: prisma/schema.prisma, prisma/seed.ts, package.json (3 modified)
+- Queue architecture: RecoveryExecutionQueue (BullMQ) → RecoveryWorker → RecoveryActionExecutor
+- Redis/BullMQ configuration: REDIS_URL from env, lazy connect, 3 bounded infrastructure retries with exponential backoff (2s base), max 5 concurrent jobs, 20 jobs/min rate limit, 5min job timeout, 100 completed/200 failed job retention
+- Execution gate behavior: 10 checks (case existence, terminal status, captured payment, decision status/existence/match, amount validity, recovery probability, retry limit, duplicate detection, cooldown)
+- Approval flow: retry_payment/offer_discount/cancel_and_refund require merchant approval; send_reminder/update_payment_method/escalate_to_merchant/no_action are auto-approved; pending decisions requiring approval return 'awaiting_approval' status without queuing
+- RecoveryAttempt lifecycle: PENDING→QUEUED→RUNNING→SUCCEEDED/FAILED/BLOCKED; PENDING/QUEUED→CANCELLED; terminal states (succeeded/failed/cancelled/blocked) have no outgoing transitions
+- Action executors: 6 isolated executors, each handles one action type; all use simulation mode when Razorpay not configured; RetryPaymentExecutor attempts Razorpay capture for authorized payments, falls back to simulation; simulated results clearly marked with simulated=true
+- Real vs Simulated: no_action and escalate_to_merchant are always real (no external call); send_reminder uses Razorpay notifyCustomer when configured, simulated otherwise; retry_payment attempts Razorpay capture/notify, simulated otherwise; update_payment_method and offer_discount always simulated (no Razorpay API for these)
+- Idempotency strategy: deterministic job IDs (attempt ID), duplicate detection (same case+action in non-terminal states), state transition validation, gate re-check at worker level
+- Retry/cooldown/stopping rules: max 3 recovery attempts (configurable), 30-min cooldown for retry_payment and send_reminder, 9 stopping reasons (case recovered, retry limit, policy, decision expired, invalid amount, merchant stopped, invalid case state, cooldown, duplicate)
+- Worker architecture: standalone process (bun run worker), 10-step job processing with re-validation at each step, structured logging with IDs, graceful shutdown with 10s timeout
+- APIs: POST /api/recovery/cases/:id/execute (Zod-validated body, async queuing), POST /api/recovery/decisions/:id/approve (merchant approval with audit), POST /api/recovery/decisions/:id/reject (merchant rejection with audit)
+- Audit events: RECOVERY_ACTION_APPROVED, RECOVERY_ACTION_REJECTED, RECOVERY_ATTEMPT_CREATED, RECOVERY_ATTEMPT_QUEUED, RECOVERY_ATTEMPT_STARTED, RECOVERY_ATTEMPT_SUCCEEDED, RECOVERY_ATTEMPT_FAILED, RECOVERY_ATTEMPT_BLOCKED
+- amountRecovered: NEVER set on action execution — sending a reminder or creating a payment link does NOT mean money recovered (Task 7 will implement recovery attribution)
+- Tests: 31/31 pass (0 fail, 127 expect() calls in execution tests, 275 total across 115 tests)
+- ESLint: clean (0 errors, 0 warnings)
+- All pre-existing tests still pass: 84/84 (45 detection + 39 agent)
+- Known limitation: Redis not available in sandbox — queue throws QueueUnavailableError gracefully; all executors work in simulation mode

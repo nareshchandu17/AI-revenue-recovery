@@ -572,7 +572,7 @@ async function main() {
 
   // Case 4: update_payment_method → in_progress (awaiting approval)
   await prisma.recoveryAttempt.create({
-    data: { id: 'att_004', recoveryCaseId: case4.id, action: 'update_payment_method', status: 'in_progress', recoveredAmount: 0, failureReason: '', externalRef: '', attemptedAt: T.d9, createdAt: T.d9, updatedAt: T.d9 },
+    data: { id: 'att_004', recoveryCaseId: case4.id, action: 'update_payment_method', status: 'running', recoveredAmount: 0, failureReason: '', externalRef: '', attemptedAt: T.d9, createdAt: T.d9, updatedAt: T.d9 },
   })
 
   // Case 5: first retry_payment → failed
@@ -582,17 +582,17 @@ async function main() {
 
   // Case 5: second attempt send_reminder → in_progress
   await prisma.recoveryAttempt.create({
-    data: { id: 'att_006', recoveryCaseId: case5.id, action: 'send_reminder', status: 'in_progress', recoveredAmount: 0, failureReason: '', externalRef: 'email_reminder_005', attemptedAt: T.d13, createdAt: T.d13, updatedAt: T.d13 },
+    data: { id: 'att_006', recoveryCaseId: case5.id, action: 'send_reminder', status: 'running', recoveredAmount: 0, failureReason: '', externalRef: 'email_reminder_005', attemptedAt: T.d13, createdAt: T.d13, updatedAt: T.d13 },
   })
 
   // Case 6: no_action → skipped
   await prisma.recoveryAttempt.create({
-    data: { id: 'att_007', recoveryCaseId: case6.id, action: 'no_action', status: 'skipped', recoveredAmount: 0, failureReason: '', externalRef: '', attemptedAt: T.d11, completedAt: T.d11, createdAt: T.d11, updatedAt: T.d11 },
+    data: { id: 'att_007', recoveryCaseId: case6.id, action: 'no_action', status: 'cancelled', recoveredAmount: 0, failureReason: '', externalRef: '', attemptedAt: T.d11, completedAt: T.d11, createdAt: T.d11, updatedAt: T.d11 },
   })
 
   // Case 9: send_reminder → in_progress
   await prisma.recoveryAttempt.create({
-    data: { id: 'att_008', recoveryCaseId: case9.id, action: 'send_reminder', status: 'in_progress', recoveredAmount: 0, failureReason: '', externalRef: 'email_reminder_009', attemptedAt: T.d11, createdAt: T.d11, updatedAt: T.d11 },
+    data: { id: 'att_008', recoveryCaseId: case9.id, action: 'send_reminder', status: 'running', recoveredAmount: 0, failureReason: '', externalRef: 'email_reminder_009', attemptedAt: T.d11, createdAt: T.d11, updatedAt: T.d11 },
   })
 
   // Case 10: send_reminder → succeeded (FitLife)
@@ -627,7 +627,7 @@ async function main() {
 
   // Case 5: cancel_and_refund attempt that was skipped
   await prisma.recoveryAttempt.create({
-    data: { id: 'att_015', recoveryCaseId: case5.id, action: 'cancel_and_refund', status: 'skipped', recoveredAmount: 0, failureReason: '', externalRef: '', attemptedAt: T.d10, completedAt: T.d10, createdAt: T.d10, updatedAt: T.d10 },
+    data: { id: 'att_015', recoveryCaseId: case5.id, action: 'cancel_and_refund', status: 'cancelled', recoveredAmount: 0, failureReason: '', externalRef: '', attemptedAt: T.d10, completedAt: T.d10, createdAt: T.d10, updatedAt: T.d10 },
   })
 
   // Case 9: retry_payment → pending (queued after reminder)
