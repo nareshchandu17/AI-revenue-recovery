@@ -738,6 +738,26 @@ async function main() {
   console.log(`  Audit Events: 25 created`)
 
   // ----------------------------------------------------------------
+  // RECOVERY ATTRIBUTIONS
+  // ----------------------------------------------------------------
+  // Each attribution proves that recovered revenue came from a verified
+  // successful payment event — not from action execution alone.
+
+  // Recovery payments for cases that didn't have an obvious retry payment
+  const payRecovery1 = await prisma.payment.create({ data: { id: 'pay_r_001', merchantId: merchantA.id, customerId: custA2.id, externalId: 'pay_ext_tn_r_001', amount: 129900, currency: 'INR', status: 'captured', method: 'upi', description: 'Ergonomic Laptop Stand — recovered via payment link', createdAt: T.d5, updatedAt: T.d5 } })
+  const payRecovery2 = await prisma.payment.create({ data: { id: 'pay_r_002', merchantId: merchantA.id, customerId: custA4.id, externalId: 'pay_ext_tn_r_002', amount: 219900, currency: 'INR', status: 'captured', method: 'card', description: 'USB-C 7-in-1 Hub — recovered via reminder', createdAt: T.d7, updatedAt: T.d7 } })
+  const payRecovery3 = await prisma.payment.create({ data: { id: 'pay_r_003', merchantId: merchantA.id, customerId: custA3.id, externalId: 'pay_ext_tn_r_003', amount: 334900, currency: 'INR', status: 'captured', method: 'upi', description: 'Portable SSD 1TB — recovered via discount link', createdAt: T.d7, updatedAt: T.d7 } })
+  const payRecovery10 = await prisma.payment.create({ data: { id: 'pay_r_010', merchantId: merchantB.id, customerId: custB2.id, externalId: 'pay_ext_fl_r_010', amount: 49900, currency: 'INR', status: 'captured', method: 'upi', description: 'FitLife Monthly — recovered via reminder', createdAt: T.d6, updatedAt: T.d6 } })
+
+  // Attribution records linking successful payments to recovery cases
+  await prisma.recoveryAttribution.create({ data: { recoveryCaseId: case1.id, paymentId: payRecovery1.id, amount: 129900, status: 'attributed', source: 'payment_link', confidence: 0.85, reason: 'Customer paid via payment link after failed retry. Original retry failed but customer paid via new payment link.', createdAt: T.d5, updatedAt: T.d5 } })
+  await prisma.recoveryAttribution.create({ data: { recoveryCaseId: case2.id, recoveryAttemptId: 'att_002', paymentId: payRecovery2.id, amount: 219900, status: 'attributed', source: 'payment_link', confidence: 0.85, reason: 'Customer paid after send_reminder action. New payment created and captured.', createdAt: T.d7, updatedAt: T.d7 } })
+  await prisma.recoveryAttribution.create({ data: { recoveryCaseId: case3.id, recoveryAttemptId: 'att_003', paymentId: payRecovery3.id, amount: 334900, status: 'attributed', source: 'payment_link', confidence: 0.85, reason: 'Customer completed purchase after discount code from recovery action att_003.', createdAt: T.d7, updatedAt: T.d7 } })
+  await prisma.recoveryAttribution.create({ data: { recoveryCaseId: case10.id, recoveryAttemptId: 'att_009', paymentId: payRecovery10.id, amount: 49900, status: 'attributed', source: 'payment_link', confidence: 0.85, reason: 'FitLife customer paid monthly plan after send_reminder action.', createdAt: T.d6, updatedAt: T.d6 } })
+  await prisma.recoveryAttribution.create({ data: { recoveryCaseId: case13.id, recoveryAttemptId: 'att_017', paymentId: 'pay_a23', amount: 599900, status: 'attributed', source: 'payment_link', confidence: 0.85, reason: 'Customer returned after offer_discount action. New netbanking payment captured.', createdAt: T.d16, updatedAt: T.d16 } })
+  await prisma.recoveryAttribution.create({ data: { recoveryCaseId: case14.id, recoveryAttemptId: 'att_018', paymentId: 'pay_a25', amount: 1299900, status: 'attributed', source: 'payment_link', confidence: 0.85, reason: 'Customer paid with card after retry_payment action succeeded. 4K Monitor recovered.', createdAt: T.d18, updatedAt: T.d18 } })
+
+  // ----------------------------------------------------------------
   // SUMMARY
   // ----------------------------------------------------------------
   console.log('\n========================================')
@@ -752,6 +772,7 @@ async function main() {
     recoveryCases:   await prisma.recoveryCase.count(),
     agentDecisions:  await prisma.agentDecision.count(),
     recoveryAttempts:await prisma.recoveryAttempt.count(),
+    attributions:     await prisma.recoveryAttribution.count(),
     auditEvents:     await prisma.auditEvent.count(),
   }
   console.log(`  Merchants:        ${counts.merchants}`)
@@ -762,6 +783,7 @@ async function main() {
   console.log(`  Recovery Cases:   ${counts.recoveryCases}`)
   console.log(`  Agent Decisions:  ${counts.agentDecisions}`)
   console.log(`  Recovery Attempts:${counts.recoveryAttempts}`)
+  console.log(`  Attributions:     ${counts.attributions}`)
   console.log(`  Audit Events:     ${counts.auditEvents}`)
   console.log('========================================')
 

@@ -5,7 +5,8 @@
  * 1. Upserts the Payment record (matching on `externalId`)
  * 2. Upserts/creates the Customer (derived from payment email/phone)
  * 3. Creates a RecoveryCase when the payment status implies revenue risk
- * 4. Writes an AuditEvent for every significant state change
+ * 4. Attempts recovery attribution when a payment is captured
+ * 5. Writes an AuditEvent for every significant state change
  *
  * This function is idempotent — replaying the same webhook produces
  * the same result (upsert, not create).
@@ -13,6 +14,7 @@
 
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
+import { attemptAttribution } from "@/services/recovery/attribution"
 import type { RazorpayPayment } from "@/services/razorpay/types"
 import type { WebhookEnvelope } from "./schemas"
 
@@ -198,40 +200,93 @@ export async function ingestWebhook(
   let recoveryCaseId: string | undefined
   let recoveryCaseCreated = false
 
-  // 4a. If payment was captured, close any open recovery case
+  // 4a. If payment was captured, attempt recovery attribution FIRST,
+  //     then close any open recovery case for this same payment (payment retry)
   if (payment.status === "captured") {
+    // Attempt attribution (links to ANY open case for this customer)
+    let attributionResult = null
+    try {
+      attributionResult = await attemptAttribution({
+        paymentId: payment.id,
+        amount: payment.amount,
+        customerId: customer.id,
+        merchantId,
+        externalId: rpPayment.id,
+      })
+    } catch (err) {
+      // Attribution failure should not break the webhook processing
+      console.error(
+        `[ingest] Attribution failed for ${payment.id}:`,
+        err instanceof Error ? err.message : String(err)
+      )
+    }
+
+    // If attribution handled the case, we're done
+    if (attributionResult?.caseUpdated) {
+      await logAudit({
+        caseId: recoveryCaseId,
+        actor: { type: "webhook", source: "razorpay" },
+        eventType: "PAYMENT_ATTRIBUTED",
+        entityType: "payment",
+        entityId: payment.id,
+        action: "payment.captured",
+        details: `Payment ${payment.externalId} captured (₹${(payment.amount / 100).toFixed(2)}). Attribution: ${attributionResult.source} (${(attributionResult.confidence * 100).toFixed(0)}%).`,
+        metadata: {
+          event,
+          externalPaymentId: rpPayment.id,
+          attributionId: attributionResult.attributionId,
+          attributionSource: attributionResult.source,
+          attributionConfidence: attributionResult.confidence,
+          attributedAmount: attributionResult.amount,
+          caseId: attributionResult.recoveryCaseId,
+          previousStatus: previousPayment?.status ?? "new",
+        },
+      })
+    }
+
+    // Also close the case linked directly to this payment (same-externalId retry)
+    // if it wasn't already closed by attribution
     const existingCase = await db.recoveryCase.findUnique({
       where: { paymentId: payment.id },
     })
     if (existingCase && !isTerminal(existingCase.status)) {
-      await db.recoveryCase.update({
-        where: { id: existingCase.id },
-        data: {
-          status: "completed",
-          recoveredAmount: existingCase.amountAtRisk,
-          resolvedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      })
-      await logAudit({
-        caseId: existingCase.id,
-        actor: { type: "webhook", source: "razorpay" },
-        eventType: "recovery_case.auto_resolved",
-        entityType: "recovery_case",
-        entityId: existingCase.id,
-        action: "auto_resolved",
-        details: `Payment ${payment.externalId} was captured. Recovery case auto-resolved.`,
-        metadata: {
-          recoveredAmount: existingCase.amountAtRisk,
-          trigger: "payment.captured",
-        },
-      })
+      // Check if this payment was already attributed to this case
+      const alreadyAttributed = attributionResult && attributionResult.recoveryCaseId === existingCase.id
+
+      if (!alreadyAttributed) {
+        // Same payment captured — auto-attributed as payment_retry
+        // This handles the case where the same payment ID transitions to captured
+        await db.recoveryCase.update({
+          where: { id: existingCase.id },
+          data: {
+            status: "completed",
+            recoveredAmount: existingCase.amountAtRisk,
+            resolvedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        })
+        await logAudit({
+          caseId: existingCase.id,
+          actor: { type: "webhook", source: "razorpay" },
+          eventType: "RECOVERY_CASE_FULLY_RECOVERED",
+          entityType: "recovery_case",
+          entityId: existingCase.id,
+          action: "auto_resolved",
+          details: `Payment ${payment.externalId} captured (₹${(payment.amount / 100).toFixed(2)}). Same-externalId retry auto-resolved case.`,
+          metadata: {
+            recoveredAmount: existingCase.amountAtRisk,
+            trigger: "payment.captured",
+            source: "payment_retry_auto",
+          },
+        })
+      }
     }
+
     return {
       paymentId: payment.id,
       customerId: customer.id,
       recoveryCaseCreated: false,
-      recoveryCaseId: existingCase?.id,
+      recoveryCaseId: attributionResult?.recoveryCaseId ?? existingCase?.id,
       previousPaymentStatus: previousPayment?.status,
     }
   }

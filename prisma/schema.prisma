@@ -105,6 +105,20 @@ enum Priority {
   critical
 }
 
+enum AttributionStatus {
+  pending
+  attributed
+  unattributed
+  rejected
+}
+
+enum AttributionSource {
+  payment_retry
+  payment_link
+  manual
+  temporal
+}
+
 enum AuditActorType {
   system
   ai_agent
@@ -168,9 +182,10 @@ model Payment {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  merchant       Merchant       @relation(fields: [merchantId], references: [id])
-  customer       Customer       @relation(fields: [customerId], references: [id])
-  recoveryCase   RecoveryCase?
+  merchant              Merchant              @relation(fields: [merchantId], references: [id])
+  customer              Customer              @relation(fields: [customerId], references: [id])
+  recoveryCase          RecoveryCase?
+  recoveryAttributions  RecoveryAttribution[]
 
   @@index([merchantId, status])
   @@index([customerId])
@@ -247,9 +262,10 @@ model RecoveryCase {
 
   merchant          Merchant          @relation(fields: [merchantId], references: [id])
   payment           Payment?           @relation(fields: [paymentId], references: [id])
-  agentDecisions    AgentDecision[]
-  recoveryAttempts  RecoveryAttempt[]
-  auditEvents       AuditEvent[]
+  agentDecisions      AgentDecision[]
+  recoveryAttempts    RecoveryAttempt[]
+  recoveryAttributions RecoveryAttribution[]
+  auditEvents         AuditEvent[]
 
   @@index([merchantId, status])
   @@index([status])
@@ -313,8 +329,9 @@ model RecoveryAttempt {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
-  recoveryCase  RecoveryCase  @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
-  agentDecision AgentDecision? @relation(fields: [agentDecisionId], references: [id])
+  recoveryCase       RecoveryCase          @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  agentDecision      AgentDecision?       @relation(fields: [agentDecisionId], references: [id])
+  recoveryAttributions RecoveryAttribution[]
 
   @@index([recoveryCaseId])
   @@index([agentDecisionId])
@@ -346,4 +363,35 @@ model AuditEvent {
   @@index([actorType])
   @@index([createdAt])
   @@index([entityType, entityId])
+}
+
+model RecoveryAttribution {
+  id                 String            @id @default(cuid())
+  recoveryCaseId     String
+  recoveryAttemptId  String?
+  // The successful payment that recovered revenue
+  paymentId          String
+  // Amount recovered by this attribution (in paise)
+  amount             Int
+  status             AttributionStatus @default(pending)
+  // How the attribution was determined
+  source             AttributionSource
+  // 0.0 to 1.0 — confidence in this attribution
+  confidence         Float             @default(0)
+  // Human-readable explanation
+  reason             String            @default("")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  recoveryCase    RecoveryCase    @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  recoveryAttempt RecoveryAttempt? @relation(fields: [recoveryAttemptId], references: [id])
+  payment         Payment         @relation(fields: [paymentId], references: [id])
+
+  // Prevent double-counting: same case + same payment can only be attributed once
+  @@unique([recoveryCaseId, paymentId])
+  @@index([recoveryCaseId])
+  @@index([recoveryAttemptId])
+  @@index([paymentId])
+  @@index([status])
+  @@index([source])
 }
