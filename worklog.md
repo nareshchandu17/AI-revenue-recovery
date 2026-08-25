@@ -139,3 +139,44 @@ Stage Summary:
 - Browser: app shell renders correctly
 - All 14 required test scenarios covered plus additional edge cases
 - No AI/LLM calls, no payment retries, no notifications, no background workers, no UI changes
+
+---
+Task ID: 5
+Agent: lead-engineer
+Task: AI Recovery Decision Agent
+
+Work Log:
+- Created src/services/ai/zai-provider.ts — ZaiProvider implementing AIProvider interface using z-ai-web-dev-sdk; singleton ZAI instance; maps system prompt to 'assistant' role; parses JSON from response; handles markdown code block extraction
+- Created src/services/ai/index.ts — getAIProvider() singleton factory; isAIAvailable() graceful check; env-based provider routing (zai/openai/anthropic); throws descriptive config error if provider not available
+- Created src/services/recovery/agent/types.ts — full type system: AgentAction (5 bounded actions), ALLOWED_ACTIONS const, RecoveryContext (sanitised input), AIDecisionOutput (structured AI output), PolicyResult, MerchantPolicy, AgentAnalysisResult, BatchAnalysisResult, error classes (AIAgentError, AIOutputValidationError, PolicyViolationError, AIProviderError)
+- Created src/services/recovery/agent/schemas.ts — Zod v4 schema for AI output: action enum, confidence 0-1, reason string, factors array (max 10), riskLevel/customerIntent enums, recommendedDelayMinutes (0-10080 nullable), stopReason (nullable); validateAIDecision() throws AIOutputValidationError with detail messages
+- Created src/services/recovery/agent/prompt.ts — versioned system prompt (PROMPT_VERSION = "1.0.0"); strict rules: only provided facts, never invent history, never move money, only allowed actions, least risky intervention; action guidelines for each action; output format specification; buildUserMessage() serialises RecoveryContext as JSON
+- Created src/services/recovery/agent/context.ts — buildRecoveryContext(): loads RecoveryCase with payment+customer, loads checkout/subscription for non-payment cases, resolves customerId from any linked entity, aggregates customer payment stats (total/success/failed/rate/dates), builds PreviousAttempt list, formats amounts in INR, calculates case age in minutes
+- Created src/services/recovery/agent/policy.ts — DEFAULT_MERCHANT_POLICY (max 3 attempts, min ₹1, max ₹10k for automation, min 10% recovery probability, min 30% confidence, 30min cooldown); validatePolicy(): 8 guardrail checks (terminal status, allowed actions, minimum amount, minimum recovery probability, minimum confidence for active actions, retry limit, retry cooldown, high-value automation limit); buildRejection() overrides to escalate_to_merchant or no_action
+- Created src/services/recovery/agent/fallback.ts — deterministicFallback(): terminal cases → no_action, low probability (<0.2) → no_action, high probability + high priority → escalate_to_merchant, everything else → no_action; never auto-executes payment actions
+- Created src/services/recovery/agent/agent.ts — main orchestrator: analyzeCase() (build context → call AI → validate → policy check → persist → audit), batchAnalyze() (bounded batch of max 50, prioritises by priority desc + detectedAt asc, skips cases with existing decisions), handleAIFailure() (logs failure, uses fallback, still runs policy, persists and audits), persistDecision() (stores in AgentDecision with observation/diagnosis/reasoningJson), auditDecision() (AGENT_DECISION_APPROVED or AGENT_DECISION_REJECTED events with full metadata)
+- Created src/services/recovery/agent/index.ts — barrel exports
+- Created src/app/api/recovery/cases/[id]/analyze/route.ts — POST endpoint, validates case ID, returns AgentAnalysisResult
+- Created src/app/api/recovery/analyze/route.ts — POST batch endpoint, Zod-validated limit (1-50), returns BatchAnalysisResult
+- Created src/services/recovery/agent/__tests__/agent.test.ts — 39 tests across 15 describe blocks
+
+Stage Summary:
+- Files created: 12 new files (2 AI provider, 7 agent, 2 API routes, 1 test)
+- AI Provider Architecture: AIProvider interface → ZaiProvider (z-ai-web-dev-sdk) → singleton factory with graceful config error
+- RecoveryContext: case details, customer summary (aggregated stats, no PII), source context (payment/checkout/subscription), previous attempts, merchant policy; never includes card numbers, CVV, bank credentials
+- Allowed Actions: no_action, retry_payment, send_reminder, update_payment_method, escalate_to_merchant (5 bounded actions; AI cannot invent new ones)
+- AI Output Schema: Zod v4 strict validation — action enum, confidence 0-1, reason string 1-2000 chars, factors array max 10 strings, riskLevel/customerIntent enums, recommendedDelayMinutes 0-10080 or null, stopReason nullable
+- Policy/Guardrail Rules: 8 checks — terminal status, allowed actions, minimum amount (₹1), minimum recovery probability (10%), minimum confidence (30% for active actions), retry limit (3), retry cooldown (30 min), high-value automation limit (₹10,000)
+- Merchant Policy: DEFAULT_MERCHANT_POLICY with safe defaults; configurable per-merchant
+- AgentDecision Persistence: observation (case snapshot), diagnosis (action + reason), reasoningJson (full AI output + policy result + prompt version), recommendedAction, confidence, recoveryProbability, status (approved/rejected)
+- Audit Trail: AGENT_DECISION_APPROVED / AGENT_DECISION_REJECTED events with recommended action, final action, confidence, factors, risk level, customer intent, policy violations, fallback flag, prompt version
+- APIs: POST /api/recovery/cases/:id/analyze (single case), POST /api/recovery/analyze (batch, max 50)
+- AI Failure/Fallback: provider timeout/unavailable → deterministic fallback (never auto-executes); fallback logged as agent.ai_failure audit event; fallback decisions still go through policy validation
+- Example AI Decision (from seeded data, real z-ai-web-dev-sdk): case rc_001 → AI recommended no_action (90% confidence) because case was terminal (completed); policy correctly rejected; audit: AGENT_DECISION_REJECTED
+- Example Batch: processed 5 cases, 5 decisions created, 0 errors, 0 rejected
+- High-probability case analysis: AI correctly noted case age (55 days) despite 66% recovery probability, recommended no_action
+- Tests: 39/39 pass (68 expect() calls) covering: valid/invalid JSON, valid/invalid actions, missing fields, confidence range, forbidden actions, retry limit, terminal status, low confidence, customer history accuracy, prompt constraints, AI provider timeout/unavailable, decision persistence structure, audit events, batch size limits, prompt versioning, amount minimum, retry cooldown, high-value automation
+- ESLint: clean (0 errors, 0 warnings)
+- Existing detection tests: 45/45 still pass
+- Browser: app shell renders correctly with sidebar, header, footer
+- Security: AI recommendation ≠ financial execution; agent produces recommendations only; no money movement; no real customer messages; no payment retries
