@@ -102,3 +102,40 @@ Stage Summary:
   - unknown event → 200 with reason "unknown_event"
   - invalid JSON → 400 VALIDATION_ERROR
 - DB verified: auto-resolved case has status=completed, recoveredAmount=99900, resolvedAt set
+
+---
+Task ID: 4
+Agent: lead-engineer
+Task: Revenue-at-Risk Detection Engine (deterministic, no AI)
+
+Work Log:
+- Created src/services/recovery/detection/constants.ts — all configurable thresholds (abandonment window, scoring weights, priority cutoffs, error code classifications, lifecycle status sets)
+- Created src/services/recovery/detection/types.ts — internal types: RiskCandidate, RecoveryScore, ScoreFactor, EligibilityResult, ClassificationResult, CustomerPaymentStats, DetectionResult
+- Created src/services/recovery/detection/classifier.ts — maps provider error codes to 7 failure reasons (PAYMENT_FAILED, PAYMENT_TIMEOUT, BANK_DECLINED, INSUFFICIENT_FUNDS, UNKNOWN_PAYMENT_FAILURE, CHECKOUT_ABANDONED, SUBSCRIPTION_PAYMENT_FAILED); infers from reason text when code unrecognized; never hallucinates
+- Created src/services/recovery/detection/eligibility.ts — centralized rules: isPaymentEligible (status+amount+no open case), isCheckoutEligible (abandoned+30min window+abandonedAt+amount+no open case), isSubscriptionEligible (past_due+not cancelled+retries<3+no open case)
+- Created src/services/recovery/detection/scoring.ts — deterministic 0-100 score from 5 factors: Customer History (0-30, success rate + loyalty bonus - chronic penalty), Failure Reason (0-25, high/medium/low recoverability), Payment Method (0-15, UPI=14, card=9, emi=4), Recency (0-15, 7d/30d/90d bands), Amount (0-15, sweet spot weighting); subscription retry penalty; confidence based on available signals
+- Created src/services/recovery/detection/priority.ts — matrix: critical (score>=70, amount>=₹1000), high (score>=55, amount>=₹500), medium (score>=35), low (score<35)
+- Created src/services/recovery/detection/detector.ts — main orchestrator: scans failed/cancelled payments, abandoned checkouts (post-window), past_due subscriptions; computes customer stats per record; creates RecoveryCases via case-service; writes system-level audit
+- Created src/services/recovery/case-service.ts — idempotent case creation (paymentId @unique for payments, findFirst for checkout/subscription); LIFECYCLE_MAP (OPEN→detected, IN_PROGRESS→diagnosing, RECOVERED→completed, UNRECOVERABLE→failed, STOPPED→dismissed)
+- Created src/services/recovery/metrics.ts — aggregates from DB: totalRevenueProcessed, totalRevenueAtRisk (open cases), totalRecoveredRevenue (completed cases), recoveryRate, failedPaymentsCount/Amount, abandonedCheckoutAmount, subscriptionRevenueAtRisk, byCategory, byPriority
+- Created src/app/api/recovery/detect/route.ts — POST endpoint, dev-only (403 in prod), triggers full detection scan
+- Created src/app/api/recovery/metrics/route.ts — GET endpoint, returns all dashboard-ready metrics
+- Created src/services/recovery/__tests__/detection.test.ts — 45 tests across 8 describe blocks
+- Created src/services/recovery/detection/index.ts — barrel export
+
+Stage Summary:
+- Files created: 11 new files (8 detection engine, 1 case-service, 1 metrics, 2 API routes, 1 test)
+- Detection sources: failed/cancelled payments, abandoned checkouts (30min window), past_due subscriptions
+- Eligibility rules: centralized in eligibility.ts, no scattered logic
+- Scoring: 5-factor deterministic 0-100 (customer history, failure reason, payment method, recency, amount)
+- Priority: 4-level (critical/high/medium/low) from score × amount matrix
+- RecoveryCase lifecycle: detected → diagnosing → diagnosed → awaiting_approval → executing → completed/failed/dismissed
+- Idempotency: verified — 3 consecutive runs produce newCases=0 on 2nd and 3rd
+- Audit: 3 detection.run_completed + 22 recovery_case.detected audit events
+- Metrics from seeded data: Revenue processed ₹78,172 | At risk ₹91,720 | Recovered ₹26,344 | 30 active cases | 4 high priority
+- Categories detected: 11 checkout_abandoned, 13 payment_failed, 3 payment_expired, 3 subscription_lapsed
+- Tests: 45/45 pass (0 fail, 80 expect() calls)
+- ESLint: clean (0 errors)
+- Browser: app shell renders correctly
+- All 14 required test scenarios covered plus additional edge cases
+- No AI/LLM calls, no payment retries, no notifications, no background workers, no UI changes

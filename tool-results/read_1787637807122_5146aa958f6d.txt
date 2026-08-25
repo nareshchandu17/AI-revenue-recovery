@@ -1,0 +1,402 @@
+     1→     1→import { PrismaClient } from '@prisma/client'
+     2→     2→
+     3→     3→const prisma = new PrismaClient()
+     4→     4→
+     5→     5→// =================================================================
+     6→     6→// AI Revenue Recovery — Deterministic Seed Script
+     7→     7→// All monetary amounts are in PAISE (Int). Divide by 100 for ₹.
+     8→     8→// No Math.random() — every value is hardcoded for reproducibility.
+     9→     9→// =================================================================
+    10→    10→
+    11→    11→const T = {
+    12→    12→  d1:  new Date('2025-01-05T10:00:00.000Z'),
+    13→    13→  d2:  new Date('2025-01-12T14:30:00.000Z'),
+    14→    14→  d3:  new Date('2025-01-18T09:15:00.000Z'),
+    15→    15→  d4:  new Date('2025-01-25T16:45:00.000Z'),
+    16→    16→  d5:  new Date('2025-02-01T11:20:00.000Z'),
+    17→    17→  d6:  new Date('2025-02-08T08:00:00.000Z'),
+    18→    18→  d7:  new Date('2025-02-14T13:10:00.000Z'),
+    19→    19→  d8:  new Date('2025-02-20T17:30:00.000Z'),
+    20→    20→  d9:  new Date('2025-02-28T10:45:00.000Z'),
+    21→    21→  d10: new Date('2025-03-05T12:00:00.000Z'),
+    22→    22→  d11: new Date('2025-03-12T15:20:00.000Z'),
+    23→    23→  d12: new Date('2025-03-18T09:30:00.000Z'),
+    24→    24→  d13: new Date('2025-03-25T14:00:00.000Z'),
+    25→    25→  d14: new Date('2025-04-01T10:10:00.000Z'),
+    26→    26→  d15: new Date('2025-04-08T16:00:00.000Z'),
+    27→    27→  d16: new Date('2025-04-15T09:00:00.000Z'),
+    28→    28→  d17: new Date('2025-04-22T14:00:00.000Z'),
+    29→    29→  d18: new Date('2025-05-01T10:30:00.000Z'),
+    30→    30→  d19: new Date('2025-05-08T11:00:00.000Z'),
+    31→    31→  d20: new Date('2025-05-15T16:00:00.000Z'),
+    32→    32→  d21: new Date('2025-05-22T08:30:00.000Z'),
+    33→    33→  d22: new Date('2025-05-29T13:00:00.000Z'),
+    34→    34→  d23: new Date('2025-06-05T10:00:00.000Z'),
+    35→    35→  d24: new Date('2025-06-12T15:30:00.000Z'),
+    36→    36→  d25: new Date('2025-06-19T09:45:00.000Z'),
+    37→    37→}
+    38→    38→
+    39→    39→async function main() {
+    40→    40→  console.log('Seeding database — AI Revenue Recovery platform')
+    41→    41→
+    42→    42→  // ----------------------------------------------------------------
+    43→    43→  // 1. DELETE in reverse dependency order
+    44→    44→  // ----------------------------------------------------------------
+    45→    45→  console.log('\nCleaning existing data...')
+    46→    46→  const delAudit = await prisma.auditEvent.deleteMany()
+    47→    47→  console.log(`  AuditEvent:      ${delAudit.count} deleted`)
+    48→    48→  const delAttempts = await prisma.recoveryAttempt.deleteMany()
+    49→    49→  console.log(`  RecoveryAttempt: ${delAttempts.count} deleted`)
+    50→    50→  const delDecisions = await prisma.agentDecision.deleteMany()
+    51→    51→  console.log(`  AgentDecision:   ${delDecisions.count} deleted`)
+    52→    52→  const delCases = await prisma.recoveryCase.deleteMany()
+    53→    53→  console.log(`  RecoveryCase:    ${delCases.count} deleted`)
+    54→    54→  const delSubs = await prisma.subscription.deleteMany()
+    55→    55→  console.log(`  Subscription:    ${delSubs.count} deleted`)
+    56→    56→  const delCheckouts = await prisma.checkout.deleteMany()
+    57→    57→  console.log(`  Checkout:        ${delCheckouts.count} deleted`)
+    58→    58→  const delPayments = await prisma.payment.deleteMany()
+    59→    59→  console.log(`  Payment:         ${delPayments.count} deleted`)
+    60→    60→  const delCustomers = await prisma.customer.deleteMany()
+    61→    61→  console.log(`  Customer:        ${delCustomers.count} deleted`)
+    62→    62→  const delMerchants = await prisma.merchant.deleteMany()
+    63→    63→  console.log(`  Merchant:        ${delMerchants.count} deleted`)
+    64→    64→
+    65→    65→  // ----------------------------------------------------------------
+    66→    66→  // 2. MERCHANTS (2)
+    67→    67→  // ----------------------------------------------------------------
+    68→    68→  console.log('\nSeeding Merchants...')
+    69→    69→
+    70→    70→  const merchantA = await prisma.merchant.create({
+    71→    71→    data: {
+    72→    72→      id: 'merchant_tech_nova',
+    73→    73→      name: 'TechNova Electronics',
+    74→    74→      email: 'technova@example.com',
+    75→    75→      industry: 'ecommerce',
+    76→    76→      createdAt: T.d1,
+    77→    77→    },
+    78→    78→  })
+    79→    79→
+    80→    80→  const merchantB = await prisma.merchant.create({
+    81→    81→    data: {
+    82→    82→      id: 'merchant_fit_life',
+    83→    83→      name: 'FitLife Subscriptions',
+    84→    84→      email: 'fitlife@example.com',
+    85→    85→      industry: 'saas',
+    86→    86→      createdAt: T.d1,
+    87→    87→    },
+    88→    88→  })
+    89→    89→
+    90→    90→  console.log(`  Merchants: 2 created`)
+    91→    91→
+    92→    92→  // ----------------------------------------------------------------
+    93→    93→  // 3. CUSTOMERS (10)
+    94→    94→  // ----------------------------------------------------------------
+    95→    95→  console.log('\nSeeding Customers...')
+    96→    96→
+    97→    97→  const custA1 = await prisma.customer.create({
+    98→    98→    data: { id: 'cust_a1', merchantId: merchantA.id, email: 'arjun.sharma@example.com', phone: '+91-98765-43210', displayName: 'Arjun Sharma', createdAt: T.d2 },
+    99→    99→  })
+   100→   100→  const custA2 = await prisma.customer.create({
+   101→   101→    data: { id: 'cust_a2', merchantId: merchantA.id, email: 'priya.patel@example.com', phone: '+91-91234-56780', displayName: 'Priya Patel', createdAt: T.d2 },
+   102→   102→  })
+   103→   103→  const custA3 = await prisma.customer.create({
+   104→   104→    data: { id: 'cust_a3', merchantId: merchantA.id, email: 'vikram.singh@example.com', phone: '+91-99887-76655', displayName: 'Vikram Singh', createdAt: T.d3 },
+   105→   105→  })
+   106→   106→  const custA4 = await prisma.customer.create({
+   107→   107→    data: { id: 'cust_a4', merchantId: merchantA.id, email: 'ananya.reddy@example.com', phone: '+91-97766-55443', displayName: 'Ananya Reddy', createdAt: T.d3 },
+   108→   108→  })
+   109→   109→  const custA5 = await prisma.customer.create({
+   110→   110→    data: { id: 'cust_a5', merchantId: merchantA.id, email: 'rahul.mehta@example.com', phone: '+91-96554-43322', displayName: 'Rahul Mehta', createdAt: T.d4 },
+   111→   111→  })
+   112→   112→  const custA6 = await prisma.customer.create({
+   113→   113→    data: { id: 'cust_a6', merchantId: merchantA.id, email: 'sneha.kulkarni@example.com', phone: '+91-95443-32211', displayName: 'Sneha Kulkarni', createdAt: T.d4 },
+   114→   114→  })
+   115→   115→  const custB1 = await prisma.customer.create({
+   116→   116→    data: { id: 'cust_b1', merchantId: merchantB.id, email: 'dev.kapoor@example.com', phone: '+91-94332-21100', displayName: 'Dev Kapoor', createdAt: T.d2 },
+   117→   117→  })
+   118→   118→  const custB2 = await prisma.customer.create({
+   119→   119→    data: { id: 'cust_b2', merchantId: merchantB.id, email: 'meera.nair@example.com', phone: '+91-93221-10099', displayName: 'Meera Nair', createdAt: T.d3 },
+   120→   120→  })
+   121→   121→  const custB3 = await prisma.customer.create({
+   122→   122→    data: { id: 'cust_b3', merchantId: merchantB.id, email: 'aryan.joshi@example.com', phone: '+91-92110-09988', displayName: 'Aryan Joshi', createdAt: T.d4 },
+   123→   123→  })
+   124→   124→  const custB4 = await prisma.customer.create({
+   125→   125→    data: { id: 'cust_b4', merchantId: merchantB.id, email: 'ishita.gupta@example.com', phone: '+91-91099-98877', displayName: 'Ishita Gupta', createdAt: T.d5 },
+   126→   126→  })
+   127→   127→
+   128→   128→  // Additional TechNova customers (cust_a7 to cust_a14)
+   129→   129→  const custA7  = await prisma.customer.create({ data: { id: 'cust_a7',  merchantId: merchantA.id, email: 'kiran.desai@example.com',    phone: '+91-89988-77665', displayName: 'Kiran Desai',    createdAt: T.d6 } })
+   130→   130→  const custA8  = await prisma.customer.create({ data: { id: 'cust_a8',  merchantId: merchantA.id, email: 'nisha.roy@example.com',      phone: '+91-88877-66554', displayName: 'Nisha Roy',      createdAt: T.d7 } })
+   131→   131→  const custA9  = await prisma.customer.create({ data: { id: 'cust_a9',  merchantId: merchantA.id, email: 'rohit.jain@example.com',    phone: '+91-87766-55443', displayName: 'Rohit Jain',     createdAt: T.d8 } })
+   132→   132→  const custA10 = await prisma.customer.create({ data: { id: 'cust_a10', merchantId: merchantA.id, email: 'pooja.verma@example.com',   phone: '+91-86655-44332', displayName: 'Pooja Verma',   createdAt: T.d9 } })
+   133→   133→  const custA11 = await prisma.customer.create({ data: { id: 'cust_a11', merchantId: merchantA.id, email: 'amit.malhotra@example.com',phone: '+91-85544-33221', displayName: 'Amit Malhotra', createdAt: T.d10 } })
+   134→   134→  const custA12 = await prisma.customer.create({ data: { id: 'cust_a12', merchantId: merchantA.id, email: 'divya.saxena@example.com', phone: '+91-84433-22110', displayName: 'Divya Saxena',  createdAt: T.d11 } })
+   135→   135→  const custA13 = await prisma.customer.create({ data: { id: 'cust_a13', merchantId: merchantA.id, email: 'suresh.pillai@example.com',phone: '+91-83322-11099', displayName: 'Suresh Pillai', createdAt: T.d12 } })
+   136→   136→  const custA14 = await prisma.customer.create({ data: { id: 'cust_a14', merchantId: merchantA.id, email: 'tanya.bhattacharya@example.com',phone: '+91-82211-00998',displayName: 'Tanya Bhattacharya', createdAt: T.d13 } })
+   137→   137→
+   138→   138→  // Additional FitLife customers (cust_b5 to cust_b10)
+   139→   139→  const custB5  = await prisma.customer.create({ data: { id: 'cust_b5',  merchantId: merchantB.id, email: 'karthik.rao@example.com',  phone: '+91-81100-99876', displayName: 'Karthik Rao',   createdAt: T.d6 } })
+   140→   140→  const custB6  = await prisma.customer.create({ data: { id: 'cust_b6',  merchantId: merchantB.id, email: 'sanjana.das@example.com',  phone: '+91-80099-88765', displayName: 'Sanjana Das',  createdAt: T.d7 } })
+   141→   141→  const custB7  = await prisma.customer.create({ data: { id: 'cust_b7',  merchantId: merchantB.id, email: 'varun.menon@example.com',  phone: '+91-79088-77654', displayName: 'Varun Menon',  createdAt: T.d8 } })
+   142→   142→  const custB8  = await prisma.customer.create({ data: { id: 'cust_b8',  merchantId: merchantB.id, email: 'aisha.khan@example.com',   phone: '+91-78077-66543', displayName: 'Aisha Khan',   createdAt: T.d9 } })
+   143→   143→  const custB9  = await prisma.customer.create({ data: { id: 'cust_b9',  merchantId: merchantB.id, email: 'nikhil.shukla@example.com',phone: '+91-77066-55432', displayName: 'Nikhil Shukla', createdAt: T.d10 } })
+   144→   144→  const custB10 = await prisma.customer.create({ data: { id: 'cust_b10', merchantId: merchantB.id, email: 'ritu.agarwal@example.com', phone: '+91-76055-44321', displayName: 'Ritu Agarwal',  createdAt: T.d11 } })
+   145→   145→
+   146→   146→  console.log(`  Customers: 24 created (14 TechNova, 10 FitLife)`)
+   147→   147→
+   148→   148→  // ----------------------------------------------------------------
+   149→   149→  // 4. PAYMENTS (55)
+   150→   150→  // ----------------------------------------------------------------
+   151→   151→  console.log('\nSeeding Payments...')
+   152→   152→
+   153→   153→  // Merchant A — 12 payments
+   154→   154→  const payA1 = await prisma.payment.create({
+   155→   155→    data: { id: 'pay_a1', merchantId: merchantA.id, customerId: custA1.id, externalId: 'pay_ext_tn_001', amount: 249900, currency: 'INR', status: 'captured', method: 'upi', description: 'Wireless Earbuds Pro', createdAt: T.d2, updatedAt: T.d2 },
+   156→   156→  })
+   157→   157→  const payA2 = await prisma.payment.create({
+   158→   158→    data: { id: 'pay_a2', merchantId: merchantA.id, customerId: custA2.id, externalId: 'pay_ext_tn_002', amount: 129900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'BAD_REQUEST', failureReason: 'Card declined by issuer — insufficient funds', description: 'Ergonomic Laptop Stand', createdAt: T.d3, updatedAt: T.d3 },
+   159→   159→  })
+   160→   160→  const payA3 = await prisma.payment.create({
+   161→   161→    data: { id: 'pay_a3', merchantId: merchantA.id, customerId: custA3.id, externalId: 'pay_ext_tn_003', amount: 459900, currency: 'INR', status: 'captured', method: 'netbanking', description: 'Mechanical Keyboard RGB', createdAt: T.d3, updatedAt: T.d3 },
+   162→   162→  })
+   163→   163→  const payA4 = await prisma.payment.create({
+   164→   164→    data: { id: 'pay_a4', merchantId: merchantA.id, customerId: custA4.id, externalId: 'pay_ext_tn_004', amount: 219900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'TIMED_OUT', failureReason: 'UPI payment timed out — customer did not authenticate within 120s', description: 'USB-C 7-in-1 Hub', createdAt: T.d4, updatedAt: T.d4 },
+   165→   165→  })
+   166→   166→  const payA5 = await prisma.payment.create({
+   167→   167→    data: { id: 'pay_a5', merchantId: merchantA.id, customerId: custA5.id, externalId: 'pay_ext_tn_005', amount: 899900, currency: 'INR', status: 'refunded', method: 'card', amountRefunded: 899900, description: 'Smart Watch Series X', createdAt: T.d5, updatedAt: T.d6 },
+   168→   168→  })
+   169→   169→  const payA6 = await prisma.payment.create({
+   170→   170→    data: { id: 'pay_a6', merchantId: merchantA.id, customerId: custA6.id, externalId: 'pay_ext_tn_006', amount: 79900, currency: 'INR', status: 'captured', method: 'wallet', description: 'Premium Phone Case', createdAt: T.d5, updatedAt: T.d5 },
+   171→   171→  })
+   172→   172→  const payA7 = await prisma.payment.create({
+   173→   173→    data: { id: 'pay_a7', merchantId: merchantA.id, customerId: custA1.id, externalId: 'pay_ext_tn_007', amount: 1599900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'PAYMENT_ERROR', failureReason: 'Bank gateway returned error — possible network issue at bank end', description: '27-inch 4K Monitor', createdAt: T.d6, updatedAt: T.d6 },
+   174→   174→  })
+   175→   175→  const payA8 = await prisma.payment.create({
+   176→   176→    data: { id: 'pay_a8', merchantId: merchantA.id, customerId: custA3.id, externalId: 'pay_ext_tn_008', amount: 349900, currency: 'INR', status: 'captured', method: 'emi', description: 'Webcam 4K Ultra HD', createdAt: T.d7, updatedAt: T.d7 },
+   177→   177→  })
+   178→   178→  const payA9 = await prisma.payment.create({
+   179→   179→    data: { id: 'pay_a9', merchantId: merchantA.id, customerId: custA2.id, externalId: 'pay_ext_tn_009', amount: 699900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'INVALID_VPA', failureReason: 'Invalid UPI VPA handle provided by customer', description: 'Noise Cancelling Headphones', createdAt: T.d8, updatedAt: T.d8 },
+   180→   180→  })
+   181→   181→  const payA10 = await prisma.payment.create({
+   182→   182→    data: { id: 'pay_a10', merchantId: merchantA.id, customerId: custA5.id, externalId: 'pay_ext_tn_010', amount: 199900, currency: 'INR', status: 'cancelled', method: 'card', description: 'Portable SSD 1TB', createdAt: T.d8, updatedAt: T.d9 },
+   183→   183→  })
+   184→   184→  const payA11 = await prisma.payment.create({
+   185→   185→    data: { id: 'pay_a11', merchantId: merchantA.id, customerId: custA4.id, externalId: 'pay_ext_tn_011', amount: 599900, currency: 'INR', status: 'captured', method: 'netbanking', description: 'Wireless Charging Pad', createdAt: T.d9, updatedAt: T.d9 },
+   186→   186→  })
+   187→   187→  const payA12 = await prisma.payment.create({
+   188→   188→    data: { id: 'pay_a12', merchantId: merchantA.id, customerId: custA6.id, externalId: 'pay_ext_tn_012', amount: 499900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'AUTHENTICATION_FAILED', failureReason: '3D Secure authentication failed — wrong OTP entered twice', description: 'Bluetooth Speaker', createdAt: T.d10, updatedAt: T.d10 },
+   189→   189→  })
+   190→   190→
+   191→   191→  // Merchant B — 8 payments
+   192→   192→  const payB1 = await prisma.payment.create({
+   193→   193→    data: { id: 'pay_b1', merchantId: merchantB.id, customerId: custB1.id, externalId: 'pay_ext_fl_001', amount: 149900, currency: 'INR', status: 'captured', method: 'card', description: 'FitLife Annual Plan', createdAt: T.d2, updatedAt: T.d2 },
+   194→   194→  })
+   195→   195→  const payB2 = await prisma.payment.create({
+   196→   196→    data: { id: 'pay_b2', merchantId: merchantB.id, customerId: custB2.id, externalId: 'pay_ext_fl_002', amount: 49900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'TIMED_OUT', failureReason: 'Customer closed UPI app before completing payment', description: 'FitLife Monthly Plan', createdAt: T.d4, updatedAt: T.d4 },
+   197→   197→  })
+   198→   198→  const payB3 = await prisma.payment.create({
+   199→   199→    data: { id: 'pay_b3', merchantId: merchantB.id, customerId: custB3.id, externalId: 'pay_ext_fl_003', amount: 149900, currency: 'INR', status: 'captured', method: 'netbanking', description: 'FitLife Annual Plan', createdAt: T.d5, updatedAt: T.d5 },
+   200→   200→  })
+   201→   201→  const payB4 = await prisma.payment.create({
+   202→   202→    data: { id: 'pay_b4', merchantId: merchantB.id, customerId: custB4.id, externalId: 'pay_ext_fl_004', amount: 49900, currency: 'INR', status: 'refunded', method: 'card', amountRefunded: 49900, description: 'FitLife Monthly Plan', createdAt: T.d6, updatedAt: T.d7 },
+   203→   203→  })
+   204→   204→  const payB5 = await prisma.payment.create({
+   205→   205→    data: { id: 'pay_b5', merchantId: merchantB.id, customerId: custB1.id, externalId: 'pay_ext_fl_005', amount: 49900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'BAD_REQUEST', failureReason: 'UPI mandate registration failed — bank rejected auto-debit', description: 'FitLife Monthly Renewal', createdAt: T.d9, updatedAt: T.d9 },
+   206→   206→  })
+   207→   207→  const payB6 = await prisma.payment.create({
+   208→   208→    data: { id: 'pay_b6', merchantId: merchantB.id, customerId: custB2.id, externalId: 'pay_ext_fl_006', amount: 149900, currency: 'INR', status: 'captured', method: 'card', description: 'FitLife Annual Plan', createdAt: T.d10, updatedAt: T.d10 },
+   209→   209→  })
+   210→   210→  const payB7 = await prisma.payment.create({
+   211→   211→    data: { id: 'pay_b7', merchantId: merchantB.id, customerId: custB3.id, externalId: 'pay_ext_fl_007', amount: 49900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'PAYMENT_ERROR', failureReason: 'Card expiry date passed — card expired in Jan 2025', description: 'FitLife Monthly Renewal', createdAt: T.d11, updatedAt: T.d11 },
+   212→   212→  })
+   213→   213→  const payB8 = await prisma.payment.create({
+   214→   214→    data: { id: 'pay_b8', merchantId: merchantB.id, customerId: custB4.id, externalId: 'pay_ext_fl_008', amount: 129900, currency: 'INR', status: 'captured', method: 'upi', description: 'FitLife Quarterly Plan', createdAt: T.d12, updatedAt: T.d12 },
+   215→   215→  })
+   216→   216→
+   217→   217→  // Additional TechNova payments (payA13–payA30)
+   218→   218→  const payA13 = await prisma.payment.create({ data: { id: 'pay_a13', merchantId: merchantA.id, customerId: custA7.id, externalId: 'pay_ext_tn_013', amount: 149900, currency: 'INR', status: 'captured', method: 'upi', description: 'Wireless Mouse Pro', createdAt: T.d6, updatedAt: T.d6 } })
+   219→   219→  const payA14 = await prisma.payment.create({ data: { id: 'pay_a14', merchantId: merchantA.id, customerId: custA8.id, externalId: 'pay_ext_tn_014', amount: 599900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'BAD_REQUEST', failureReason: 'Card declined — insufficient funds', description: 'Mechanical Keyboard RGB', createdAt: T.d7, updatedAt: T.d7 } })
+   220→   220→  const payA15 = await prisma.payment.create({ data: { id: 'pay_a15', merchantId: merchantA.id, customerId: custA9.id, externalId: 'pay_ext_tn_015', amount: 349900, currency: 'INR', status: 'captured', method: 'netbanking', description: 'Webcam 4K Ultra HD', createdAt: T.d8, updatedAt: T.d8 } })
+   221→   221→  const payA16 = await prisma.payment.create({ data: { id: 'pay_a16', merchantId: merchantA.id, customerId: custA10.id, externalId: 'pay_ext_tn_016', amount: 89900, currency: 'INR', status: 'captured', method: 'wallet', description: 'Phone Case Premium', createdAt: T.d9, updatedAt: T.d9 } })
+   222→   222→  const payA17 = await prisma.payment.create({ data: { id: 'pay_a17', merchantId: merchantA.id, customerId: custA11.id, externalId: 'pay_ext_tn_017', amount: 1299900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'TIMED_OUT', failureReason: 'UPI timeout — customer did not authenticate', description: '4K Monitor 27-inch', createdAt: T.d10, updatedAt: T.d10 } })
+   223→   223→  const payA18 = await prisma.payment.create({ data: { id: 'pay_a18', merchantId: merchantA.id, customerId: custA12.id, externalId: 'pay_ext_tn_018', amount: 199900, currency: 'INR', status: 'captured', method: 'card', description: 'USB-C Hub 7-in-1', createdAt: T.d11, updatedAt: T.d11 } })
+   224→   224→  const payA19 = await prisma.payment.create({ data: { id: 'pay_a19', merchantId: merchantA.id, customerId: custA13.id, externalId: 'pay_ext_tn_019', amount: 449900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'INVALID_VPA', failureReason: 'Customer entered incorrect UPI handle', description: 'Bluetooth Speaker Pro', createdAt: T.d12, updatedAt: T.d12 } })
+   225→   225→  const payA20 = await prisma.payment.create({ data: { id: 'pay_a20', merchantId: merchantA.id, customerId: custA14.id, externalId: 'pay_ext_tn_020', amount: 79900, currency: 'INR', status: 'captured', method: 'emi', description: 'Screen Protector Pack', createdAt: T.d13, updatedAt: T.d13 } })
+   226→   226→  const payA21 = await prisma.payment.create({ data: { id: 'pay_a21', merchantId: merchantA.id, customerId: custA7.id, externalId: 'pay_ext_tn_021', amount: 249900, currency: 'INR', status: 'captured', method: 'card', description: 'Wireless Earbuds Pro', createdAt: T.d14, updatedAt: T.d14 } })
+   227→   227→  const payA22 = await prisma.payment.create({ data: { id: 'pay_a22', merchantId: merchantA.id, customerId: custA9.id, externalId: 'pay_ext_tn_022', amount: 349900, currency: 'INR', status: 'refunded', method: 'upi', amountRefunded: 349900, description: 'Webcam 4K — returned as defective', createdAt: T.d15, updatedAt: T.d16 } })
+   228→   228→  const payA23 = await prisma.payment.create({ data: { id: 'pay_a23', merchantId: merchantA.id, customerId: custA8.id, externalId: 'pay_ext_tn_023', amount: 599900, currency: 'INR', status: 'captured', method: 'netbanking', description: 'Mechanical Keyboard RGB — second attempt', createdAt: T.d16, updatedAt: T.d16 } })
+   229→   229→  const payA24 = await prisma.payment.create({ data: { id: 'pay_a24', merchantId: merchantA.id, customerId: custA10.id, externalId: 'pay_ext_tn_024', amount: 299900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'AUTHENTICATION_FAILED', failureReason: '3D Secure authentication failed', description: 'Wireless Charging Pad', createdAt: T.d17, updatedAt: T.d17 } })
+   230→   230→  const payA25 = await prisma.payment.create({ data: { id: 'pay_a25', merchantId: merchantA.id, customerId: custA11.id, externalId: 'pay_ext_tn_025', amount: 1299900, currency: 'INR', status: 'captured', method: 'card', description: '4K Monitor — retry succeeded', createdAt: T.d18, updatedAt: T.d18 } })
+   231→   231→  const payA26 = await prisma.payment.create({ data: { id: 'pay_a26', merchantId: merchantA.id, customerId: custA12.id, externalId: 'pay_ext_tn_026', amount: 199900, currency: 'INR', status: 'cancelled', method: 'upi', description: 'USB-C Hub — customer cancelled', createdAt: T.d19, updatedAt: T.d19 } })
+   232→   232→  const payA27 = await prisma.payment.create({ data: { id: 'pay_a27', merchantId: merchantA.id, customerId: custA13.id, externalId: 'pay_ext_tn_027', amount: 449900, currency: 'INR', status: 'captured', method: 'wallet', description: 'Bluetooth Speaker — retry with wallet', createdAt: T.d20, updatedAt: T.d20 } })
+   233→   233→  const payA28 = await prisma.payment.create({ data: { id: 'pay_a28', merchantId: merchantA.id, customerId: custA14.id, externalId: 'pay_ext_tn_028', amount: 179900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'PAYMENT_ERROR', failureReason: 'Bank gateway error during processing', description: 'Portable SSD 256GB', createdAt: T.d21, updatedAt: T.d21 } })
+   234→   234→  const payA29 = await prisma.payment.create({ data: { id: 'pay_a29', merchantId: merchantA.id, customerId: custA1.id, externalId: 'pay_ext_tn_029', amount: 999900, currency: 'INR', status: 'captured', method: 'upi', description: 'Smart Watch Series X', createdAt: T.d22, updatedAt: T.d22 } })
+   235→   235→  const payA30 = await prisma.payment.create({ data: { id: 'pay_a30', merchantId: merchantA.id, customerId: custA3.id, externalId: 'pay_ext_tn_030', amount: 249900, currency: 'INR', status: 'captured', method: 'card', description: 'Wireless Earbuds — repeat purchase', createdAt: T.d23, updatedAt: T.d23 } })
+   236→   236→
+   237→   237→  // Additional FitLife payments (payB9–payB22)
+   238→   238→  const payB9  = await prisma.payment.create({ data: { id: 'pay_b9',  merchantId: merchantB.id, customerId: custB5.id, externalId: 'pay_ext_fl_009', amount: 149900, currency: 'INR', status: 'captured', method: 'card', description: 'FitLife Annual Plan', createdAt: T.d7, updatedAt: T.d7 } })
+   239→   239→  const payB10 = await prisma.payment.create({ data: { id: 'pay_b10', merchantId: merchantB.id, customerId: custB6.id, externalId: 'pay_ext_fl_010', amount: 49900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'TIMED_OUT', failureReason: 'UPI timeout on monthly payment', description: 'FitLife Monthly Plan', createdAt: T.d8, updatedAt: T.d8 } })
+   240→   240→  const payB11 = await prisma.payment.create({ data: { id: 'pay_b11', merchantId: merchantB.id, customerId: custB7.id, externalId: 'pay_ext_fl_011', amount: 129900, currency: 'INR', status: 'captured', method: 'netbanking', description: 'FitLife Quarterly Plan', createdAt: T.d9, updatedAt: T.d9 } })
+   241→   241→  const payB12 = await prisma.payment.create({ data: { id: 'pay_b12', merchantId: merchantB.id, customerId: custB8.id, externalId: 'pay_ext_fl_012', amount: 49900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'BAD_REQUEST', failureReason: 'Card declined by issuer', description: 'FitLife Monthly Plan', createdAt: T.d10, updatedAt: T.d10 } })
+   242→   242→  const payB13 = await prisma.payment.create({ data: { id: 'pay_b13', merchantId: merchantB.id, customerId: custB9.id, externalId: 'pay_ext_fl_013', amount: 149900, currency: 'INR', status: 'captured', method: 'upi', description: 'FitLife Annual Plan', createdAt: T.d11, updatedAt: T.d11 } })
+   243→   243→  const payB14 = await prisma.payment.create({ data: { id: 'pay_b14', merchantId: merchantB.id, customerId: custB10.id, externalId: 'pay_ext_fl_014', amount: 49900, currency: 'INR', status: 'failed', method: 'upi', failureCode: 'INVALID_VPA', failureReason: 'Wrong UPI handle entered', description: 'FitLife Monthly Plan', createdAt: T.d12, updatedAt: T.d12 } })
+   244→   244→  const payB15 = await prisma.payment.create({ data: { id: 'pay_b15', merchantId: merchantB.id, customerId: custB5.id, externalId: 'pay_ext_fl_015', amount: 49900, currency: 'INR', status: 'captured', method: 'card', description: 'FitLife Monthly Renewal', createdAt: T.d13, updatedAt: T.d13 } })
+   245→   245→  const payB16 = await prisma.payment.create({ data: { id: 'pay_b16', merchantId: merchantB.id, customerId: custB6.id, externalId: 'pay_ext_fl_016', amount: 49900, currency: 'INR', status: 'captured', method: 'upi', description: 'FitLife Monthly — retry succeeded', createdAt: T.d14, updatedAt: T.d14 } })
+   246→   246→  const payB17 = await prisma.payment.create({ data: { id: 'pay_b17', merchantId: merchantB.id, customerId: custB7.id, externalId: 'pay_ext_fl_017', amount: 129900, currency: 'INR', status: 'refunded', method: 'card', amountRefunded: 129900, description: 'FitLife Quarterly — refunded', createdAt: T.d15, updatedAt: T.d16 } })
+   247→   247→  const payB18 = await prisma.payment.create({ data: { id: 'pay_b18', merchantId: merchantB.id, customerId: custB8.id, externalId: 'pay_ext_fl_018', amount: 49900, currency: 'INR', status: 'captured', method: 'wallet', description: 'FitLife Monthly — retry with wallet', createdAt: T.d17, updatedAt: T.d17 } })
+   248→   248→  const payB19 = await prisma.payment.create({ data: { id: 'pay_b19', merchantId: merchantB.id, customerId: custB9.id, externalId: 'pay_ext_fl_019', amount: 49900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'PAYMENT_ERROR', failureReason: 'Gateway error during subscription renewal', description: 'FitLife Monthly Renewal', createdAt: T.d18, updatedAt: T.d18 } })
+   249→   249→  const payB20 = await prisma.payment.create({ data: { id: 'pay_b20', merchantId: merchantB.id, customerId: custB10.id, externalId: 'pay_ext_fl_020', amount: 149900, currency: 'INR', status: 'captured', method: 'card', description: 'FitLife Annual — retry succeeded', createdAt: T.d19, updatedAt: T.d19 } })
+   250→   250→  const payB21 = await prisma.payment.create({ data: { id: 'pay_b21', merchantId: merchantB.id, customerId: custB1.id, externalId: 'pay_ext_fl_021', amount: 49900, currency: 'INR', status: 'captured', method: 'upi', description: 'FitLife Monthly Renewal', createdAt: T.d20, updatedAt: T.d20 } })
+   251→   251→  const payB22 = await prisma.payment.create({ data: { id: 'pay_b22', merchantId: merchantB.id, customerId: custB3.id, externalId: 'pay_ext_fl_022', amount: 49900, currency: 'INR', status: 'cancelled', method: 'upi', description: 'FitLife Monthly — customer cancelled', createdAt: T.d21, updatedAt: T.d21 } })
+   252→   252→
+   253→   253→  console.log(`  Payments: 54 created (30 TechNova, 24 FitLife)`)
+   254→   254→
+   255→   255→  // ----------------------------------------------------------------
+   256→   256→  // 5. CHECKOUTS (25)
+   257→   257→  // ----------------------------------------------------------------
+   258→   258→  console.log('\nSeeding Checkouts...')
+   259→   259→
+   260→   260→  // Merchant A — 6 checkouts
+   261→   261→  const chkA1 = await prisma.checkout.create({
+   262→   262→    data: { id: 'chk_a1', merchantId: merchantA.id, customerId: custA1.id, amount: 749900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-USB-KEY-128","name":"128GB USB Drive","qty":2,"price":74900}]', createdAt: T.d2, updatedAt: T.d2 },
+   263→   263→  })
+   264→   264→  const chkA2 = await prisma.checkout.create({
+   265→   265→    data: { id: 'chk_a2', merchantId: merchantA.id, customerId: custA2.id, amount: 334900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-MOUSE-PRO","name":"Pro Wireless Mouse","qty":1,"price":179900},{"sku":"TN-MOUSEPAD-XL","name":"XL Mousepad","qty":1,"price":155000}]', abandonedAt: T.d4, createdAt: T.d3, updatedAt: T.d4 },
+   266→   266→  })
+   267→   267→  const chkA3 = await prisma.checkout.create({
+   268→   268→    data: { id: 'chk_a3', merchantId: merchantA.id, customerId: custA4.id, amount: 219900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-USBC-HUB","name":"USB-C 7-in-1 Hub","qty":1,"price":219900}]', abandonedAt: T.d5, createdAt: T.d4, updatedAt: T.d5 },
+   269→   269→  })
+   270→   270→  const chkA4 = await prisma.checkout.create({
+   271→   271→    data: { id: 'chk_a4', merchantId: merchantA.id, customerId: custA3.id, amount: 1899900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-MONITOR-27","name":"27-inch 4K Monitor","qty":1,"price":1899900}]', createdAt: T.d5, updatedAt: T.d5 },
+   272→   272→  })
+   273→   273→  const chkA5 = await prisma.checkout.create({
+   274→   274→    data: { id: 'chk_a5', merchantId: merchantA.id, customerId: custA5.id, amount: 459800, currency: 'INR', status: 'expired', itemsJson: '[{"sku":"TN-KEYBOARD-RGB","name":"Mechanical Keyboard RGB","qty":1,"price":329900},{"sku":"TN-CABLE-USBC","name":"USB-C Cable 2m","qty":2,"price":64900}]', createdAt: T.d7, updatedAt: T.d9 },
+   275→   275→  })
+   276→   276→  const chkA6 = await prisma.checkout.create({
+   277→   277→    data: { id: 'chk_a6', merchantId: merchantA.id, customerId: custA6.id, amount: 159900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-STAND-LAP","name":"Ergonomic Laptop Stand","qty":1,"price":159900}]', abandonedAt: T.d11, createdAt: T.d10, updatedAt: T.d11 },
+   278→   278→  })
+   279→   279→
+   280→   280→  // Merchant B — 4 checkouts
+   281→   281→  const chkB1 = await prisma.checkout.create({
+   282→   282→    data: { id: 'chk_b1', merchantId: merchantB.id, customerId: custB1.id, amount: 149900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"FL-PLAN-ANNUAL","name":"Annual Plan","qty":1,"price":149900}]', createdAt: T.d2, updatedAt: T.d2 },
+   283→   283→  })
+   284→   284→  const chkB2 = await prisma.checkout.create({
+   285→   285→    data: { id: 'chk_b2', merchantId: merchantB.id, customerId: custB2.id, amount: 49900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"FL-PLAN-MONTHLY","name":"Monthly Plan","qty":1,"price":49900}]', abandonedAt: T.d5, createdAt: T.d4, updatedAt: T.d5 },
+   286→   286→  })
+   287→   287→  const chkB3 = await prisma.checkout.create({
+   288→   288→    data: { id: 'chk_b3', merchantId: merchantB.id, customerId: custB3.id, amount: 149900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"FL-PLAN-ANNUAL","name":"Annual Plan","qty":1,"price":149900}]', createdAt: T.d5, updatedAt: T.d5 },
+   289→   289→  })
+   290→   290→  const chkB4 = await prisma.checkout.create({
+   291→   291→    data: { id: 'chk_b4', merchantId: merchantB.id, customerId: custB4.id, amount: 129900, currency: 'INR', status: 'expired', itemsJson: '[{"sku":"FL-PLAN-QUARTERLY","name":"Quarterly Plan","qty":1,"price":129900}]', createdAt: T.d8, updatedAt: T.d11 },
+   292→   292→  })
+   293→   293→
+   294→   294→  // Additional TechNova checkouts (chkA7–chkA17)
+   295→   295→  const chkA7  = await prisma.checkout.create({ data: { id: 'chk_a7',  merchantId: merchantA.id, customerId: custA7.id,  amount: 399900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-KEYBOARD-RGB","name":"Mechanical Keyboard RGB","qty":1,"price":399900}]', createdAt: T.d7, updatedAt: T.d7 } })
+   296→   296→  const chkA8  = await prisma.checkout.create({ data: { id: 'chk_a8',  merchantId: merchantA.id, customerId: custA8.id,  amount: 599900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-KEYBOARD-RGB","name":"Mechanical Keyboard RGB","qty":1,"price":599900}]', abandonedAt: T.d8, createdAt: T.d7, updatedAt: T.d8 } })
+   297→   297→  const chkA9  = await prisma.checkout.create({ data: { id: 'chk_a9',  merchantId: merchantA.id, customerId: custA9.id,  amount: 699900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-HEADSET-NC","name":"Noise Cancelling Headphones","qty":1,"price":699900}]', createdAt: T.d9, updatedAt: T.d9 } })
+   298→   298→  const chkA10 = await prisma.checkout.create({ data: { id: 'chk_a10', merchantId: merchantA.id, customerId: custA11.id, amount: 1299900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-MONITOR-27","name":"27-inch 4K Monitor","qty":1,"price":1299900}]', abandonedAt: T.d11, createdAt: T.d10, updatedAt: T.d11 } })
+   299→   299→  const chkA11 = await prisma.checkout.create({ data: { id: 'chk_a11', merchantId: merchantA.id, customerId: custA12.id, amount: 199900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-USBC-HUB","name":"USB-C Hub 7-in-1","qty":1,"price":199900}]', createdAt: T.d12, updatedAt: T.d12 } })
+   300→   300→  const chkA12 = await prisma.checkout.create({ data: { id: 'chk_a12', merchantId: merchantA.id, customerId: custA13.id, amount: 449900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-SPEAKER-BT","name":"Bluetooth Speaker Pro","qty":1,"price":449900}]', abandonedAt: T.d13, createdAt: T.d12, updatedAt: T.d13 } })
+   301→   301→  const chkA13 = await prisma.checkout.create({ data: { id: 'chk_a13', merchantId: merchantA.id, customerId: custA14.id, amount: 279900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-SSD-512","name":"Portable SSD 512GB","qty":1,"price":279900}]', createdAt: T.d14, updatedAt: T.d14 } })
+   302→   302→  const chkA14 = await prisma.checkout.create({ data: { id: 'chk_a14', merchantId: merchantA.id, customerId: custA7.id,  amount: 249900, currency: 'INR', status: 'expired', itemsJson: '[{"sku":"TN-EARBUDS-PRO","name":"Wireless Earbuds Pro","qty":1,"price":249900}]', createdAt: T.d15, updatedAt: T.d17 } })
+   303→   303→  const chkA15 = await prisma.checkout.create({ data: { id: 'chk_a15', merchantId: merchantA.id, customerId: custA10.id, amount: 299900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-CHARGER-PAD","name":"Wireless Charging Pad","qty":1,"price":299900}]', abandonedAt: T.d18, createdAt: T.d17, updatedAt: T.d18 } })
+   304→   304→  const chkA16 = await prisma.checkout.create({ data: { id: 'chk_a16', merchantId: merchantA.id, customerId: custA9.id,  amount: 349900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"TN-WEBCAM-4K","name":"Webcam 4K Ultra HD","qty":1,"price":349900}]', createdAt: T.d19, updatedAt: T.d19 } })
+   305→   305→  const chkA17 = await prisma.checkout.create({ data: { id: 'chk_a17', merchantId: merchantA.id, customerId: custA14.id, amount: 179900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"TN-SSD-256","name":"Portable SSD 256GB","qty":1,"price":179900}]', abandonedAt: T.d22, createdAt: T.d21, updatedAt: T.d22 } })
+   306→   306→
+   307→   307→  // Additional FitLife checkouts (chkB5–chkB9)
+   308→   308→  const chkB5  = await prisma.checkout.create({ data: { id: 'chk_b5',  merchantId: merchantB.id, customerId: custB5.id,  amount: 149900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"FL-PLAN-ANNUAL","name":"Annual Plan","qty":1,"price":149900}]', createdAt: T.d7, updatedAt: T.d7 } })
+   309→   309→  const chkB6  = await prisma.checkout.create({ data: { id: 'chk_b6',  merchantId: merchantB.id, customerId: custB6.id,  amount: 49900,  currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"FL-PLAN-MONTHLY","name":"Monthly Plan","qty":1,"price":49900}]', abandonedAt: T.d9, createdAt: T.d8, updatedAt: T.d9 } })
+   310→   310→  const chkB7  = await prisma.checkout.create({ data: { id: 'chk_b7',  merchantId: merchantB.id, customerId: custB7.id,  amount: 129900, currency: 'INR', status: 'completed', itemsJson: '[{"sku":"FL-PLAN-QUARTERLY","name":"Quarterly Plan","qty":1,"price":129900}]', createdAt: T.d9, updatedAt: T.d9 } })
+   311→   311→  const chkB8  = await prisma.checkout.create({ data: { id: 'chk_b8',  merchantId: merchantB.id, customerId: custB8.id,  amount: 49900,  currency: 'INR', status: 'expired', itemsJson: '[{"sku":"FL-PLAN-MONTHLY","name":"Monthly Plan","qty":1,"price":49900}]', createdAt: T.d10, updatedAt: T.d13 } })
+   312→   312→  const chkB9  = await prisma.checkout.create({ data: { id: 'chk_b9',  merchantId: merchantB.id, customerId: custB10.id, amount: 149900, currency: 'INR', status: 'abandoned', itemsJson: '[{"sku":"FL-PLAN-ANNUAL","name":"Annual Plan","qty":1,"price":149900}]', abandonedAt: T.d13, createdAt: T.d12, updatedAt: T.d13 } })
+   313→   313→
+   314→   314→  console.log(`  Checkouts: 25 created (17 TechNova, 8 FitLife)`)
+   315→   315→
+   316→   316→  // ----------------------------------------------------------------
+   317→   317→  // 6. SUBSCRIPTIONS (7)
+   318→   318→  // ----------------------------------------------------------------
+   319→   319→  console.log('\nSeeding Subscriptions...')
+   320→   320→
+   321→   321→  // Merchant A — 4 subscriptions
+   322→   322→  const subA1 = await prisma.subscription.create({
+   323→   323→    data: { id: 'sub_a1', merchantId: merchantA.id, customerId: custA1.id, externalId: 'sub_ext_tn_001', amount: 99900, currency: 'INR', status: 'active', retryCount: 0, currentPeriodStart: T.d10, currentPeriodEnd: new Date('2025-04-10T00:00:00.000Z'), createdAt: T.d10, updatedAt: T.d10 },
+   324→   324→  })
+   325→   325→  const subA2 = await prisma.subscription.create({
+   326→   326→    data: { id: 'sub_a2', merchantId: merchantA.id, customerId: custA3.id, externalId: 'sub_ext_tn_002', amount: 199900, currency: 'INR', status: 'past_due', retryCount: 3, currentPeriodStart: T.d8, currentPeriodEnd: T.d14, createdAt: T.d2, updatedAt: T.d12 },
+   327→   327→  })
+   328→   328→  const subA3 = await prisma.subscription.create({
+   329→   329→    data: { id: 'sub_a3', merchantId: merchantA.id, customerId: custA5.id, externalId: 'sub_ext_tn_003', amount: 99900, currency: 'INR', status: 'cancelled', retryCount: 1, currentPeriodStart: T.d5, currentPeriodEnd: T.d11, createdAt: T.d5, updatedAt: T.d11 },
+   330→   330→  })
+   331→   331→  const subA4 = await prisma.subscription.create({
+   332→   332→    data: { id: 'sub_a4', merchantId: merchantA.id, customerId: custA6.id, externalId: 'sub_ext_tn_004', amount: 49900, currency: 'INR', status: 'paused', retryCount: 0, currentPeriodStart: T.d7, currentPeriodEnd: T.d13, createdAt: T.d7, updatedAt: T.d12 },
+   333→   333→  })
+   334→   334→
+   335→   335→  // Merchant B — 3 subscriptions
+   336→   336→  const subB1 = await prisma.subscription.create({
+   337→   337→    data: { id: 'sub_b1', merchantId: merchantB.id, customerId: custB1.id, externalId: 'sub_ext_fl_001', amount: 149900, currency: 'INR', status: 'active', retryCount: 0, currentPeriodStart: T.d10, currentPeriodEnd: new Date('2026-01-12T00:00:00.000Z'), createdAt: T.d2, updatedAt: T.d10 },
+   338→   338→  })
+   339→   339→  const subB2 = await prisma.subscription.create({
+   340→   340→    data: { id: 'sub_b2', merchantId: merchantB.id, customerId: custB2.id, externalId: 'sub_ext_fl_002', amount: 49900, currency: 'INR', status: 'past_due', retryCount: 2, currentPeriodStart: T.d7, currentPeriodEnd: T.d13, createdAt: T.d4, updatedAt: T.d11 },
+   341→   341→  })
+   342→   342→  const subB3 = await prisma.subscription.create({
+   343→   343→    data: { id: 'sub_b3', merchantId: merchantB.id, customerId: custB4.id, externalId: 'sub_ext_fl_003', amount: 49900, currency: 'INR', status: 'active', retryCount: 1, currentPeriodStart: T.d12, currentPeriodEnd: new Date('2025-04-12T00:00:00.000Z'), createdAt: T.d12, updatedAt: T.d12 },
+   344→   344→  })
+   345→   345→
+   346→   346→  console.log(`  Subscriptions: 7 created (4 TechNova, 3 FitLife)`)
+   347→   347→
+   348→   348→  // ----------------------------------------------------------------
+   349→   349→  // 7. RECOVERY CASES (12)
+   350→   350→  // ----------------------------------------------------------------
+   351→   351→  console.log('\nSeeding Recovery Cases...')
+   352→   352→
+   353→   353→  // Case 1: Payment failed — Priya, card declined, ₹1,299 — MEDIUM priority
+   354→   354→  const case1 = await prisma.recoveryCase.create({
+   355→   355→    data: { id: 'rc_001', merchantId: merchantA.id, paymentId: payA2.id, amountAtRisk: 129900, currency: 'INR', category: 'payment_failed', priority: 'medium', status: 'completed', recoveryProbability: 0.82, recoveredAmount: 129900, detectedAt: T.d3, resolvedAt: T.d5, createdAt: T.d3, updatedAt: T.d5 },
+   356→   356→  })
+   357→   357→
+   358→   358→  // Case 2: Payment failed — Ananya, UPI timed out, ₹2,199 — MEDIUM priority
+   359→   359→  const case2 = await prisma.recoveryCase.create({
+   360→   360→    data: { id: 'rc_002', merchantId: merchantA.id, paymentId: payA4.id, amountAtRisk: 219900, currency: 'INR', category: 'payment_failed', priority: 'medium', status: 'completed', recoveryProbability: 0.65, recoveredAmount: 219900, detectedAt: T.d4, resolvedAt: T.d7, createdAt: T.d4, updatedAt: T.d7 },
+   361→   361→  })
+   362→   362→
+   363→   363→  // Case 3: Checkout abandoned — Priya, ₹3,349 — HIGH priority (high-value cart)
+   364→   364→  const case3 = await prisma.recoveryCase.create({
+   365→   365→    data: { id: 'rc_003', merchantId: merchantA.id, checkoutId: chkA2.id, amountAtRisk: 334900, currency: 'INR', category: 'checkout_abandoned', priority: 'high', status: 'completed', recoveryProbability: 0.71, recoveredAmount: 334900, detectedAt: T.d5, resolvedAt: T.d7, createdAt: T.d5, updatedAt: T.d7 },
+   366→   366→  })
+   367→   367→
+   368→   368→  // Case 4: Checkout abandoned — Ananya, ₹2,199 — MEDIUM priority
+   369→   369→  const case4 = await prisma.recoveryCase.create({
+   370→   370→    data: { id: 'rc_004', merchantId: merchantA.id, checkoutId: chkA3.id, amountAtRisk: 219900, currency: 'INR', category: 'checkout_abandoned', priority: 'medium', status: 'awaiting_approval', recoveryProbability: 0.55, detectedAt: T.d6, createdAt: T.d6, updatedAt: T.d9 },
+   371→   371→  })
+   372→   372→
+   373→   373→  // Case 5: Payment failed — Arjun, high-value monitor ₹15,999 — CRITICAL
+   374→   374→  const case5 = await prisma.recoveryCase.create({
+   375→   375→    data: { id: 'rc_005', merchantId: merchantA.id, paymentId: payA7.id, amountAtRisk: 1599900, currency: 'INR', category: 'payment_failed', priority: 'critical', status: 'executing', recoveryProbability: 0.72, detectedAt: T.d7, createdAt: T.d7, updatedAt: T.d13 },
+   376→   376→  })
+   377→   377→
+   378→   378→  // Case 6: Checkout expired — Rahul, ₹4,598 — LOW priority
+   379→   379→  const case6 = await prisma.recoveryCase.create({
+   380→   380→    data: { id: 'rc_006', merchantId: merchantA.id, checkoutId: chkA5.id, amountAtRisk: 459800, currency: 'INR', category: 'checkout_abandoned', priority: 'low', status: 'dismissed', recoveryProbability: 0.18, detectedAt: T.d10, createdAt: T.d10, updatedAt: T.d12 },
+   381→   381→  })
+   382→   382→
+   383→   383→  // Case 7: Subscription lapsed — Vikram, ₹1,999/mo — HIGH priority
+   384→   384→  const case7 = await prisma.recoveryCase.create({
+   385→   385→    data: { id: 'rc_007', merchantId: merchantA.id, subscriptionId: subA2.id, amountAtRisk: 199900, currency: 'INR', category: 'subscription_lapsed', priority: 'high', status: 'diagnosed', recoveryProbability: 0.78, detectedAt: T.d12, createdAt: T.d12, updatedAt: T.d13 },
+   386→   386→  })
+   387→   387→
+   388→   388→  // Case 8: Checkout abandoned — Sneha, ₹1,599 — MEDIUM priority
+   389→   389→  const case8 = await prisma.recoveryCase.create({
+   390→   390→    data: { id: 'rc_008', merchantId: merchantA.id, checkoutId: chkA6.id, amountAtRisk: 159900, currency: 'INR', category: 'checkout_abandoned', priority: 'medium', status: 'detected', recoveryProbability: 0.0, detectedAt: T.d12, createdAt: T.d12, updatedAt: T.d12 },
+   391→   391→  })
+   392→   392→
+   393→   393→  // Case 9: Payment failed — Priya, headphones ₹6,999 — HIGH priority
+   394→   394→  const case9 = await prisma.recoveryCase.create({
+   395→   395→    data: { id: 'rc_009', merchantId: merchantA.id, paymentId: payA9.id, amountAtRisk: 699900, currency: 'INR', category: 'payment_failed', priority: 'high', status: 'executing', recoveryProbability: 0.68, detectedAt: T.d9, createdAt: T.d9, updatedAt: T.d14 },
+   396→   396→  })
+   397→   397→
+   398→   398→  // Case 10: Payment failed — Meera, monthly plan ₹499 — MEDIUM (FitLife)
+   399→   399→  const case10 = await prisma.recoveryCase.create({
+   400→   400→    data: { id: 'rc_010', merchantId: merchantB.id, paymentId: payB2.id, amountAtRisk: 49900, currency: 'INR', category: 'payment_failed', priority: 'medium', status: 'completed', recoveryProbability: 0.88, recoveredAmount: 49900, detectedAt: T.d5, resolvedAt: T.d6, createdAt: T.d5, updatedAt: T.d6 },
+
+[showing lines 1-400 of 785; use offset=401 with limit to continue reading]
