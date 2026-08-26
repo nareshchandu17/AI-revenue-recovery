@@ -5,13 +5,14 @@
  *   1. Receive job data (attempt ID, case ID, action)
  *   2. Load RecoveryAttempt from DB
  *   3. Verify current state (must be 'queued')
- *   4. Re-check case status (still open?)
- *   5. Re-check policy (still valid?)
- *   6. Transition to 'running'
- *   7. Call appropriate executor
- *   8. Persist result (success/fail/blocked)
- *   9. Create AuditEvent
- *   10. Update case status if needed
+ *   4. Re-check payment status from DB (may have been captured since queuing)
+ *   5. Re-check case status (still open?)
+ *   6. Re-check policy (still valid?)
+ *   7. Transition to 'running'
+ *   8. Call appropriate executor
+ *   9. Persist result (success/fail/blocked)
+ *  10. Create AuditEvent
+ *  11. Update case status if needed
  *
  * This worker NEVER:
  *   - Calls the AI directly
@@ -144,11 +145,17 @@ async function processJob(
     return { recoveryAttemptId, status: "blocked", failureReason: STOP_REASONS.CASE_ALREADY_RECOVERED, simulated: false }
   }
 
-  // 4. Re-check payment status (may have been captured since queuing)
-  if (attempt.recoveryCase.payment?.status === "captured") {
-    await transitionAttempt(attempt.id, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
-    await auditAttemptTransition(attempt, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
-    return { recoveryAttemptId, status: "blocked", failureReason: STOP_REASONS.CASE_ALREADY_RECOVERED, simulated: false }
+  // 4. Re-check payment status from DB (may have been captured since queuing)
+  if (attempt.recoveryCase.payment?.externalId) {
+    const freshPayment = await db.payment.findUnique({
+      where: { externalId: attempt.recoveryCase.payment.externalId },
+      select: { status: true },
+    })
+    if (freshPayment?.status === "captured") {
+      await transitionAttempt(attempt.id, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
+      await auditAttemptTransition(attempt, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
+      return { recoveryAttemptId, status: "blocked", failureReason: STOP_REASONS.CASE_ALREADY_RECOVERED, simulated: false }
+    }
   }
 
   // 5. Re-check execution gate

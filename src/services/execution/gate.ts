@@ -17,7 +17,7 @@ import { OPEN_CASE_STATUSES, TERMINAL_CASE_STATUSES } from "@/services/recovery/
 import { DEFAULT_MERCHANT_POLICY } from "@/services/recovery/agent/policy"
 import type { RecoveryAction } from "@prisma/client"
 import type { GateResult } from "./types"
-import { STOP_REASONS } from "./types"
+import { STOP_REASONS, DECISION_EXPIRY_MINUTES } from "./types"
 
 export interface GateInput {
   caseId: string
@@ -70,6 +70,17 @@ export async function checkExecutionGate(input: GateInput): Promise<GateResult> 
     }
 
     if (decision.status === "expired") {
+      return { eligible: false, reason: STOP_REASONS.DECISION_EXPIRED, requiresApproval: false }
+    }
+
+    // Time-based expiry
+    const decisionAge = (Date.now() - decision.createdAt.getTime()) / 60_000
+    if (decisionAge > DECISION_EXPIRY_MINUTES) {
+      // Mark as expired in DB
+      await db.agentDecision.update({
+        where: { id: decisionId },
+        data: { status: "expired" },
+      })
       return { eligible: false, reason: STOP_REASONS.DECISION_EXPIRED, requiresApproval: false }
     }
 

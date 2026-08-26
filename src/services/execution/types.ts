@@ -45,6 +45,7 @@ export const REQUIRES_MERCHANT_APPROVAL: Record<RecoveryAction, boolean> = {
   update_payment_method: false,
   escalate_to_merchant: false,
   retry_payment: true,
+  payment_link: true,
   offer_discount: true,
   cancel_and_refund: true,
 }
@@ -195,3 +196,8 @@ export const STOP_REASONS = {
   DUPLICATE_ATTEMPT: "Duplicate execution attempt detected",
 } as const
 export type StopReason = (typeof STOP_REASONS)[keyof typeof STOP_REASONS]
+
+// --- Decision Expiry --------------------------------------------------------
+
+/** How many minutes before an AI decision is considered stale. */
+export const DECISION_EXPIRY_MINUTES = 60

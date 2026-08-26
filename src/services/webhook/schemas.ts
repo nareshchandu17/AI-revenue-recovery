@@ -40,7 +40,7 @@ const razorpayPaymentEntitySchema = z.object({
   contact: z.string().nullable().default(null),
   customer_id: z.string().nullable().default(null),
   token_id: z.string().nullable().default(null),
-  notes: z.record(z.string()).nullable().default(null),
+  notes: z.record(z.string(), z.string()).nullable().default(null),
   fee: z.number().default(0),
   tax: z.number().default(0),
   error_code: z.string().nullable().default(null),

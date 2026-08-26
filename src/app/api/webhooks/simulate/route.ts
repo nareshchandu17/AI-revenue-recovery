@@ -32,6 +32,7 @@ import { isRecoveryRelevant } from "@/services/webhook/schemas"
 import type { WebhookEnvelope } from "@/services/webhook/schemas"
 import { z } from "zod/v4"
 import { db } from "@/lib/db"
+import { rateLimitResponse } from "@/lib/rate-limit"
 
 const simulateSchema = z.object({
   event: z.string().min(1),
@@ -39,13 +40,13 @@ const simulateSchema = z.object({
     id: z.string().min(1),
     amount: z.number().int().min(0).default(49900),
     currency: z.string().default("INR"),
-    email: z.string().optional().default("simulated@example.com"),
-    contact: z.string().optional().default(""),
-    method: z.string().optional().default(null),
-    notes: z.record(z.string()).optional().default(null),
-    error_code: z.string().optional().default(null),
-    error_description: z.string().optional().default(null),
-    description: z.string().optional().default(null),
+    email: z.string().nullable().default("simulated@example.com"),
+    contact: z.string().nullable().default(""),
+    method: z.string().nullable().default(null),
+    notes: z.record(z.string(), z.string()).nullable().default(null),
+    error_code: z.string().nullable().default(null),
+    error_description: z.string().nullable().default(null),
+    description: z.string().nullable().default(null),
     created_at: z.number().int().default(() => Math.floor(Date.now() / 1000)),
   }),
 })
@@ -55,6 +56,13 @@ export async function POST(request: NextRequest) {
     if (env.NODE_ENV === "production") {
       throw new ForbiddenError("Simulation endpoint is disabled in production")
     }
+
+    // Rate limit
+    const clientIP = request.headers.get("x-forwarded-for") ?? "unknown"
+    try {
+      const rateLimit = rateLimitResponse(clientIP, "simulate")
+      if (rateLimit) return rateLimit
+    } catch { /* proceed if rate limiter fails */ }
 
     const body = await request.json()
     const parsed = simulateSchema.safeParse(body)
@@ -91,8 +99,6 @@ export async function POST(request: NextRequest) {
             invoice_id: null,
             international: false,
             method: payment.method,
-            amount_refunded: event === "payment.refunded" ? payment.amount : 0,
-            refund_status: event === "payment.refunded" ? "refunded" : null,
             captured: event === "payment.captured",
             description: payment.description ?? null,
             card_id: null,

@@ -40,6 +40,14 @@ export class ForbiddenError extends AppError {
   }
 }
 
+/** 409 — conflict / state already changed. */
+export class ConflictError extends AppError {
+  constructor(message = "Conflict", code = "CONFLICT") {
+    super(409, message, code)
+    this.name = "ConflictError"
+  }
+}
+
 /** 404 — resource not found. */
 export class NotFoundError extends AppError {
   constructor(message = "Resource not found", code = "NOT_FOUND") {
@@ -67,6 +75,12 @@ export class UpstreamError extends AppError {
  */
 export function errorResponse(error: unknown) {
   if (error instanceof AppError) {
+    // Don't log 4xx client errors at error level — they're expected
+    if (error.statusCode >= 400 && error.statusCode < 500) {
+      console.log(`[error] ${error.statusCode} ${error.code}: ${error.message}`)
+    } else {
+      console.error("[error] Unhandled:", error)
+    }
     return Response.json(
       { error: { message: error.message, code: error.code } },
       { status: error.statusCode }

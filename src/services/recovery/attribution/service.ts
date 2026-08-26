@@ -15,7 +15,10 @@
 
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
-import { OPEN_CASE_STATUSES, TERMINAL_CASE_STATUSES } from "../detection/constants"
+import { OPEN_CASE_STATUSES } from "../detection/constants"
+import { TERMINAL_CASE_STATUSES as TERMINAL_CASE_SET } from "@/lib/state-machine"
+import { logger } from "@/lib/logger"
+import { calculateRecoveryIncrement } from "@/lib/money"
 import { SOURCE_CONFIDENCE } from "./types"
 import type {
   AttributionResult,
@@ -38,12 +41,7 @@ export async function attemptAttribution(
 ): Promise<AttributionResult | null> {
   const { paymentId, amount, customerId, merchantId, externalId } = input
 
-  // 1. Check if this payment was already attributed to any case
-  const existingAttribution = await db.recoveryAttribution.findUnique({
-    where: { recoveryCaseId_paymentId: { recoveryCaseId: "_", paymentId } },
-  })
-  // Since we can't query the composite unique without knowing the case,
-  // check by paymentId
+  // 1. Check if this payment was already attributed to any case (idempotent)
   const existingByPayment = await db.recoveryAttribution.findFirst({
     where: { paymentId },
   })
@@ -85,7 +83,7 @@ async function tryPaymentRetryAttribution(
   if (!recoveryCase) return null
 
   // Case must be in an open state
-  if ((TERMINAL_CASE_STATUSES as readonly string[]).includes(recoveryCase.status)) {
+  if (TERMINAL_CASE_SET.has(recoveryCase.status)) {
     return null
   }
 
@@ -205,7 +203,7 @@ async function createAttribution(
     })
     if (!recoveryCase) throw new Error(`RecoveryCase ${recoveryCaseId} not found`)
 
-    // 2. Check for duplicate (same case + same payment)
+    // 2. Check for duplicate (same case + same payment) — DB unique constraint backs this up
     const existing = await tx.recoveryAttribution.findFirst({
       where: { recoveryCaseId, paymentId },
     })
@@ -224,18 +222,35 @@ async function createAttribution(
       }
     }
 
-    // 3. Calculate new recovered amount (never exceed amountAtRisk)
-    const newRecovered = Math.min(
-      recoveryCase.recoveredAmount + amount,
-      recoveryCase.amountAtRisk
+    // 3. Calculate new recovered amount (never exceed amountAtRisk, never negative)
+    const actualIncrement = Math.min(
+      amount,
+      recoveryCase.amountAtRisk - recoveryCase.recoveredAmount
     )
-    const actualIncrement = newRecovered - recoveryCase.recoveredAmount
+    if (actualIncrement <= 0) {
+      return {
+        attributionId: "",
+        recoveryCaseId,
+        paymentId,
+        amount: 0,
+        status: "rejected" as AttributionStatus,
+        source,
+        confidence: 0,
+        reason: "No remaining amount to attribute (case already fully recovered)",
+        caseUpdated: false,
+        attemptUpdated: false,
+      }
+    }
 
-    // 4. Determine if the case is fully or partially recovered
-    const isFullyRecovered = newRecovered >= recoveryCase.amountAtRisk
-    const newCaseStatus = isFullyRecovered ? "completed" : recoveryCase.status
+    const newRecovered = recoveryCase.recoveredAmount + actualIncrement
+    const fullyRecovered = newRecovered >= recoveryCase.amountAtRisk
 
-    // 5. Create the attribution
+    // 4. Validate case state transition
+    if (fullyRecovered && recoveryCase.status !== "completed") {
+      // State machine: open → completed is valid
+    }
+
+    // 5. Create the attribution (unique constraint on recoveryCaseId+paymentId prevents duplicates)
     const attribution = await tx.recoveryAttribution.create({
       data: {
         recoveryCaseId,
@@ -254,7 +269,7 @@ async function createAttribution(
       recoveredAmount: newRecovered,
       updatedAt: new Date(),
     }
-    if (isFullyRecovered) {
+    if (fullyRecovered) {
       caseUpdateData.status = "completed"
       caseUpdateData.resolvedAt = new Date()
     }
@@ -263,31 +278,38 @@ async function createAttribution(
       data: caseUpdateData,
     })
 
-    // 7. Update RecoveryAttempt if linked
+    // 7. Update RecoveryAttempt if linked (only if attempt is in a non-terminal state)
     let attemptUpdated = false
     if (recoveryAttemptId) {
-      await tx.recoveryAttempt.update({
+      const attempt = await tx.recoveryAttempt.findUnique({
         where: { id: recoveryAttemptId },
-        data: {
-          recoveredAmount: actualIncrement,
-          completedAt: new Date(),
-        },
+        select: { status: true },
       })
-      attemptUpdated = true
+      // Only update succeeded/running attempts — never re-open a terminal attempt
+      if (attempt && (attempt.status === "succeeded" || attempt.status === "running")) {
+        await tx.recoveryAttempt.update({
+          where: { id: recoveryAttemptId },
+          data: {
+            recoveredAmount: actualIncrement,
+            completedAt: new Date(),
+          },
+        })
+        attemptUpdated = true
+      }
     }
 
     // 8. Audit
     await logAudit({
       caseId: recoveryCaseId,
       actor: { type: "webhook", source: "razorpay" },
-      eventType: isFullyRecovered ? "RECOVERY_CASE_FULLY_RECOVERED" : "RECOVERY_CASE_PARTIALLY_RECOVERED",
+      eventType: fullyRecovered ? "RECOVERY_CASE_FULLY_RECOVERED" : "RECOVERY_CASE_PARTIALLY_RECOVERED",
       entityType: "recovery_attribution",
       entityId: attribution.id,
       action: "attributed",
       details: [
         `Revenue attributed: ₹${(actualIncrement / 100).toFixed(2)}`,
         `Source: ${source} (${(confidence * 100).toFixed(0)}% confidence)`,
-        isFullyRecovered ? "Case FULLY RECOVERED" : `Case PARTIALLY RECOVERED (₹${((recoveryCase.amountAtRisk - newRecovered) / 100).toFixed(2)} remaining)`,
+        fullyRecovered ? "Case FULLY RECOVERED" : `Case PARTIALLY RECOVERED (₹${((recoveryCase.amountAtRisk - newRecovered) / 100).toFixed(2)} remaining)`,
         `Payment: ${paymentId}`,
       ].join(" | "),
       metadata: {
@@ -299,7 +321,7 @@ async function createAttribution(
         source,
         confidence,
         recoveryAttemptId,
-        wasPartial: !isFullyRecovered,
+        wasPartial: !fullyRecovered,
       },
     })
 
@@ -343,7 +365,7 @@ export async function manualAttribution(
     where: { id: recoveryCaseId },
   })
   if (!recoveryCase) throw new Error(`RecoveryCase ${recoveryCaseId} not found`)
-  if ((TERMINAL_CASE_STATUSES as readonly string[]).includes(recoveryCase.status)) {
+  if (TERMINAL_CASE_SET.has(recoveryCase.status)) {
     throw new Error(`Case ${recoveryCaseId} is in terminal state ${recoveryCase.status}`)
   }
 

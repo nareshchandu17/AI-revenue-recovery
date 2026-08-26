@@ -65,6 +65,7 @@ enum RecoveryAction {
   retry_payment
   send_reminder
   offer_discount
+  payment_link
   update_payment_method
   cancel_and_refund
   escalate_to_merchant

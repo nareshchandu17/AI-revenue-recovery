@@ -19,6 +19,7 @@
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
 import { NotFoundError, ValidationError } from "@/lib/errors"
+import { logger } from "@/lib/logger"
 import { REQUIRES_MERCHANT_APPROVAL, QueueUnavailableError, InvalidStateTransitionError, ExecutionGateError, VALID_TRANSITIONS } from "./types"
 import type { ExecuteResult, RecoveryAction } from "./types"
 import { checkExecutionGate } from "./gate"
@@ -37,6 +38,9 @@ export interface ExecuteParams {
  */
 export async function executeRecovery(params: ExecuteParams): Promise<ExecuteResult> {
   const { caseId, decisionId: overrideDecisionId } = params
+  const log = logger.child({ recoveryCaseId: caseId })
+
+  log.info("Starting recovery execution")
 
   // 1. Load the recovery case with relations
   const recoveryCase = await db.recoveryCase.findUnique({
@@ -218,7 +222,9 @@ export async function executeRecovery(params: ExecuteParams): Promise<ExecuteRes
       recoveryCaseId: caseId,
       agentDecisionId: decision.id,
       action,
- }, attempt.id) // Use attempt ID as deterministic job ID for idempotency
+    }, attempt.id) // Use attempt ID as deterministic job ID for idempotency
+
+    log.info("Recovery job queued", { attemptId: attempt.id, jobId })
 
     // Update attempt with the job ID
     await db.recoveryAttempt.update({
@@ -226,6 +232,8 @@ export async function executeRecovery(params: ExecuteParams): Promise<ExecuteRes
       data: { jobId },
     })
   } catch (err) {
+    log.error("Queue unavailable")
+
     if (err instanceof QueueUnavailableError || (err instanceof Error && err.message.includes("Redis"))) {
       // Queue unavailable — mark attempt as failed, not queued
       await db.recoveryAttempt.update({

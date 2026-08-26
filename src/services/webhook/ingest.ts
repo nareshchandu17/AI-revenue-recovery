@@ -15,6 +15,7 @@
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
 import { attemptAttribution } from "@/services/recovery/attribution"
+import { logger } from "@/lib/logger"
 import type { RazorpayPayment } from "@/services/razorpay/types"
 import type { WebhookEnvelope } from "./schemas"
 
@@ -103,8 +104,14 @@ export async function ingestWebhook(
   merchantId: string
 ): Promise<IngestResult> {
   const rpPayment = envelope.payload.payment?.entity
+  const log = logger.child({
+    providerEventId: rpPayment?.id,
+    merchantId,
+    event,
+  })
+
   if (!rpPayment) {
-    // No payment entity in payload — nothing to ingest.
+    log.warn("Webhook received with no payment entity — skipping")
     return {
       paymentId: "",
       customerId: "",
@@ -112,7 +119,7 @@ export async function ingestWebhook(
     }
   }
 
-  // 1. Upsert Customer
+  // 1. Upsert Customer (idempotent — unique constraint on merchantId+email)
   const customerEmail = rpPayment.email ?? ""
   const customerPhone = rpPayment.contact ?? ""
   const customerName = rpPayment.notes?.name ?? ""
@@ -132,10 +139,11 @@ export async function ingestWebhook(
         displayName: customerName,
       },
     })
+    log.info("Customer created", { customerId: customer.id, email: customerEmail })
   }
 
   if (!customer) {
-    // Cannot proceed without a customer record.
+    log.warn("Cannot proceed — no customer record")
     return {
       paymentId: rpPayment.id,
       customerId: "",
@@ -143,10 +151,24 @@ export async function ingestWebhook(
     }
   }
 
-  // 2. Upsert Payment
+  // 2. Upsert Payment (idempotent — unique constraint on externalId)
   const previousPayment = await db.payment.findUnique({
     where: { externalId: rpPayment.id },
   })
+
+  // Detect duplicate webhook (same externalId, same status)
+  if (previousPayment && previousPayment.status === rpPayment.status) {
+    log.info("Duplicate webhook detected — same status, skipping", {
+      externalPaymentId: rpPayment.id,
+      status: rpPayment.status,
+    })
+    return {
+      paymentId: previousPayment.id,
+      customerId: customer.id,
+      recoveryCaseCreated: false,
+      previousPaymentStatus: previousPayment.status,
+    }
+  }
 
   const paymentData = {
     merchantId,
@@ -158,7 +180,6 @@ export async function ingestWebhook(
     method: toPaymentMethod(rpPayment.method),
     failureCode: rpPayment.error_code ?? "",
     failureReason: rpPayment.error_description ?? "",
-    amountRefunded: rpPayment.amount_refunded ?? 0,
     description: rpPayment.description ?? "",
     createdAt: new Date(rpPayment.created_at * 1000),
   }
@@ -171,11 +192,18 @@ export async function ingestWebhook(
           method: paymentData.method,
           failureCode: paymentData.failureCode,
           failureReason: paymentData.failureReason,
-          amountRefunded: paymentData.amountRefunded,
           updatedAt: new Date(),
         },
       })
     : await db.payment.create({ data: paymentData })
+
+  log.info("Payment upserted", {
+    paymentId: payment.id,
+    externalPaymentId: rpPayment.id,
+    status: payment.status,
+    previousStatus: previousPayment?.status ?? "new",
+    isNew: !previousPayment,
+  })
 
   // 3. Audit the payment state change
   await logAudit({
@@ -204,7 +232,7 @@ export async function ingestWebhook(
   //     then close any open recovery case for this same payment (payment retry)
   if (payment.status === "captured") {
     // Attempt attribution (links to ANY open case for this customer)
-    let attributionResult = null
+    let attributionResult: Awaited<ReturnType<typeof attemptAttribution>> = null
     try {
       attributionResult = await attemptAttribution({
         paymentId: payment.id,
@@ -215,32 +243,16 @@ export async function ingestWebhook(
       })
     } catch (err) {
       // Attribution failure should not break the webhook processing
-      console.error(
-        `[ingest] Attribution failed for ${payment.id}:`,
-        err instanceof Error ? err.message : String(err)
-      )
+      log.error("Attribution failed", { paymentId: payment.id, error: err instanceof Error ? err.message : String(err) })
     }
 
-    // If attribution handled the case, we're done
-    if (attributionResult?.caseUpdated) {
-      await logAudit({
-        caseId: recoveryCaseId,
-        actor: { type: "webhook", source: "razorpay" },
-        eventType: "PAYMENT_ATTRIBUTED",
-        entityType: "payment",
-        entityId: payment.id,
-        action: "payment.captured",
-        details: `Payment ${payment.externalId} captured (₹${(payment.amount / 100).toFixed(2)}). Attribution: ${attributionResult.source} (${(attributionResult.confidence * 100).toFixed(0)}%).`,
-        metadata: {
-          event,
-          externalPaymentId: rpPayment.id,
-          attributionId: attributionResult.attributionId,
-          attributionSource: attributionResult.source,
-          attributionConfidence: attributionResult.confidence,
-          attributedAmount: attributionResult.amount,
-          caseId: attributionResult.recoveryCaseId,
-          previousStatus: previousPayment?.status ?? "new",
-        },
+    if (attributionResult) {
+      recoveryCaseId = attributionResult.recoveryCaseId
+      log.info("Attribution processed", {
+        attributionId: attributionResult.attributionId,
+        source: attributionResult.source,
+        amount: attributionResult.amount,
+        caseUpdated: attributionResult.caseUpdated,
       })
     }
 
@@ -251,11 +263,12 @@ export async function ingestWebhook(
     })
     if (existingCase && !isTerminal(existingCase.status)) {
       // Check if this payment was already attributed to this case
-      const alreadyAttributed = attributionResult && attributionResult.recoveryCaseId === existingCase.id
+      const alreadyAttributed = attributionResult != null && attributionResult.recoveryCaseId === existingCase.id
 
       if (!alreadyAttributed) {
         // Same payment captured — auto-attributed as payment_retry
         // This handles the case where the same payment ID transitions to captured
+        // Use the state machine: open → completed is valid
         await db.recoveryCase.update({
           where: { id: existingCase.id },
           data: {
@@ -265,6 +278,7 @@ export async function ingestWebhook(
             updatedAt: new Date(),
           },
         })
+        recoveryCaseId = existingCase.id
         await logAudit({
           caseId: existingCase.id,
           actor: { type: "webhook", source: "razorpay" },
@@ -272,13 +286,14 @@ export async function ingestWebhook(
           entityType: "recovery_case",
           entityId: existingCase.id,
           action: "auto_resolved",
-          details: `Payment ${payment.externalId} captured (₹${(payment.amount / 100).toFixed(2)}). Same-externalId retry auto-resolved case.`,
+          details: `Payment ${payment.externalId} captured (₹${formatPaise(payment.amount)}). Same-externalId retry auto-resolved case.`,
           metadata: {
             recoveredAmount: existingCase.amountAtRisk,
             trigger: "payment.captured",
             source: "payment_retry_auto",
           },
         })
+        log.info("Case auto-resolved via same-payment retry", { caseId: existingCase.id })
       }
     }
 
@@ -286,7 +301,7 @@ export async function ingestWebhook(
       paymentId: payment.id,
       customerId: customer.id,
       recoveryCaseCreated: false,
-      recoveryCaseId: attributionResult?.recoveryCaseId ?? existingCase?.id,
+      recoveryCaseId: attributionResult?.recoveryCaseId ?? recoveryCaseId,
       previousPaymentStatus: previousPayment?.status,
     }
   }
@@ -296,6 +311,7 @@ export async function ingestWebhook(
 
   if (create && category) {
     // Don't create a duplicate case if one already exists for this payment
+    // (paymentId has a unique constraint, so findUnique is safe)
     const existingCase = await db.recoveryCase.findUnique({
       where: { paymentId: payment.id },
     })
@@ -316,6 +332,8 @@ export async function ingestWebhook(
       recoveryCaseId = recoveryCase.id
       recoveryCaseCreated = true
 
+      log.info("Recovery case created", { caseId: recoveryCase.id, category, priority, amount: rpPayment.amount })
+
       await logAudit({
         caseId: recoveryCase.id,
         actor: { type: "system" },
@@ -333,6 +351,13 @@ export async function ingestWebhook(
           errorReason: rpPayment.error_description,
         },
       })
+    } else {
+      // Case already exists — this is a duplicate webhook for a failed payment
+      log.info("Recovery case already exists for this payment — duplicate webhook", {
+        caseId: existingCase.id,
+        status: existingCase.status,
+      })
+      recoveryCaseId = existingCase.id
     }
   }
 

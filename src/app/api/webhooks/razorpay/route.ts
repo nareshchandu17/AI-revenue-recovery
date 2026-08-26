@@ -27,6 +27,9 @@ import {
 } from "@/services/webhook/schemas"
 import { ingestWebhook } from "@/services/webhook/ingest"
 import { logAudit } from "@/services/audit/log"
+import { logger } from "@/lib/logger"
+
+const log = logger.child({ source: "razorpay_webhook" })
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest) {
         )
       }
     } else {
-      console.warn("[webhook] No RAZORPAY_WEBHOOK_SECRET set — skipping signature verification")
+      log.warn("No RAZORPAY_WEBHOOK_SECRET set — skipping signature verification")
     }
 
     // 3. Parse + validate the payload
@@ -60,46 +63,48 @@ export async function POST(request: NextRequest) {
       parsed = JSON.parse(rawBody)
     } catch {
       throw new ValidationError("Invalid JSON body")
-    }
+  }
 
     const result = webhookEnvelopeSchema.safeParse(parsed)
     if (!result.success) {
       throw new ValidationError(
-        `Webhook payload validation failed: ${result.error.issues.map((i) => i.path.join(".")).join(", ")}`,
+        "Webhook payload validation failed: " + result.error.issues.map(function(i) { return i.path.join(".") }).join(", "),
         "WEBHOOK_VALIDATION_FAILED"
       )
     }
 
-    const envelope = result.data
-    const { event } = envelope
+    // Use any-access to work around zod/v4 passthrough type inference
+    const data = result.data as unknown as Record<string, unknown>
+    const event: string = String(data.event ?? "")
+    const paymentEntity = data.payload as Record<string, unknown> | undefined
+    const entity = paymentEntity?.entity as Record<string, unknown> | undefined
 
     // 4. Audit webhook receipt
     await logAudit({
       actor: { type: "webhook", source: "razorpay" },
       eventType: "webhook.received",
       action: event,
-      details: `Received Razorpay webhook: ${event}`,
+      details: "Received Razorpay webhook: " + event,
       metadata: {
         event,
-        paymentId: envelope.payload.payment?.entity?.id,
-        hasPaymentEntity: !!envelope.payload.payment?.entity,
+        paymentId: entity?.id as string | undefined,
+        hasPaymentEntity: !!entity,
       },
     })
 
     // 5. Route to ingestion (only for recovery-relevant events)
     if (isRecoveryRelevant(event)) {
-      // For multi-tenant: the merchant is resolved from payment.notes.merchantId
-      // or falls back to the first merchant in the DB (single-tenant demo mode).
+      const notes = entity?.notes as Record<string, string> | null
       const merchantId =
-        envelope.payload.payment?.entity?.notes?.merchantId ??
+        notes?.merchantId ??
         (await getFirstMerchantId())
 
       if (!merchantId) {
-        console.error("[webhook] No merchant found to ingest webhook")
+        log.error("No merchant found to ingest webhook")
         return Response.json({ ingested: false, reason: "no_merchant" })
       }
 
-      const ingestResult = await ingestWebhook(envelope, event, merchantId)
+      const ingestResult = await ingestWebhook(result.data, event, merchantId)
 
       return Response.json({
         ingested: true,
@@ -116,14 +121,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. Completely unknown event → still 200 to prevent Razorpay retries
-    console.warn(`[webhook] Unknown event: ${event}`)
+    log.warn("Unknown event")
     return Response.json({ ingested: false, reason: "unknown_event", event })
   } catch (err) {
     return errorResponse(err)
   }
 }
-
-// --- Helpers --------------------------------------------------------------
 
 async function getFirstMerchantId(): Promise<string | null> {
   const merchant = await db.merchant.findFirst({ select: { id: true } })

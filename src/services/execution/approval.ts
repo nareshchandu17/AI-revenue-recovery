@@ -1,7 +1,7 @@
 /**
  * Approval service for AgentDecisions.
  *
- * Some actions (retry_payment, offer_discount, cancel_and_refund) require
+ * Some actions (retry_payment, payment_link, offer_discount, cancel_and_refund) require
  * explicit merchant approval before execution. This service handles
  * the approve/reject workflow with full audit trail.
  */
@@ -10,6 +10,8 @@ import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
 import { TERMINAL_CASE_STATUSES } from "@/services/recovery/detection/constants"
 import { NotFoundError, ValidationError } from "@/lib/errors"
+import { logger } from "@/lib/logger"
+import { validateDecisionTransition } from "@/lib/state-machine"
 import type { ApprovalResult } from "./types"
 
 export interface ApproveDecisionParams {
@@ -25,6 +27,7 @@ export interface ApproveDecisionParams {
  */
 export async function approveDecision(params: ApproveDecisionParams): Promise<ApprovalResult> {
   const { decisionId, merchantId, note } = params
+  const log = logger.child({ decisionId, merchantId })
 
   // 1. Load the decision with its case
   const decision = await db.agentDecision.findUnique({
@@ -40,8 +43,10 @@ export async function approveDecision(params: ApproveDecisionParams): Promise<Ap
     throw new NotFoundError(`AgentDecision ${decisionId} not found`)
   }
 
-  // 2. Validate decision status
-  if (decision.status !== "pending") {
+  // 2. Validate decision status via central state machine
+  try {
+    validateDecisionTransition(decisionId, decision.status, "approved")
+  } catch (err) {
     throw new ValidationError(
       `Decision is in '${decision.status}' status — only 'pending' decisions can be approved`
     )
@@ -61,6 +66,8 @@ export async function approveDecision(params: ApproveDecisionParams): Promise<Ap
       reviewedAt: new Date(),
     },
   })
+
+  log.info("Decision approved", { action: updated.recommendedAction, confidence: updated.confidence })
 
   // 5. Audit
   await logAudit({
@@ -106,6 +113,7 @@ export interface RejectDecisionParams {
  */
 export async function rejectDecision(params: RejectDecisionParams): Promise<ApprovalResult> {
   const { decisionId, merchantId, reason } = params
+  const log = logger.child({ decisionId, merchantId })
 
   // 1. Load the decision
   const decision = await db.agentDecision.findUnique({
@@ -117,8 +125,10 @@ export async function rejectDecision(params: RejectDecisionParams): Promise<Appr
     throw new NotFoundError(`AgentDecision ${decisionId} not found`)
   }
 
-  // 2. Validate status
-  if (decision.status !== "pending") {
+  // 2. Validate status via central state machine
+  try {
+    validateDecisionTransition(decisionId, decision.status, "rejected")
+  } catch (err) {
     throw new ValidationError(
       `Decision is in '${decision.status}' status — only 'pending' decisions can be rejected`
     )
@@ -133,6 +143,8 @@ export async function rejectDecision(params: RejectDecisionParams): Promise<Appr
       reviewedAt: new Date(),
     },
   })
+
+  log.info("Decision rejected", { action: updated.recommendedAction, reason })
 
   // 4. Audit
   await logAudit({
