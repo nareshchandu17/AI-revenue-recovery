@@ -1,4 +1,8 @@
-// eslint-disable-file
+/**
+ * Recovery Attribution Service.
+ *
+ * Core logic for linking successful payments to recovery cases.
+ * This is the ONLY place where recoveredAmount is updated.
  *
  * Attribution signals (ordered by confidence):
  *   1. payment_retry — Same payment externalId captured (the original payment was retried)
@@ -447,7 +451,9 @@ export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
       db.recoveryCase.aggregate({
         _sum: { amountAtRisk: true, recoveredAmount: true },
         where: { status: { in: [...OPEN_CASE_STATUSES] } },
-  // COMMENTED
+      }),
+      db.recoveryCase.aggregate({ _sum: { recoveredAmount: true } }),
+      db.recoveryCase.count({ where: { status: { in: [...OPEN_CASE_STATUSES] } } }),
       db.recoveryCase.count({
         where: { status: { in: [...OPEN_CASE_STATUSES] }, priority: { in: ["high", "critical"] } },
       }),
