@@ -5,10 +5,8 @@ import {
   CreditCard,
   Activity,
   Settings,
-  ShieldCheck,
   TrendingUp,
   TrendingDown,
-  AlertTriangle,
 } from "lucide-react"
 import {
   Sidebar,
@@ -62,7 +60,6 @@ const navGroups: NavGroup[] = [
     label: "System",
     items: [
       { title: "Activity", icon: Activity, view: "audit" },
-      { title: "Audit Log", icon: ShieldCheck, view: "audit" },
       { title: "Settings", icon: Settings, view: "settings" },
     ],
   },

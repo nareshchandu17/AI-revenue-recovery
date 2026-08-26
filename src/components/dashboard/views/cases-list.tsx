@@ -15,9 +15,9 @@ import { formatCurrency, formatPercent, formatCategory, formatAction, formatDate
 const FILTER_TABS = [
   { key: "all", label: "All" },
   { key: "open", label: "Open" },
-  { key: "recovered", label: "Recovered" },
-  { key: "partially_recovered", label: "Partial" },
-  { key: "failed", label: "Unrecoverable" },
+  { key: "completed", label: "Recovered" },
+  { key: "failed", label: "Failed" },
+  { key: "dismissed", label: "Dismissed" },
 ] as const
 
 interface CasesListProps {
@@ -65,7 +65,7 @@ export function CasesList({ onNavigateCase }: CasesListProps) {
         {FILTER_TABS.map((tab) => {
           const count = tab.key === "all"
             ? data?.pagination.total
-            : data?.statusSummary?.[tab.key === "partially_recovered" ? "diagnosed" : tab.key === "failed" ? "failed" : tab.key] ?? data?.statusSummary?.[tab.key]
+            : data?.statusSummary?.[tab.key]
           return (
             <button
               key={tab.key}

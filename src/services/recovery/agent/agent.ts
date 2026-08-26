@@ -95,7 +95,30 @@ export async function analyzeCase(
     ? aiDecision.action
     : policyResult.finalAction
 
-  // 5. Persist AgentDecision
+  // 5. Determine decision status
+  // Actions that require merchant approval create PENDING decisions.
+  // Low-risk actions (reminders, escalation) are auto-approved.
+  const REQUIRES_APPROVAL: Record<string, boolean> = {
+    no_action: false,
+    send_reminder: false,
+    update_payment_method: false,
+    escalate_to_merchant: false,
+    retry_payment: true,
+    payment_link: true,
+    offer_discount: true,
+    cancel_and_refund: true,
+  }
+
+  let decisionStatus: "pending" | "approved" | "rejected"
+  if (!policyResult.allowed) {
+    decisionStatus = "rejected"
+  } else if (REQUIRES_APPROVAL[aiDecision.action]) {
+    decisionStatus = "pending" // Requires merchant sign-off
+  } else {
+    decisionStatus = "approved" // Low-risk — auto-approved
+  }
+
+  // 6. Persist AgentDecision
   const decision = await persistDecision({
     caseId,
     context,
@@ -103,9 +126,35 @@ export async function analyzeCase(
     finalAction,
     policyResult,
     usedFallback,
+    decisionStatus,
   })
 
-  // 6. Audit trail
+  // 7. Update case status based on decision
+  if (decisionStatus === "pending") {
+    // Financial action — case awaits merchant approval
+    await db.recoveryCase.update({
+      where: { id: caseId },
+      data: { status: "awaiting_approval" },
+    })
+  } else if (decisionStatus === "approved") {
+    // Auto-approved (low-risk action) — case is diagnosed, ready to execute
+    if (context.case.status === "detected" || context.case.status === "diagnosing") {
+      await db.recoveryCase.update({
+        where: { id: caseId },
+        data: { status: "diagnosed" },
+      })
+    }
+  } else if (decisionStatus === "rejected") {
+    // Policy rejected — dismiss case
+    if (context.case.status !== "dismissed" && context.case.status !== "failed" && context.case.status !== "completed") {
+      await db.recoveryCase.update({
+        where: { id: caseId },
+        data: { status: "dismissed", resolvedAt: new Date() },
+      })
+    }
+  }
+
+  // 8. Audit trail
   await auditDecision({
     caseId,
     decisionId: decision.id,
@@ -113,6 +162,7 @@ export async function analyzeCase(
     finalAction,
     policyResult,
     usedFallback,
+    decisionStatus,
   })
 
   return {
@@ -128,6 +178,7 @@ export async function analyzeCase(
     policyResult,
     usedFallback,
     decisionId: decision.id,
+    decisionStatus,
   }
 }
 
@@ -296,6 +347,27 @@ async function handleAIFailure(
     ? fallbackDecision.action
     : policyResult.finalAction
 
+  // Determine decision status for fallback
+  const REQUIRES_APPROVAL: Record<string, boolean> = {
+    no_action: false,
+    send_reminder: false,
+    update_payment_method: false,
+    escalate_to_merchant: false,
+    retry_payment: true,
+    payment_link: true,
+    offer_discount: true,
+    cancel_and_refund: true,
+  }
+
+  let fallbackDecisionStatus: "pending" | "approved" | "rejected"
+  if (!policyResult.allowed) {
+    fallbackDecisionStatus = "rejected"
+  } else if (REQUIRES_APPROVAL[fallbackDecision.action]) {
+    fallbackDecisionStatus = "pending"
+  } else {
+    fallbackDecisionStatus = "approved"
+  }
+
   // Persist the fallback decision
   const decision = await persistDecision({
     caseId: context.case.id,
@@ -304,7 +376,30 @@ async function handleAIFailure(
     finalAction,
     policyResult,
     usedFallback: true,
+    decisionStatus: fallbackDecisionStatus,
   })
+
+  // Update case status
+  if (fallbackDecisionStatus === "pending") {
+    await db.recoveryCase.update({
+      where: { id: context.case.id },
+      data: { status: "awaiting_approval" },
+    })
+  } else if (fallbackDecisionStatus === "approved") {
+    if (context.case.status === "detected" || context.case.status === "diagnosing") {
+      await db.recoveryCase.update({
+        where: { id: context.case.id },
+        data: { status: "diagnosed" },
+      })
+    }
+  } else if (fallbackDecisionStatus === "rejected") {
+    if (context.case.status !== "dismissed" && context.case.status !== "failed" && context.case.status !== "completed") {
+      await db.recoveryCase.update({
+        where: { id: context.case.id },
+        data: { status: "dismissed", resolvedAt: new Date() },
+      })
+    }
+  }
 
   await auditDecision({
     caseId: context.case.id,
@@ -313,6 +408,7 @@ async function handleAIFailure(
     finalAction,
     policyResult,
     usedFallback: true,
+    decisionStatus: fallbackDecisionStatus,
   })
 
   return {
@@ -328,8 +424,11 @@ async function handleAIFailure(
     policyResult,
     usedFallback: true,
     decisionId: decision.id,
+    decisionStatus: fallbackDecisionStatus,
   }
 }
+
+export type { AgentAnalysisResult }
 
 // --- Internal: Persist Decision -------------------------------------------
 
@@ -340,10 +439,11 @@ interface PersistParams {
   finalAction: AgentAction
   policyResult: PolicyResult
   usedFallback: boolean
+  decisionStatus: "pending" | "approved" | "rejected"
 }
 
 async function persistDecision(params: PersistParams) {
-  const { caseId, context, aiDecision, finalAction, policyResult, usedFallback } = params
+  const { caseId, context, aiDecision, finalAction, policyResult, usedFallback, decisionStatus } = params
 
   // Map the AI output to observation + diagnosis for the AgentDecision model
   const observation = [
@@ -387,7 +487,7 @@ async function persistDecision(params: PersistParams) {
       recommendedAction: aiDecision.action,
       confidence: aiDecision.confidence,
       recoveryProbability: context.case.recoveryProbability,
-      status: policyResult.allowed ? "approved" : "rejected",
+      status: decisionStatus,
     },
   })
 }
@@ -401,18 +501,22 @@ interface AuditParams {
   finalAction: AgentAction
   policyResult: PolicyResult
   usedFallback: boolean
+  decisionStatus: "pending" | "approved" | "rejected"
 }
 
 async function auditDecision(params: AuditParams) {
-  const { caseId, decisionId, aiDecision, finalAction, policyResult, usedFallback } = params
+  const { caseId, decisionId, aiDecision, finalAction, policyResult, usedFallback, decisionStatus } = params
 
-  const eventType = policyResult.allowed
+  const eventType = decisionStatus === "approved"
     ? "AGENT_DECISION_APPROVED"
-    : "AGENT_DECISION_REJECTED"
+    : decisionStatus === "rejected"
+    ? "AGENT_DECISION_REJECTED"
+    : "AGENT_DECISION_PENDING_APPROVAL"
 
   const details = [
     `AI recommended: ${aiDecision.action} (${(aiDecision.confidence * 100).toFixed(0)}% confidence)`,
-    `Policy: ${policyResult.allowed ? "APPROVED" : "REJECTED"}`,
+    `Decision: ${decisionStatus === "pending" ? "PENDING — requires merchant approval" : decisionStatus.toUpperCase()}`,
+    `Policy: ${policyResult.allowed ? "PASSED" : "REJECTED"}`,
     policyResult.rejectionReason
       ? `Rejection: ${policyResult.rejectionReason}`
       : null,
@@ -439,6 +543,7 @@ async function auditDecision(params: AuditParams) {
       customerIntent: aiDecision.customerIntent,
       policyViolations: policyResult.policyViolations,
       usedFallback,
+      decisionStatus,
       promptVersion: PROMPT_VERSION,
     },
   })

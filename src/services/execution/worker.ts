@@ -185,7 +185,7 @@ async function processJob(
   // 7. Get the executor and execute
   const executor = getExecutor(action)
   const payment = attempt.recoveryCase.payment
-  const customerId = payment?.customerId ?? attempt.recoveryCase.merchant?.id ?? ""
+  const customerId = payment?.customerId ?? ""
 
   let executorResult
   try {

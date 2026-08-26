@@ -18,6 +18,8 @@ export type AgentAction =
   | "send_reminder"
   | "update_payment_method"
   | "escalate_to_merchant"
+  | "payment_link"
+  | "offer_discount"
 
 /** All valid action strings for validation. */
 export const ALLOWED_ACTIONS: readonly AgentAction[] = [
@@ -26,6 +28,8 @@ export const ALLOWED_ACTIONS: readonly AgentAction[] = [
   "send_reminder",
   "update_payment_method",
   "escalate_to_merchant",
+  "payment_link",
+  "offer_discount",
 ] as const
 
 // --- Recovery Context (input to the AI) -------------------------------------
@@ -138,6 +142,7 @@ export interface AgentAnalysisResult {
   policyResult: PolicyResult
   usedFallback: boolean
   decisionId: string
+  decisionStatus: "pending" | "approved" | "rejected"
 }
 
 // --- Batch Analysis ---------------------------------------------------------

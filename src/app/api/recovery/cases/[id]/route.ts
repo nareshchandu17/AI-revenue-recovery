@@ -22,7 +22,9 @@ export async function GET(
       where: { id },
       include: {
         merchant: { select: { id: true, name: true } },
-        payment: { select: { id: true, externalId: true, amount: true, status: true, method: true, failureCode: true, failureReason: true, createdAt: true } },
+        payment: {
+          select: { id: true, externalId: true, amount: true, status: true, method: true, failureCode: true, failureReason: true, createdAt: true, customer: { select: { id: true, displayName: true, email: true } } },
+        },
         agentDecisions: {
           orderBy: { createdAt: "desc" },
           select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, createdAt: true },

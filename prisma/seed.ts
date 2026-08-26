@@ -8,32 +8,37 @@ const prisma = new PrismaClient()
 // No Math.random() — every value is hardcoded for reproducibility.
 // =================================================================
 
+// Use relative timestamps so decisions don't expire in demo mode.
+// T.d24 is ~10 minutes ago (fresh for 24h expiry). Other dates spread backward.
+const NOW = new Date()
+const DAY = 86400_000
+const HOUR = 3600_000
 const T = {
-  d1:  new Date('2025-01-05T10:00:00.000Z'),
-  d2:  new Date('2025-01-12T14:30:00.000Z'),
-  d3:  new Date('2025-01-18T09:15:00.000Z'),
-  d4:  new Date('2025-01-25T16:45:00.000Z'),
-  d5:  new Date('2025-02-01T11:20:00.000Z'),
-  d6:  new Date('2025-02-08T08:00:00.000Z'),
-  d7:  new Date('2025-02-14T13:10:00.000Z'),
-  d8:  new Date('2025-02-20T17:30:00.000Z'),
-  d9:  new Date('2025-02-28T10:45:00.000Z'),
-  d10: new Date('2025-03-05T12:00:00.000Z'),
-  d11: new Date('2025-03-12T15:20:00.000Z'),
-  d12: new Date('2025-03-18T09:30:00.000Z'),
-  d13: new Date('2025-03-25T14:00:00.000Z'),
-  d14: new Date('2025-04-01T10:10:00.000Z'),
-  d15: new Date('2025-04-08T16:00:00.000Z'),
-  d16: new Date('2025-04-15T09:00:00.000Z'),
-  d17: new Date('2025-04-22T14:00:00.000Z'),
-  d18: new Date('2025-05-01T10:30:00.000Z'),
-  d19: new Date('2025-05-08T11:00:00.000Z'),
-  d20: new Date('2025-05-15T16:00:00.000Z'),
-  d21: new Date('2025-05-22T08:30:00.000Z'),
-  d22: new Date('2025-05-29T13:00:00.000Z'),
-  d23: new Date('2025-06-05T10:00:00.000Z'),
-  d24: new Date('2025-06-12T15:30:00.000Z'),
-  d25: new Date('2025-06-19T09:45:00.000Z'),
+  d1:  new Date(NOW.getTime() - 25 * DAY),
+  d2:  new Date(NOW.getTime() - 24 * DAY),
+  d3:  new Date(NOW.getTime() - 23 * DAY),
+  d4:  new Date(NOW.getTime() - 22 * DAY),
+  d5:  new Date(NOW.getTime() - 21 * DAY),
+  d6:  new Date(NOW.getTime() - 20 * DAY),
+  d7:  new Date(NOW.getTime() - 19 * DAY),
+  d8:  new Date(NOW.getTime() - 18 * DAY),
+  d9:  new Date(NOW.getTime() - 17 * DAY),
+  d10: new Date(NOW.getTime() - 16 * DAY),
+  d11: new Date(NOW.getTime() - 15 * DAY),
+  d12: new Date(NOW.getTime() - 14 * DAY),
+  d13: new Date(NOW.getTime() - 13 * DAY),
+  d14: new Date(NOW.getTime() - 12 * DAY),
+  d15: new Date(NOW.getTime() - 11 * DAY),
+  d16: new Date(NOW.getTime() - 10 * DAY),
+  d17: new Date(NOW.getTime() - 9 * DAY),
+  d18: new Date(NOW.getTime() - 8 * DAY),
+  d19: new Date(NOW.getTime() - 7 * DAY),
+  d20: new Date(NOW.getTime() - 6 * DAY),
+  d21: new Date(NOW.getTime() - 5 * DAY),
+  d22: new Date(NOW.getTime() - 4 * DAY),
+  d23: new Date(NOW.getTime() - 3 * DAY),
+  d24: new Date(NOW.getTime() - 10 * HOUR),
+  d25: new Date(NOW.getTime() - 5 * HOUR),
 }
 
 async function main() {
@@ -425,9 +430,12 @@ async function main() {
     data: { id: 'rc_015', merchantId: merchantA.id, checkoutId: chkA17.id, amountAtRisk: 179900, currency: 'INR', category: 'checkout_abandoned', priority: 'low', status: 'failed', recoveryProbability: 0.30, detectedAt: T.d23, createdAt: T.d23, updatedAt: T.d24 },
   })
 
-  // Case 16: Subscription lapsed — Nikhil, ₹499/mo — MEDIUM (FitLife)
+  // Case 16: Payment failed — Demo case for golden flow — HIGH priority
+  const pay_demo = await prisma.payment.create({
+    data: { id: 'pay_demo_001', merchantId: merchantB.id, customerId: custB1.id, externalId: 'pay_ext_demo_001', amount: 349900, currency: 'INR', status: 'failed', method: 'card', failureCode: 'BAD_REQUEST', failureReason: 'Card declined by issuer — temporary insufficient funds', description: 'Wireless Mechanical Keyboard', createdAt: T.d24, updatedAt: T.d24 },
+  })
   const case16 = await prisma.recoveryCase.create({
-    data: { id: 'rc_016', merchantId: merchantB.id, subscriptionId: subB3.id, amountAtRisk: 49900, currency: 'INR', category: 'subscription_lapsed', priority: 'medium', status: 'detected', recoveryProbability: 0.0, detectedAt: T.d19, createdAt: T.d19, updatedAt: T.d19 },
+    data: { id: 'rc_016', merchantId: merchantB.id, paymentId: pay_demo.id, amountAtRisk: 349900, currency: 'INR', category: 'payment_failed', priority: 'high', status: 'detected', recoveryProbability: 0.78, detectedAt: T.d24, createdAt: T.d24, updatedAt: T.d24 },
   })
 
   console.log(`  Recovery Cases: 16 created (12 TechNova, 4 FitLife)`)
@@ -527,7 +535,29 @@ async function main() {
  data: { id: 'dec_017', recoveryCaseId: case15.id, observation: 'Low-value ₹1,799 SSD abandoned. Customer has 1 prior successful purchase.', diagnosis: 'Low-value item with low recovery probability. Customer may have found a better deal elsewhere.', reasoningJson: '{"cart_value":179900,"customer_prior_purchases":1,"competitor_pressure":true}', recommendedAction: 'send_reminder', confidence: 0.55, recoveryProbability: 0.30, status: 'approved', reviewedBy: 'merchant_tech_nova', reviewedAt: T.d24, createdAt: T.d23, updatedAt: T.d24 },
  })
 
- console.log(`  Agent Decisions: 18 created`)
+   // Decision 19: Demo golden flow — pending retry_payment for case16
+  await prisma.agentDecision.create({
+    data: {
+      id: 'dec_019', recoveryCaseId: case16.id,
+      observation: 'Card payment declined with BAD_REQUEST at \u20b93,499 for Wireless Mechanical Keyboard. Customer has 1 prior successful UPI payment (\u20b92,499 laptop stand). Card decline suggests temporary insufficient funds.',
+      diagnosis: 'Temporary card decline. Customer has demonstrated payment capability via prior UPI success. Retry with same card may succeed if funds are now available.',
+      reasoningJson: JSON.stringify({ promptVersion: 'v1', aiOutput: { action: 'retry_payment', confidence: 0.82, reason: 'Card declined, high recovery probability', factors: ['Card decline suggests temporary insufficient funds', 'Customer has prior successful UPI payment', 'Mid-range purchase with demonstrated intent'], riskLevel: 'MEDIUM', customerIntent: 'HIGH' }, policyResult: { allowed: true, finalAction: 'retry_payment', rejectionReason: null, policyViolations: [] }, usedFallback: true }),
+      recommendedAction: 'retry_payment',
+      confidence: 0.82,
+      recoveryProbability: 0.78,
+      status: 'pending',
+      createdAt: T.d24,
+      updatedAt: T.d24,
+    },
+  })
+
+  // Update case16 to awaiting_approval for the demo
+  await prisma.recoveryCase.update({
+    where: { id: 'rc_016' },
+    data: { status: 'awaiting_approval' },
+  })
+
+  console.log(`  Agent Decisions: 19 created`)
 
   // ----------------------------------------------------------------
   // 9. RECOVERY ATTEMPTS (20+)

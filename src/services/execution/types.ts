@@ -200,4 +200,4 @@ export type StopReason = (typeof STOP_REASONS)[keyof typeof STOP_REASONS]
 // --- Decision Expiry --------------------------------------------------------
 
 /** How many minutes before an AI decision is considered stale. */
-export const DECISION_EXPIRY_MINUTES = 60
+export const DECISION_EXPIRY_MINUTES = 1440

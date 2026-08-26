@@ -26,7 +26,7 @@ export async function POST(
 
   // Rate limit
   try {
-    const rateLimit = rateLimitResponse(clientIP, "approve")
+    const rateLimit = rateLimitResponse(clientIP, "reject")
     if (rateLimit) return rateLimit
   } catch { /* proceed if rate limiter fails */ }
 

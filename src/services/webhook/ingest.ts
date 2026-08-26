@@ -239,7 +239,7 @@ export async function ingestWebhook(
         amount: payment.amount,
         customerId: customer.id,
         merchantId,
-        externalId: rpPayment.id,
+        externalId: rpPayment.externalId,
       })
     } catch (err) {
       // Attribution failure should not break the webhook processing

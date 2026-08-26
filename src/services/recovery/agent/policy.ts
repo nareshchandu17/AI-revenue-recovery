@@ -23,6 +23,8 @@ export const DEFAULT_MERCHANT_POLICY: MerchantPolicy = {
     "send_reminder",
     "update_payment_method",
     "escalate_to_merchant",
+    "payment_link",
+    "offer_discount",
   ],
   minimumRecoveryProbability: 0.1, // 10% minimum recovery probability
   minimumConfidence: 0.3, // 30% minimum AI confidence to auto-approve

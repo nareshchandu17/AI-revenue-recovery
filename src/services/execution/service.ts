@@ -21,10 +21,11 @@ import { logAudit } from "@/services/audit/log"
 import { NotFoundError, ValidationError } from "@/lib/errors"
 import { logger } from "@/lib/logger"
 import { REQUIRES_MERCHANT_APPROVAL, QueueUnavailableError, InvalidStateTransitionError, ExecutionGateError, VALID_TRANSITIONS } from "./types"
-import type { ExecuteResult, RecoveryAction } from "./types"
+import type { ExecuteResult, RecoveryAction, RecoveryAttemptStatus } from "./types"
 import { checkExecutionGate } from "./gate"
 import { enqueueRecoveryJob } from "./queue"
-import { OPEN_CASE_STATUSES, TERMINAL_CASE_STATUSES } from "@/services/recovery/detection/constants"
+import { getExecutor } from "./executors"
+import { TERMINAL_CASE_STATUSES } from "@/services/recovery/detection/constants"
 
 export interface ExecuteParams {
   caseId: string
@@ -216,6 +217,8 @@ export async function executeRecovery(params: ExecuteParams): Promise<ExecuteRes
 
   // 11. Enqueue the job
   let jobId: string | undefined
+  let executedSynchronously = false
+
   try {
     jobId = await enqueueRecoveryJob({
       recoveryAttemptId: attempt.id,
@@ -232,42 +235,18 @@ export async function executeRecovery(params: ExecuteParams): Promise<ExecuteRes
       data: { jobId },
     })
   } catch (err) {
-    log.error("Queue unavailable")
-
     if (err instanceof QueueUnavailableError || (err instanceof Error && err.message.includes("Redis"))) {
-      // Queue unavailable — mark attempt as failed, not queued
-      await db.recoveryAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          status: "failed",
-          failureReason: "Queue unavailable — Redis not reachable",
-          completedAt: new Date(),
-        },
-      })
-
-      await logAudit({
-        caseId,
-        actor: { type: "system" },
-        eventType: "RECOVERY_ATTEMPT_FAILED",
-        entityType: "recovery_attempt",
-        entityId: attempt.id,
-        action,
-        details: `Queue unavailable — Redis not reachable. Attempt marked as failed.`,
-        metadata: {
-          attemptId: attempt.id,
-          decisionId: decision.id,
-          action,
-          error: "QUEUE_UNAVAILABLE",
-        },
-      })
-
-      throw new QueueUnavailableError("Redis/queue is not available — attempt created but not queued")
+      // Redis unavailable — execute synchronously as fallback (demo/development mode)
+      log.warn("Queue unavailable, executing synchronously as fallback")
+      executedSynchronously = true
+      await executeSynchronously({ attempt, recoveryCase, decisionId: decision.id, action, caseId, log })
+    } else {
+      throw err
     }
-    throw err
   }
 
   // 12. Update case status if appropriate
-  if (recoveryCase.status === "detected" || recoveryCase.status === "diagnosed") {
+  if (!executedSynchronously && (recoveryCase.status === "detected" || recoveryCase.status === "diagnosed")) {
     await db.recoveryCase.update({
       where: { id: caseId },
       data: { status: "executing" },
@@ -278,8 +257,143 @@ export async function executeRecovery(params: ExecuteParams): Promise<ExecuteRes
     caseId,
     attemptId: attempt.id,
     action,
-    status: "queued",
+    status: executedSynchronously ? "succeeded" : "queued",
     requiresApproval: false,
     jobId,
+  }
+}
+
+// --- Synchronous Execution Fallback (when Redis is unavailable) ---------------
+
+interface SyncExecuteParams {
+  attempt: { id: string; recoveryCaseId: string; attemptNumber: number; action: string }
+  recoveryCase: {
+    merchantId: string
+    amountAtRisk: number
+    currency: string
+    status: string
+    payment?: { externalId: string | null; customerId: string | null; status: string } | null
+  }
+  decisionId: string
+  action: RecoveryAction
+  caseId: string
+  log: ReturnType<typeof logger.child>
+}
+
+/**
+ * Execute a recovery attempt synchronously when Redis/BullMQ is unavailable.
+ * This follows the same logic as the BullMQ worker but runs in-process.
+ * Used for demo/development mode.
+ */
+async function executeSynchronously(params: SyncExecuteParams): Promise<void> {
+  const { attempt, recoveryCase, decisionId, action, caseId, log } = params
+
+  // 1. Re-check case is still open
+  if ((TERMINAL_CASE_STATUSES as readonly string[]).includes(recoveryCase.status)) {
+    await db.recoveryAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "blocked", failureReason: "Case in terminal state", completedAt: new Date() },
+    })
+    return
+  }
+
+  // 2. Re-check payment status
+  if (recoveryCase.payment?.externalId) {
+    const freshPayment = await db.payment.findUnique({
+      where: { externalId: recoveryCase.payment.externalId },
+      select: { status: true },
+    })
+    if (freshPayment?.status === "captured") {
+      await db.recoveryAttempt.update({
+        where: { id: attempt.id },
+        data: { status: "blocked", failureReason: "Payment already captured", completedAt: new Date() },
+      })
+      return
+    }
+  }
+
+  // 3. Transition to running
+  await db.recoveryAttempt.update({
+    where: { id: attempt.id },
+    data: { status: "running", startedAt: new Date() },
+  })
+
+  await logAudit({
+    caseId,
+    actor: { type: "system" },
+    eventType: "RECOVERY_ATTEMPT_RUNNING",
+    entityType: "recovery_attempt",
+    entityId: attempt.id,
+    action,
+    details: `Attempt #${attempt.attemptNumber} running (synchronous — no Redis)`,
+    metadata: { attemptId: attempt.id, mode: "synchronous" },
+  })
+
+  // 4. Execute
+  const executor = getExecutor(action)
+  const customerId = recoveryCase.payment?.customerId ?? ""
+
+  let result
+  try {
+    result = await executor.execute({
+      recoveryCaseId: caseId,
+      agentDecisionId: decisionId,
+      action,
+      amountAtRisk: recoveryCase.amountAtRisk,
+      currency: recoveryCase.currency,
+      customerId,
+      merchantId: recoveryCase.merchantId,
+      paymentExternalId: recoveryCase.payment?.externalId ?? null,
+      attemptNumber: attempt.attemptNumber,
+    })
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err)
+    await db.recoveryAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "failed", failureReason: `Executor error: ${errorMsg}`, completedAt: new Date() },
+    })
+    await logAudit({
+      caseId, actor: { type: "system" },
+      eventType: "RECOVERY_ATTEMPT_FAILED",
+      entityType: "recovery_attempt", entityId: attempt.id, action,
+      details: `Synchronous execution failed: ${errorMsg}`,
+      metadata: { attemptId: attempt.id, error: errorMsg, mode: "synchronous" },
+    })
+    return
+  }
+
+  // 5. Persist result
+  if (result.success) {
+    await db.recoveryAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "succeeded", externalRef: result.externalRef, simulated: result.simulated, completedAt: new Date() },
+    })
+    await logAudit({
+      caseId, actor: { type: "system" },
+      eventType: "RECOVERY_ATTEMPT_SUCCEEDED",
+      entityType: "recovery_attempt", entityId: attempt.id, action,
+      details: `${result.summary} (synchronous)`,
+      metadata: { attemptId: attempt.id, simulated: result.simulated, externalRef: result.externalRef, mode: "synchronous" },
+    })
+
+    // Update case status
+    if (recoveryCase.status === "diagnosed" || recoveryCase.status === "awaiting_approval") {
+      await db.recoveryCase.update({
+        where: { id: caseId },
+        data: { status: "executing" },
+      })
+    }
+  } else {
+    await db.recoveryAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "failed", failureReason: result.summary, completedAt: new Date() },
+    })
+    await logAudit({
+      caseId, actor: { type: "system" },
+      eventType: "RECOVERY_ATTEMPT_FAILED",
+      entityType: "recovery_attempt", entityId: attempt.id, action,
+      details: `Synchronous execution failed: ${result.summary}`,
+      metadata: { attemptId: attempt.id, mode: "synchronous" },
+    })
   }
 }
