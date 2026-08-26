@@ -70,7 +70,7 @@ export function CasesList({ onNavigateCase }: CasesListProps) {
             <button
               key={tab.key}
               onClick={() => { setStatusFilter(tab.key); setPage(1) }}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 statusFilter === tab.key
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -163,7 +163,7 @@ export function CasesList({ onNavigateCase }: CasesListProps) {
                   <button
                     key={c.id}
                     onClick={() => onNavigateCase(c.id)}
-                    className="w-full text-left p-3 hover:bg-muted/30 transition-colors"
+                    className="w-full text-left p-3 hover:bg-muted/30 transition-colors cursor-pointer"
                   >
                     <div className="flex items-start justify-between mb-1.5">
                       <div className="flex items-center gap-2">

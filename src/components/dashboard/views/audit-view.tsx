@@ -47,7 +47,7 @@ export function AuditView({ onNavigateCase }: AuditViewProps) {
           <button
             key={f.key}
             onClick={() => { setActorFilter(f.key); setPage(1) }}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+            className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
               actorFilter === f.key
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -78,7 +78,7 @@ export function AuditView({ onNavigateCase }: AuditViewProps) {
                   return (
                     <div
                       key={evt.id}
-                      className="flex gap-3 p-4 hover:bg-muted/30 transition-colors"
+                      className="flex gap-3 p-4 hover:bg-muted/30 transition-colors cursor-pointer"
                       {...(evt.caseId ? { role: "button", tabIndex: 0, onClick: () => onNavigateCase(evt.caseId!), onKeyDown: (e) => { if (e.key === "Enter") onNavigateCase(evt.caseId!) } } : {})}
                     >
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted shrink-0">

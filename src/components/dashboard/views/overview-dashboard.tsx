@@ -159,7 +159,7 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                   const decision = c.agentDecisions[0]
                   const recovered = c.recoveredAmount > 0
                   return (
-                    <button key={c.id} onClick={() => onNavigateCase(c.id)} className="w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors">
+                    <button key={c.id} onClick={() => onNavigateCase(c.id)} className="w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors cursor-pointer">
                       <div className="flex items-start justify-between gap-2 mb-1.5">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className={c.priority === "critical" ? "text-destructive font-semibold text-xs uppercase" : c.priority === "high" ? "text-amber-600 font-semibold text-xs uppercase" : "text-xs font-medium text-muted-foreground uppercase"}>
@@ -217,7 +217,7 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                     const pct = total > 0 ? (data.amountAtRisk / total) * 100 : 0
                     const recoveredPct = data.amountAtRisk > 0 ? (data.recovered / data.amountAtRisk) * 100 : 0
                     return (
-                      <button key={category} onClick={() => onNavigate("cases")} className="w-full text-left group">
+                      <button key={category} onClick={() => onNavigate("cases")} className="w-full text-left group cursor-pointer">
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="font-medium group-hover:underline">{formatCategory(category)}</span>
                           <span className="text-muted-foreground">{data.count} case{data.count !== 1 ? "s" : ""} · {formatCurrency(data.amountAtRisk)}</span>
