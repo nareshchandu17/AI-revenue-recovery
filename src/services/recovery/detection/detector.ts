@@ -113,6 +113,7 @@ async function scanFailedPayments(result: DetectionResult, now: Date) {
       createdAt: payment.createdAt,
       amountPaise: payment.amount,
       now,
+      customerValueWeight,
     })
     const priority = computePriority(score.score, payment.amount)
 

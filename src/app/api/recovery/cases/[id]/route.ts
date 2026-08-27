@@ -27,7 +27,11 @@ export async function GET(
         },
         agentDecisions: {
           orderBy: { createdAt: "desc" },
-          select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, createdAt: true },
+          select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, reasoningJson: true, createdAt: true },
+        },
+        probabilityEstimates: {
+          orderBy: { createdAt: "desc" },
+          select: { id: true, action: true, probability: true, confidence: true, isBaseline: true, factorsJson: true, modelVersion: true, createdAt: true },
         },
         recoveryAttempts: {
           orderBy: { attemptNumber: "asc" },

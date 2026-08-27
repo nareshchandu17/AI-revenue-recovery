@@ -263,10 +263,11 @@ model RecoveryCase {
 
   merchant          Merchant          @relation(fields: [merchantId], references: [id])
   payment           Payment?           @relation(fields: [paymentId], references: [id])
-  agentDecisions      AgentDecision[]
-  recoveryAttempts    RecoveryAttempt[]
-  recoveryAttributions RecoveryAttribution[]
-  auditEvents         AuditEvent[]
+  agentDecisions              AgentDecision[]
+  recoveryAttempts            RecoveryAttempt[]
+  recoveryAttributions        RecoveryAttribution[]
+  probabilityEstimates        RecoveryProbabilityEstimate[]
+  auditEvents                 AuditEvent[]
 
   @@index([merchantId, status])
   @@index([status])
@@ -298,6 +299,7 @@ model AgentDecision {
 
   recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
   recoveryAttempts RecoveryAttempt[]
+  probabilityEstimates RecoveryProbabilityEstimate[]
 
   @@index([recoveryCaseId])
   @@index([status])
@@ -395,4 +397,45 @@ model RecoveryAttribution {
   @@index([paymentId])
   @@index([status])
   @@index([source])
+}
+
+// =================================================================
+// Per-Intervention Recovery Probability Estimates
+//
+// Stores deterministic probability estimates for each candidate
+// intervention on a recovery case. Each estimate is versioned and
+// immutable — new analysis runs create new records, never update.
+//
+// Baseline vs Intervention:
+//   isBaseline=true  → P(recover | case, no intervention)
+//   isBaseline=false → P(recover | case, specific action)
+// =================================================================
+
+model RecoveryProbabilityEstimate {
+  id              String         @id @default(cuid())
+  recoveryCaseId  String
+  agentDecisionId String?
+  // Which intervention this estimate is for.
+  // Maps to RecoveryAction enum values.
+  action          String
+  // 0.0 to 1.0 — estimated recovery probability for this intervention
+  probability     Float
+  // 0.0 to 1.0 — how confident we are in this estimate
+  confidence      Float         @default(0)
+  // true = baseline (no intervention), false = intervention-specific
+  isBaseline      Boolean        @default(false)
+  // Structured explainability factors as JSON
+  // e.g. [{"signal": "...", "direction": "positive", "detail": "..."}]
+  factorsJson     String         @default("[]")
+  // Version of the probability model that produced this estimate
+  modelVersion    String         @default("1.0.0")
+  createdAt       DateTime       @default(now())
+
+  recoveryCase  RecoveryCase  @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  agentDecision AgentDecision? @relation(fields: [agentDecisionId], references: [id])
+
+  @@index([recoveryCaseId])
+  @@index([agentDecisionId])
+  @@index([action])
+  @@index([modelVersion])
 }

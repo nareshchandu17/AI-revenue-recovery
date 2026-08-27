@@ -87,6 +87,22 @@ export async function buildRecoveryContext(
     recoveryCase.currency
   )
 
+  // 9. Get customer value (safe — defaults to 1.0 weight and zero spend)
+  let customerValueWeight = 1.0
+  let customerTotalSpend = 0
+  let customerSuccessCount = 0
+  try {
+    const { assessCustomerValue } = await import("../customer-value")
+    const cv = await assessCustomerValue(customerId, recoveryCase.merchantId)
+    customerValueWeight = cv.percentile.valueWeight
+    customerTotalSpend = cv.value.totalSuccessfulSpend
+    customerSuccessCount = cv.value.successfulPaymentCount
+  } catch { /* non-fatal — use defaults */ }
+
+  const spendDisplay = customerTotalSpend > 0
+    ? (customerTotalSpend / 100).toLocaleString("en-IN")
+    : null
+
   return {
     case: {
       id: recoveryCase.id,
@@ -100,7 +116,14 @@ export async function buildRecoveryContext(
       detectedAt: recoveryCase.detectedAt.toISOString(),
       ageMinutes,
     },
-    customer,
+    customer: {
+      ...customer,
+      // Include aggregated value info (no PII)
+      historicalSpendDisplay: spendDisplay
+        ? `₹${spendDisplay} historical spend (${customerSuccessCount} successful payment${customerSuccessCount !== 1 ? "s" : ""})`
+        : "No successful payments",
+      customerValueWeight: Math.round(customerValueWeight * 100) / 100,
+    },
     source,
     previousAttempts,
     policy: {
@@ -110,6 +133,7 @@ export async function buildRecoveryContext(
       retryCooldownMinutes: policy.retryCooldownMinutes,
       minimumRecoveryAmount: policy.minimumRecoveryAmount,
       maximumRecoveryAmountForAutomation: policy.maximumRecoveryAmountForAutomation,
+      maxDiscountPercent: policy.maxDiscountPercent,
     },
   }
 }
@@ -150,6 +174,9 @@ async function buildCustomerSummary(customerId: string): Promise<CustomerSummary
     successRate: total > 0 ? successful / total : 0,
     lastSuccessfulPaymentAt: lastSuccess?.createdAt.toISOString() ?? null,
     lastFailedPaymentAt: lastFailure?.createdAt.toISOString() ?? null,
+    // Aggregated financial context (safe for LLM — no PII)
+    historicalSpendDisplay?: string,
+    customerValueWeight?: number,
   }
 }
 

@@ -29,6 +29,8 @@ export const DEFAULT_MERCHANT_POLICY: MerchantPolicy = {
   minimumRecoveryProbability: 0.1, // 10% minimum recovery probability
   minimumConfidence: 0.3, // 30% minimum AI confidence to auto-approve
   retryCooldownMinutes: 30,
+  /** Maximum discount as % of transaction value. 10% means ₹1,000 max on a ₹10,000 transaction. */
+  maxDiscountPercent: 10,
 }
 
 // --- Guardrail Validation --------------------------------------------------
@@ -117,7 +119,29 @@ export function validatePolicy(input: PolicyValidationInput): PolicyResult {
     }
   }
 
-  // 8. High-value amount requires escalation (not automated retry)
+  // 8. Discount ceiling enforcement
+  if (aiDecision.action === "offer_discount") {
+    const discount = aiDecision.discountPercent
+    if (discount === null || discount === undefined) {
+      violations.push(
+        "offer_discount action is missing required discountPercent"
+      )
+    } else if (discount < 0) {
+      violations.push(
+        `Discount percentage cannot be negative: ${discount}%`
+      )
+    } else if (discount > 100) {
+      violations.push(
+        `Discount percentage cannot exceed 100%: ${discount}%`
+      )
+    } else if (discount > policy.maxDiscountPercent) {
+      violations.push(
+        `DISCOUNT_CEILING_EXCEEDED: requested ${discount}% exceeds merchant maximum ${policy.maxDiscountPercent}%`
+      )
+    }
+  }
+
+  // 9. High-value amount requires escalation (not automated retry)
   if (
     (aiDecision.action === "retry_payment" || aiDecision.action === "send_reminder") &&
     amountAtRisk > policy.maximumRecoveryAmountForAutomation
@@ -127,7 +151,7 @@ export function validatePolicy(input: PolicyValidationInput): PolicyResult {
     )
   }
 
-  // No violations → approve
+  // No violations → approve (include discount metadata in result)
   if (violations.length === 0) {
     return {
       allowed: true,
@@ -138,7 +162,8 @@ export function validatePolicy(input: PolicyValidationInput): PolicyResult {
   }
 
   // Violations exist → determine safe override
-  return buildRejection(aiDecision.action, violations)
+  // For discount ceiling, include the specific rejection detail
+  return buildRejection(aiDecision.action, violations, policy, amountAtRisk)
 }
 
 /**
@@ -148,7 +173,9 @@ export function validatePolicy(input: PolicyValidationInput): PolicyResult {
  */
 function buildRejection(
   recommendedAction: AgentAction,
-  violations: string[]
+  violations: string[],
+  _policy?: MerchantPolicy,
+  _amountAtRisk?: number
 ): PolicyResult {
   // If AI wanted to do something active, check if escalation is appropriate
   const isActiveAction = recommendedAction !== "no_action"

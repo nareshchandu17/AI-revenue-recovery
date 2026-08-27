@@ -23,6 +23,8 @@ import { buildRecoveryContext } from "./context"
 import { getSystemPrompt, buildUserMessage, PROMPT_VERSION } from "./prompt"
 import { validatePolicy, DEFAULT_MERCHANT_POLICY } from "./policy"
 import { deterministicFallback } from "./fallback"
+import { collectSignals, estimateProbabilities } from "../probability"
+import { persistAssessment } from "../probability/persistence"
 import type {
   AIDecisionOutput,
   AgentAction,
@@ -37,6 +39,7 @@ import {
   AIProviderError,
   AIAgentError,
 } from "./types"
+import type { ProbabilityAssessment } from "../probability/types"
 
 // --- Single Case Analysis --------------------------------------------------
 
@@ -59,17 +62,32 @@ export async function analyzeCase(
   // 1. Build context
   const context = await buildRecoveryContext(caseId, policy)
 
-  // 2. Get AI decision (or fallback)
+  // 2. Compute per-intervention probabilities (deterministic, before AI)
+  let probabilityAssessment: ProbabilityAssessment | null = null
+  try {
+    const signals = await import("../probability/signals").then((m) => m.collectSignals(caseId))
+    probabilityAssessment = estimateProbabilities(caseId, await signals)
+  } catch (err) {
+    // Probability estimation failure is non-fatal — log and continue
+    console.warn(`[agent] Probability estimation failed for ${caseId}:`, err instanceof Error ? err.message : String(err))
+  }
+
+  // 3. Augment context with probability estimates for AI consumption
+  const augmentedContext = probabilityAssessment
+    ? augmentContextWithProbabilities(context, probabilityAssessment)
+    : context
+
+  // 4. Get AI decision (or fallback)
   let aiDecision: AIDecisionOutput
   try {
-    aiDecision = await callAI(context)
+    aiDecision = await callAI(augmentedContext)
   } catch (err) {
     // AI failed — use deterministic fallback
-    const fallbackResult = handleAIFailure(err, context)
+    const fallbackResult = handleAIFailure(err, context, probabilityAssessment, policy)
     return fallbackResult
   }
 
-  // 3. Run policy validation
+  // 5. Run policy validation
   const existingAttempts = await db.recoveryAttempt.count({
     where: { recoveryCaseId: caseId },
   })
@@ -129,7 +147,45 @@ export async function analyzeCase(
     decisionStatus,
   })
 
-  // 7. Update case status based on decision
+  // 7. Persist probability estimates (linked to this decision)
+  if (probabilityAssessment) {
+    try {
+      await persistAssessment(probabilityAssessment, decision.id)
+    } catch (err) {
+      console.warn(`[agent] Failed to persist probability estimates:`, err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  // 8. Audit discount policy rejection if applicable
+  if (aiDecision.action === "offer_discount" && !policyResult.allowed) {
+    const discountViolation = policyResult.policyViolations.find((v) => v.includes("DISCOUNT_CEILING_EXCEEDED"))
+    if (discountViolation) {
+      await logAudit({
+        caseId,
+        actor: { type: "system" },
+        eventType: "POLICY_DISCOUNT_BLOCKED",
+        entityType: "agent_decision",
+        entityId: decision.id,
+        action: "offer_discount_blocked",
+        details: [
+          `DISCOUNT CEILING ENFORCED`,
+          `Requested: ${aiDecision.discountPercent ?? "N/A"}%`,
+          `Merchant maximum: ${policy.maxDiscountPercent}%`,
+          `Result: BLOCKED`,
+        ].join(" | "),
+        metadata: {
+          decisionId: decision.id,
+          action: aiDecision.action,
+          requestedDiscount: aiDecision.discountPercent,
+          maxAllowedDiscount: policy.maxDiscountPercent,
+          amountAtRisk: context.case.amountAtRisk,
+          violation: discountViolation,
+        },
+      })
+    }
+  }
+
+  // 9. Update case status based on decision
   if (decisionStatus === "pending") {
     // Financial action — case awaits merchant approval
     await db.recoveryCase.update({
@@ -154,7 +210,7 @@ export async function analyzeCase(
     }
   }
 
-  // 8. Audit trail
+  // 10. Audit trail
   await auditDecision({
     caseId,
     decisionId: decision.id,
@@ -299,7 +355,9 @@ async function callAI(context: RecoveryContext): Promise<AIDecisionOutput> {
 
 async function handleAIFailure(
   err: unknown,
-  context: RecoveryContext
+  context: RecoveryContext,
+  probabilityAssessment: ProbabilityAssessment | null,
+  policy: MerchantPolicy = DEFAULT_MERCHANT_POLICY,
 ): Promise<AgentAnalysisResult> {
   const errorMsg =
     err instanceof Error ? err.message : String(err)
@@ -332,7 +390,7 @@ async function handleAIFailure(
   // Policy check even on fallback
   const policyResult = validatePolicy({
     aiDecision: fallbackDecision,
-    policy: DEFAULT_MERCHANT_POLICY,
+    policy,
     caseStatus: context.case.status,
     amountAtRisk: context.case.amountAtRisk,
     recoveryProbability: context.case.recoveryProbability,
@@ -430,7 +488,35 @@ async function handleAIFailure(
 
 export type { AgentAnalysisResult }
 
-// --- Internal: Persist Decision -------------------------------------------
+n
+// --- Internal: Augment Context with Probabilities -------
+
+function augmentContextWithProbabilities(
+  context: RecoveryContext,
+  assessment: ProbabilityAssessment
+): RecoveryContext {
+  return {
+    ...context,
+    case: {
+      ...context.case,
+      recoveryProbability: assessment.baseline.probability,
+    },
+    interventionProbabilities: {
+      baseline: {
+        probability: assessment.baseline.probability,
+        confidence: assessment.baseline.confidence,
+        explanation: assessment.baseline.factors.map((f) => f.detail).filter(Boolean),
+      },
+      interventions: assessment.interventions.map((i) => ({
+        action: i.action,
+        probability: i.probability,
+        confidence: i.confidence,
+        explanation: i.factors.map((f) => f.detail).filter(Boolean),
+      })),
+      modelVersion: assessment.modelVersion,
+    },
+  }
+}
 
 interface PersistParams {
   caseId: string

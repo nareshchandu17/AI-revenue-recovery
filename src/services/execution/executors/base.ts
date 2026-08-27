@@ -13,6 +13,7 @@ import { AlternativePaymentExecutor } from "./alternative-payment"
 import { MerchantEscalationExecutor } from "./escalation"
 import { RetryPaymentExecutor } from "./retry-payment"
 import { PaymentLinkExecutor } from "./payment-link"
+import { DiscountExecutor } from "./discount"
 
 /** Registry mapping action → executor instance. */
 const executorMap = new Map<RecoveryAction, ActionExecutor>([
@@ -21,7 +22,8 @@ const executorMap = new Map<RecoveryAction, ActionExecutor>([
   ["update_payment_method", new AlternativePaymentExecutor()],
   ["escalate_to_merchant", new MerchantEscalationExecutor()],
   ["retry_payment", new RetryPaymentExecutor()],
-  ["offer_discount", new PaymentLinkExecutor()],
+  ["payment_link", new PaymentLinkExecutor()],
+  ["offer_discount", new DiscountExecutor()],
   ["cancel_and_refund", new PaymentLinkExecutor()],
 ])
 
@@ -55,7 +57,8 @@ export function resetExecutors(): void {
   executorMap.set("update_payment_method", new AlternativePaymentExecutor())
   executorMap.set("escalate_to_merchant", new MerchantEscalationExecutor())
   executorMap.set("retry_payment", new RetryPaymentExecutor())
-  executorMap.set("offer_discount", new PaymentLinkExecutor())
+  executorMap.set("payment_link", new PaymentLinkExecutor())
+  executorMap.set("offer_discount", new DiscountExecutor())
   executorMap.set("cancel_and_refund", new PaymentLinkExecutor())
 }
 

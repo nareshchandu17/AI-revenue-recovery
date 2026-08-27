@@ -88,6 +88,13 @@ export interface RecoveryContext {
     retryCooldownMinutes: number
     minimumRecoveryAmount: number // paise
     maximumRecoveryAmountForAutomation: number // paise
+    maxDiscountPercent: number
+  }
+  /** Per-intervention recovery probabilities (computed deterministically, NOT by the LLM). */
+  interventionProbabilities?: {
+    baseline: { probability: number; confidence: number; explanation: string[] }
+    interventions: { action: string; probability: number; confidence: number; explanation: string[] }[]
+    modelVersion: string
   }
 }
 
@@ -103,6 +110,8 @@ export interface AIDecisionOutput {
   customerIntent: "LOW" | "MEDIUM" | "HIGH"
   recommendedDelayMinutes: number | null
   stopReason: string | null
+  /** Discount percentage (0-100). Only valid when action = 'offer_discount'. */
+  discountPercent: number | null
 }
 
 // --- Policy Layer -----------------------------------------------------------
@@ -124,6 +133,8 @@ export interface MerchantPolicy {
   minimumRecoveryProbability: number // 0-1
   minimumConfidence: number // 0-1
   retryCooldownMinutes: number
+  /** Maximum discount as a percentage of transaction value (0-100). Enforced server-side. */
+  maxDiscountPercent: number
 }
 
 // --- Agent Result (what the API returns) ------------------------------------
