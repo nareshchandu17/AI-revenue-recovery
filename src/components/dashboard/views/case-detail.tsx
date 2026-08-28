@@ -283,7 +283,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
       </div>
 
       {/* ── Key Metrics Row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Card className="p-3">
           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Amount At Risk</p>
           <p className="text-lg font-bold mt-0.5">{formatCurrencyFull(c.amountAtRisk)}</p>
@@ -303,6 +303,34 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
         <Card className="p-3 col-span-2 md:col-span-1">
           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Attempts</p>
           <p className="text-lg font-bold mt-0.5">{c.recoveryAttempts.length}</p>
+        </Card>
+        {/* Feature 14: Time decay indicator */}
+        <Card className="p-3 col-span-2 md:col-span-1">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Time Decay</p>
+          {(() => {
+            const ageMs = Date.now() - new Date(c.detectedAt).getTime()
+            const ageHours = ageMs / 3_600_000
+            const decayFactor = Math.exp(-0.693 * ageHours / 24) // 24h half-life
+            const isAging = decayFactor < 0.7
+            return (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className={cn(
+                      "text-lg font-bold mt-0.5 tabular-nums",
+                      isAging ? "text-amber-600 dark:text-amber-400" : ""
+                    )}>
+                      {decayFactor.toFixed(2)}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Case is {ageHours < 24 ? `${ageHours.toFixed(0)}h` : `${(ageHours / 24).toFixed(1)}d`} old
+                    {isAging ? " — Recovery opportunity is aging" : " — Fresh recovery opportunity"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )
+          })()}
         </Card>
       </div>
 

@@ -1,0 +1,757 @@
+     1→generator client {
+     2→  provider = "prisma-client-js"
+     3→}
+     4→
+     5→datasource db {
+     6→  provider = "sqlite"
+     7→  url      = env("DATABASE_URL")
+     8→}
+     9→
+    10→// =================================================================
+    11→// AI Revenue Recovery — Domain Schema
+    12→//
+    13→// Money representation: All monetary amounts are stored as integers
+    14→// representing the smallest currency unit (paise for INR, cents for
+    15→// USD, etc.). This avoids floating-point precision issues entirely.
+    16→// Divide by 100 to get the human-readable amount.
+    17→// =================================================================
+    18→
+    19→// --- Enums --------------------------------------------------------
+    20→
+    21→enum PaymentStatus {
+    22→  created
+    23→  authorized
+    24→  captured
+    25→  refunded
+    26→  failed
+    27→  cancelled
+    28→}
+    29→
+    30→enum PaymentMethod {
+    31→  upi
+    32→  card
+    33→  netbanking
+    34→  wallet
+    35→  emi
+    36→}
+    37→
+    38→enum CheckoutStatus {
+    39→  created
+    40→  completed
+    41→  abandoned
+    42→  expired
+    43→}
+    44→
+    45→enum SubscriptionStatus {
+    46→  active
+    47→  paused
+    48→  cancelled
+    49→  past_due
+    50→  trialing
+    51→}
+    52→
+    53→enum RecoveryCaseStatus {
+    54→  detected
+    55→  diagnosing
+    56→  diagnosed
+    57→  awaiting_approval
+    58→  executing
+    59→  completed
+    60→  failed
+    61→  dismissed
+    62→}
+    63→
+    64→enum RecoveryAction {
+    65→  retry_payment
+    66→  send_reminder
+    67→  offer_discount
+    68→  payment_link
+    69→  update_payment_method
+    70→  cancel_and_refund
+    71→  escalate_to_merchant
+    72→  no_action
+    73→}
+    74→
+    75→enum RecoveryAttemptStatus {
+    76→  pending
+    77→  queued
+    78→  running
+    79→  succeeded
+    80→  failed
+    81→  cancelled
+    82→  blocked
+    83→}
+    84→
+    85→enum DecisionStatus {
+    86→  pending
+    87→  approved
+    88→  rejected
+    89→  overridden
+    90→  expired
+    91→}
+    92→
+    93→enum RiskCategory {
+    94→  payment_failed
+    95→  payment_expired
+    96→  checkout_abandoned
+    97→  subscription_lapsed
+    98→  refund_requested
+    99→  other
+   100→}
+   101→
+   102→enum Priority {
+   103→  low
+   104→  medium
+   105→  high
+   106→  critical
+   107→}
+   108→
+   109→enum AttributionStatus {
+   110→  pending
+   111→  attributed
+   112→  unattributed
+   113→  rejected
+   114→}
+   115→
+   116→enum AttributionSource {
+   117→  payment_retry
+   118→  payment_link
+   119→  manual
+   120→  temporal
+   121→}
+   122→
+   123→enum AuditActorType {
+   124→  system
+   125→  ai_agent
+   126→  merchant
+   127→  webhook
+   128→}
+   129→
+   130→// =================================================================
+   131→// Intervention Outcome Evaluation (Feature 7)
+   132→//
+   133→// Classifies executed recovery interventions by their actual outcome.
+   134→// Each evaluation is versioned and immutable — new evaluations create
+   135→// new records. Historical evaluations are never silently rewritten.
+   136→//
+   137→// Outcome Definitions:
+   138→//   RECOVERED  — Attempt executed + verified attribution linked
+   139→//   INEFFECTIVE — Attempt executed but no attribution after evaluation window
+   140→//   BLOCKED   — Attempt was blocked (DND, policy, contact limit) — NOT an intervention
+   141→//   CANCELLED — Attempt was cancelled before execution — NOT an intervention
+   142→//   PREEMPTED — Payment captured before attempt execution — NOT an intervention
+   143→//   UNKNOWN   — Insufficient time or data to classify
+   144→// =================================================================
+   145→
+   146→enum InterventionOutcome {
+   147→  RECOVERED
+   148→  INEFFECTIVE
+   149→  BLOCKED
+   150→  CANCELLED
+   151→  PREEMPTED
+   152→  UNKNOWN
+   153→}
+   154→
+   155→// --- Models -------------------------------------------------------
+   156→
+   157→model Merchant {
+   158→  id        String   @id @default(cuid())
+   159→  name      String
+   160→  email     String   @unique
+   161→  industry  String   @default("ecommerce")
+   162→  createdAt DateTime @default(now())
+   163→  updatedAt DateTime @updatedAt
+   164→
+   165→  // --- Contact Frequency Policy (Feature 4) ---
+   166→  /** Max customer-facing contacts per customer per rolling 24h window. */
+   167→  maxContactsPerDay         Int @default(3)
+   168→  /** Max customer-facing contacts per customer per rolling 7-day window. */
+   169→  maxContactsPerWeek        Int @default(7)
+   170→  /** Minimum minutes between consecutive contacts to the same customer. */
+   171→  minContactIntervalMinutes Int @default(60)
+   172→
+   173→  customers    Customer[]
+   174→  payments     Payment[]
+   175→  checkouts    Checkout[]
+   176→  subscriptions Subscription[]
+   177→  recoveryCases RecoveryCase[]
+   178→  communicationEvents CommunicationEvent[]
+   179→  riskAnomalies RiskAnomaly[]
+   180→  interventionFeedbackStats InterventionFeedbackStats[]
+   181→  interventionFeedbackRecords InterventionFeedbackRecord[]
+   182→
+   183→  @@index([email])
+   184→}
+   185→
+   186→model Customer {
+   187→  id            String   @id @default(cuid())
+   188→  merchantId    String
+   189→  email         String
+   190→  phone         String   @default("")
+   191→  displayName   String   @default("")
+   192→  createdAt     DateTime @default(now())
+   193→  updatedAt     DateTime @updatedAt
+   194→
+   195→  // --- Communication Consent (Feature 5) ---
+   196→  /** Global do-not-contact flag. When true, ALL customer-facing communications are blocked. */
+   197→  doNotContact           Boolean   @default(false)
+   198→  /** Per-channel opt-out flags. Null = use global doNotContact. True = opted out. */
+   199→  emailOptOut            Boolean   @default(false)
+   200→  smsOptOut              Boolean   @default(false)
+   201→  whatsappOptOut         Boolean   @default(false)
+   202→  voiceOptOut            Boolean   @default(false)
+   203→  /** When the customer last opted out (any channel). */
+   204→  optedOutAt             DateTime?
+   205→  /** Free-text reason for opt-out (e.g. "too many messages"). */
+   206→  optOutReason           String   @default("")
+   207→  /** Who set the preference: MERCHANT, CUSTOMER, SYSTEM, IMPORT. */
+   208→  optOutSource           String   @default("SYSTEM")
+   209→
+   210→  merchant     Merchant              @relation(fields: [merchantId], references: [id])
+   211→  payments     Payment[]
+   212→  checkouts    Checkout[]
+   213→  subscriptions Subscription[]
+   214→  communicationEvents  CommunicationEvent[]
+   215→
+   216→  @@unique([merchantId, email])
+   217→  @@index([merchantId])
+   218→  @@index([email])
+   219→  @@index([merchantId, doNotContact])
+   220→}
+   221→
+   222→model Payment {
+   223→  id               String        @id @default(cuid())
+   224→  merchantId       String
+   225→  customerId       String
+   226→  // External reference from the payment provider (e.g. Razorpay payment_id)
+   227→  externalId       String        @unique @default("")
+   228→  amount           Int           // in paise
+   229→  currency         String        @default("INR")
+   230→  status           PaymentStatus @default(created)
+   231→  method           PaymentMethod?
+   232→  // Short failure reason from the provider, e.g. "TIMED_OUT"
+   233→  failureCode      String        @default("")
+   234→  failureReason    String        @default("")
+   235→  amountRefunded   Int           @default(0) // in paise
+   236→  description      String        @default("")
+   237→  createdAt        DateTime      @default(now())
+   238→  updatedAt        DateTime      @updatedAt
+   239→
+   240→  merchant              Merchant              @relation(fields: [merchantId], references: [id])
+   241→  customer              Customer              @relation(fields: [customerId], references: [id])
+   242→  recoveryCase          RecoveryCase?
+   243→  recoveryAttributions  RecoveryAttribution[]
+   244→
+   245→  @@index([merchantId, status])
+   246→  @@index([customerId])
+   247→  @@index([status])
+   248→  @@index([createdAt])
+   249→}
+   250→
+   251→model Checkout {
+   252→  id          String         @id @default(cuid())
+   253→  merchantId  String
+   254→  customerId  String
+   255→  amount      Int            // in paise
+   256→  currency    String         @default("INR")
+   257→  status      CheckoutStatus @default(created)
+   258→  // Items in the cart as a JSON string — kept minimal, expanded later if needed
+   259→  itemsJson   String         @default("[]")
+   260→  abandonedAt DateTime?
+   261→  createdAt   DateTime       @default(now())
+   262→  updatedAt   DateTime       @updatedAt
+   263→
+   264→  merchant Merchant @relation(fields: [merchantId], references: [id])
+   265→  customer Customer @relation(fields: [customerId], references: [id])
+   266→
+   267→  @@index([merchantId, status])
+   268→  @@index([customerId])
+   269→  @@index([status])
+   270→  @@index([createdAt])
+   271→}
+   272→
+   273→model Subscription {
+   274→  id             String             @id @default(cuid())
+   275→  merchantId     String
+   276→  customerId     String
+   277→  // External subscription ID from the payment provider
+   278→  externalId     String             @default("")
+   279→  amount         Int                // in paise, per billing cycle
+   280→  currency       String             @default("INR")
+   281→  status         SubscriptionStatus @default(active)
+   282→  // How many times a payment retry has been attempted
+   283→  retryCount     Int                @default(0)
+   284→  currentPeriodStart DateTime       @default(now())
+   285→  currentPeriodEnd   DateTime       @default(now())
+   286→  createdAt      DateTime           @default(now())
+   287→  updatedAt      DateTime           @updatedAt
+   288→
+   289→  merchant Merchant @relation(fields: [merchantId], references: [id])
+   290→  customer Customer @relation(fields: [customerId], references: [id])
+   291→
+   292→  @@index([merchantId, status])
+   293→  @@index([customerId])
+   294→  @@index([status])
+   295→}
+   296→
+   297→model RecoveryCase {
+   298→  id                   String             @id @default(cuid())
+   299→  merchantId           String
+   300→  // Which entity triggered this case — one of these will be non-null
+   301→  paymentId            String?           @unique
+   302→  checkoutId           String?
+   303→  subscriptionId       String?
+   304→  // Amount at risk (in paise)
+   305→  amountAtRisk         Int
+   306→  currency             String             @default("INR")
+   307→  category             RiskCategory
+   308→  priority             Priority           @default(medium)
+   309→  status               RecoveryCaseStatus @default(detected)
+   310→  recoveryProbability  Float              @default(0)
+   311→  // Net amount actually recovered (in paise)
+   312→  recoveredAmount      Int                @default(0)
+   313→  detectedAt           DateTime           @default(now())
+   314→  resolvedAt           DateTime?
+   315→  createdAt            DateTime           @default(now())
+   316→  updatedAt            DateTime           @updatedAt
+   317→
+   318→  merchant          Merchant          @relation(fields: [merchantId], references: [id])
+   319→  payment           Payment?           @relation(fields: [paymentId], references: [id])
+   320→  agentDecisions              AgentDecision[]
+   321→  recoveryAttempts            RecoveryAttempt[]
+   322→  recoveryAttributions        RecoveryAttribution[]
+   323→  probabilityEstimates        RecoveryProbabilityEstimate[]
+   324→  auditEvents                 AuditEvent[]
+   325→  communicationEvents         CommunicationEvent[]
+   326→  interventionEvaluations     InterventionEvaluation[]
+   327→
+   328→  @@index([merchantId, status])
+   329→  @@index([status])
+   330→  @@index([priority])
+   331→  @@index([category])
+   332→  @@index([detectedAt])
+   333→}
+   334→
+   335→model AgentDecision {
+   336→  id                   String         @id @default(cuid())
+   337→  recoveryCaseId       String
+   338→  // What the agent observed about the case
+   339→  observation          String
+   340→  // Root cause identified
+   341→  diagnosis            String
+   342→  // Structured reasoning as JSON — flexible for future AI output
+   343→  reasoningJson        String         @default("{}")
+   344→  recommendedAction    RecoveryAction
+   345→  // 0.0 to 1.0
+   346→  confidence           Float
+   347→  // 0.0 to 1.0
+   348→  recoveryProbability  Float          @default(0)
+   349→  status               DecisionStatus @default(pending)
+   350→  // If a merchant approved/rejected, who and when
+   351→  reviewedBy           String         @default("")
+   352→  reviewedAt           DateTime?
+   353→  createdAt            DateTime       @default(now())
+   354→  updatedAt            DateTime       @updatedAt
+   355→
+   356→  recoveryCase RecoveryCase @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+   357→  recoveryAttempts RecoveryAttempt[]
+   358→  probabilityEstimates RecoveryProbabilityEstimate[]
+   359→
+   360→  @@index([recoveryCaseId])
+   361→  @@index([status])
+   362→}
+   363→
+   364→model RecoveryAttempt {
+   365→  id                 String               @id @default(cuid())
+   366→  recoveryCaseId     String
+   367→  agentDecisionId    String?
+   368→  action             RecoveryAction
+   369→  status             RecoveryAttemptStatus @default(pending)
+   370→  // Sequential attempt number for this recovery case (1-based)
+   371→  attemptNumber      Int                   @default(1)
+   372→  // Amount recovered by this specific attempt (in paise)
+   373→  recoveredAmount    Int                   @default(0)
+   374→  // Short reason if the attempt failed
+   375→  failureReason      String               @default("")
+   376→  // External reference (e.g. Razorpay refund_id, retry payment_id)
+   377→  externalRef        String               @default("")
+   378→  // BullMQ job ID for tracing
+   379→  jobId              String               @default("")
+   380→  // Whether this execution was simulated (test mode)
+   381→  simulated          Boolean              @default(false)
+   382→  // When this attempt was scheduled for execution
+   383→  scheduledAt        DateTime?
+   384→  // When the worker started processing
+   385→  startedAt          DateTime?
+   386→  attemptedAt        DateTime             @default(now())
+   387→  completedAt        DateTime?
+   388→  createdAt          DateTime             @default(now())
+   389→  updatedAt          DateTime             @updatedAt
+   390→
+   391→  recoveryCase       RecoveryCase          @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+   392→  agentDecision      AgentDecision?       @relation(fields: [agentDecisionId], references: [id])
+   393→  recoveryAttributions RecoveryAttribution[]
+   394→  communicationEvent  CommunicationEvent?
+   395→  interventionEvaluation InterventionEvaluation?
+   396→
+   397→  @@index([recoveryCaseId])
+   398→  @@index([agentDecisionId])
+   399→  @@index([status])
+   400→  @@index([attemptedAt])
+   401→  @@index([recoveryCaseId, attemptNumber])
+   402→}
+   403→
+   404→model AuditEvent {
+   405→  id         String         @id @default(cuid())
+   406→  // The recovery case this event relates to (null for system-level events)
+   407→  caseId     String?
+   408→  actorType  AuditActorType @default(system)
+   409→  actorId    String         @default("")
+   410→  eventType  String
+   411→  entityType String         @default("")
+   412→  entityId   String         @default("")
+   413→  action     String
+   414→  // Human-readable description
+   415→  details    String         @default("")
+   416→  // Structured metadata as JSON
+   417→  metadataJson String        @default("{}")
+   418→  createdAt  DateTime       @default(now())
+   419→
+   420→  recoveryCase RecoveryCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+   421→
+   422→  @@index([caseId])
+   423→  @@index([eventType])
+   424→  @@index([actorType])
+   425→  @@index([createdAt])
+   426→  @@index([entityType, entityId])
+   427→}
+   428→
+   429→// =================================================================
+   430→// Communication Events (Feature 4)
+   431→//
+   432→// Tracks every customer-facing communication sent by the recovery
+   433→// system. This is DISTINCT from RecoveryAttempt — a RecoveryAttempt
+   434→// may or may not result in a CommunicationEvent (e.g. no_action,
+   435→// update_payment_method do not contact the customer).
+   436→//
+   437→// Only SENT/DELIVERED events count toward contact frequency limits.
+   438→// QUEUED events ALSO count to prevent burst bypass.
+   439→// BLOCKED events are recorded but do NOT count toward limits.
+   440→// =================================================================
+   441→
+   442→enum CommunicationChannel {
+   443→  email
+   444→  sms
+   445→  whatsapp
+   446→  voice
+   447→  push
+   448→}
+   449→
+   450→enum CommunicationEventStatus {
+   451→  planned
+   452→  queued
+   453→  sent
+   454→  delivered
+   455→  failed
+   456→  cancelled
+   457→  blocked
+   458→}
+   459→
+   460→enum CommunicationAction {
+   461→  SEND_REMINDER
+   462→  SEND_PAYMENT_LINK
+   463→  EMAIL
+   464→  SMS
+   465→  WHATSAPP
+   466→  VOICE
+   467→}
+   468→
+   469→enum CommunicationBlockReason {
+   470→  CONTACT_FREQUENCY_LIMIT
+   471→  DO_NOT_CONTACT
+   472→  CHANNEL_OPT_OUT
+   473→  CASE_ALREADY_RECOVERED
+   474→  DAILY_CAP_REACHED
+   475→  WEEKLY_CAP_REACHED
+   476→  MINIMUM_INTERVAL_NOT_MET
+   477→  CUSTOMER_DND_ACTIVE
+   478→}
+   479→
+   480→model CommunicationEvent {
+   481→  id              String                 @id @default(cuid())
+   482→  customerId      String
+   483→  merchantId      String
+   484→  recoveryCaseId  String?
+   485→  recoveryAttemptId String? @unique
+   486→  /** Which communication was attempted. */
+   487→  action          CommunicationAction
+   488→  /** Delivery channel used. */
+   489→  channel         CommunicationChannel
+   490→  status          CommunicationEventStatus @default(planned)
+   491→  /** If blocked, structured reason. */
+   492→  blockReason     CommunicationBlockReason?
+   493→  /** ISO-8601 when customer becomes eligible again (if blocked). */
+   494→  nextEligibleAt  DateTime?
+   495→  /** Idempotency key: prevents duplicate contacts on retry/re-execution. */
+   496→  idempotencyKey  String                 @default("")
+   497→  /** Short human-readable detail. */
+   498→  details         String                 @default("")
+   499→  createdAt       DateTime               @default(now())
+   500→  updatedAt       DateTime               @updatedAt
+   501→
+   502→  customer        Customer               @relation(fields: [customerId], references: [id])
+   503→  merchant        Merchant               @relation(fields: [merchantId], references: [id])
+   504→  recoveryCase    RecoveryCase?          @relation(fields: [recoveryCaseId], references: [id])
+   505→  recoveryAttempt RecoveryAttempt?       @relation(fields: [recoveryAttemptId], references: [id])
+   506→
+   507→  @@unique([idempotencyKey])
+   508→  @@index([customerId, createdAt])
+   509→  @@index([customerId, channel])
+   510→  @@index([merchantId, customerId, createdAt])
+   511→  @@index([recoveryCaseId])
+   512→  @@index([recoveryAttemptId])
+   513→  @@index([status])
+   514→  @@index([createdAt])
+   515→}
+   516→
+   517→model RecoveryAttribution {
+   518→  id                 String            @id @default(cuid())
+   519→  recoveryCaseId     String
+   520→  recoveryAttemptId  String?
+   521→  // The successful payment that recovered revenue
+   522→  paymentId          String
+   523→  // Amount recovered by this attribution (in paise)
+   524→  amount             Int
+   525→  status             AttributionStatus @default(pending)
+   526→  // How the attribution was determined
+   527→  source             AttributionSource
+   528→  // 0.0 to 1.0 — confidence in this attribution
+   529→  confidence         Float             @default(0)
+   530→  // Human-readable explanation
+   531→  reason             String            @default("")
+   532→  createdAt          DateTime          @default(now())
+   533→  updatedAt          DateTime          @updatedAt
+   534→
+   535→  recoveryCase    RecoveryCase    @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+   536→  recoveryAttempt RecoveryAttempt? @relation(fields: [recoveryAttemptId], references: [id])
+   537→  payment         Payment         @relation(fields: [paymentId], references: [id])
+   538→
+   539→  // Prevent double-counting: same case + same payment can only be attributed once
+   540→  @@unique([recoveryCaseId, paymentId])
+   541→  @@index([recoveryCaseId])
+   542→  @@index([recoveryAttemptId])
+   543→  @@index([paymentId])
+   544→  @@index([status])
+   545→  @@index([source])
+   546→}
+   547→
+   548→// =================================================================
+   549→// Per-Intervention Recovery Probability Estimates
+   550→//
+   551→// Stores deterministic probability estimates for each candidate
+   552→// intervention on a recovery case. Each estimate is versioned and
+   553→// immutable — new analysis runs create new records, never update.
+   554→//
+   555→// Baseline vs Intervention:
+   556→//   isBaseline=true  → P(recover | case, no intervention)
+   557→//   isBaseline=false → P(recover | case, specific action)
+   558→// =================================================================
+   559→
+   560→model RecoveryProbabilityEstimate {
+   561→  id              String         @id @default(cuid())
+   562→  recoveryCaseId  String
+   563→  agentDecisionId String?
+   564→  // Which intervention this estimate is for.
+   565→  // Maps to RecoveryAction enum values.
+   566→  action          String
+   567→  // 0.0 to 1.0 — estimated recovery probability for this intervention
+   568→  probability     Float
+   569→  // 0.0 to 1.0 — how confident we are in this estimate
+   570→  confidence      Float         @default(0)
+   571→  // true = baseline (no intervention), false = intervention-specific
+   572→  isBaseline      Boolean        @default(false)
+   573→  // Structured explainability factors as JSON
+   574→  // e.g. [{"signal": "...", "direction": "positive", "detail": "..."}]
+   575→  factorsJson     String         @default("[]")
+   576→  // Version of the probability model that produced this estimate
+   577→  modelVersion    String         @default("1.0.0")
+   578→  createdAt       DateTime       @default(now())
+   579→
+   580→  recoveryCase  RecoveryCase  @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+   581→  agentDecision AgentDecision? @relation(fields: [agentDecisionId], references: [id])
+   582→
+   583→  @@index([recoveryCaseId])
+   584→  @@index([agentDecisionId])
+   585→  @@index([action])
+   586→  @@index([modelVersion])
+   587→}
+   588→
+   589→// =================================================================
+   590→// Intervention Evaluation (Feature 7)
+   591→//
+   592→// Persists the outcome classification of each executed intervention.
+   593→// Immutable: new evaluations create new records; old ones are preserved.
+   594→// evaluationVersion ensures historical stability.
+   595→// =================================================================
+   596→
+   597→model InterventionEvaluation {
+   598→  id                 String             @id @default(cuid())
+   599→  recoveryAttemptId   String             @unique
+   600→  recoveryCaseId     String
+   601→  /** The classified outcome of this intervention. */
+   602→  outcome            InterventionOutcome
+   603→  /** Human-readable explanation of why this outcome was assigned. */
+   604→  classificationReason String
+   605→  /** Version of the evaluation logic that produced this classification. */
+   606→  evaluationVersion  String             @default("1.0.0")
+   607→  evaluatedAt        DateTime           @default(now())
+   608→
+   609→  recoveryAttempt     RecoveryAttempt    @relation(fields: [recoveryAttemptId], references: [id])
+   610→  recoveryCase        RecoveryCase       @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+   611→  feedbackRecords     InterventionFeedbackRecord[]
+   612→  @@index([recoveryCaseId])
+   613→  @@index([outcome])
+   614→  @@index([evaluationVersion])
+   615→  @@index([evaluatedAt])
+   616→}
+   617→
+   618→// =================================================================
+   619→// Anomaly Detection (Feature 13)
+   620→//
+   621→// Records statistically unusual deviations in merchant payment behavior.
+   622→// Idempotent: deterministic identity based on merchant+metric+time bucket+detectionVersion.
+   623→// Severity comes from deterministic logic — NOT from AI.
+   624→// =================================================================
+   625→
+   626→enum AnomalySeverity {
+   627→  NORMAL
+   628→  WATCH
+   629→  ELEVATED
+   630→  CRITICAL
+   631→}
+   632→
+   633→enum AnomalyStatus {
+   634→  active
+   635→  resolved
+   636→  expired
+   637→  insufficient_data
+   638→}
+   639→
+   640→enum AnomalyMetric {
+   641→  PAYMENT_FAILURE_RATE
+   642→  PAYMENT_SUCCESS_RATE
+   643→  FAILED_PAYMENT_VALUE
+   644→  CHECKOUT_ABANDONMENT_RATE
+   645→  RECOVERY_FAILURE_RATE
+   646→}
+   647→
+   648→model RiskAnomaly {
+   649→  id              String          @id @default(cuid())
+   650→  merchantId      String
+   651→  metric          AnomalyMetric
+   652→  /** Start of the observation window (UTC). */
+   653→  windowStart     DateTime
+   654→  /** End of the observation window (UTC). */
+   655→  windowEnd       DateTime
+   656→  /** Historical baseline value (0-1 for rates, paise for value). */
+   657→  baselineValue   Float
+   658→  /** Observed value in the current window. */
+   659→  observedValue   Float
+   660→  /** (observed - baseline) / baseline — signed. */
+   661→  deviation       Float
+   662→  severity        AnomalySeverity
+   663→  /** Number of observations in the current window. */
+   664→  sampleSize      Int
+   665→  /** Number of observations in the baseline window. */
+   666→  baselineSampleSize Int
+   667→  /** Version of the detection algorithm. */
+   668→  detectionVersion String         @default("1.0.0")
+   669→  status          AnomalyStatus   @default(active)
+   670→  resolvedAt      DateTime?
+   671→  detectedAt      DateTime        @default(now())
+   672→
+   673→  merchant        Merchant        @relation(fields: [merchantId], references: [id])
+   674→
+   675→  @@unique([merchantId, metric, windowStart, windowEnd, detectionVersion])
+   676→  @@index([merchantId, status])
+   677→  @@index([severity])
+   678→  @@index([metric])
+   679→  @@index([detectedAt])
+   680→}
+   681→
+   682→// =================================================================
+   683→// Intervention Feedback Statistics (Feature 15)
+   684→//
+   685→// Aggregated outcome statistics per intervention action.
+   686→// Versioned: changing the smoothing model bumps the version.
+   687→// Bayesian smoothing (Beta-Binomial) prevents small-sample instability.
+   688→// =================================================================
+   689→
+   690→model InterventionFeedbackStats {
+   691→  id                    String  @id @default(cuid())
+   692→  merchantId            String
+   693→  action                String
+   694→  /** Number of interventions that resulted in recovery. */
+   695→  successCount          Int     @default(0)
+   696→  /** Total number of evaluated executed interventions. */
+   697→  trialCount            Int     @default(0)
+   698→  /** Total recovered amount in paise. */
+   699→  recoveredAmount       Int     @default(0)
+   700→  /** Total eligible amount in paise. */
+   701→  eligibleAmount        Int     @default(0)
+   702→  /** Bayesian-smoothed probability estimate. */
+   703→  smoothedProbability   Float   @default(0)
+   704→  /** Confidence derived from sample size. */
+   705→  confidence            Float   @default(0)
+   706→  /** Version of the feedback model that produced this. */
+   707→  feedbackModelVersion  String  @default("1.0.0")
+   708→  updatedAt             DateTime @updatedAt
+   709→  createdAt             DateTime @default(now())
+   710→
+   711→  merchant  Merchant  @relation(fields: [merchantId], references: [id])
+   712→
+   713→  @@unique([merchantId, action, feedbackModelVersion])
+   714→  @@index([merchantId])
+   715→  @@index([action])
+   716→  @@index([feedbackModelVersion])
+   717→}
+   718→
+   719→// =================================================================
+   720→// Feedback Records (Feature 15)
+   721→//
+   722→// Individual intervention outcome records used for computing
+   723→// aggregated feedback statistics. Links evaluation to feedback.
+   724→// Idempotent: one record per evaluation.
+   725→// =================================================================
+   726→
+   727→model InterventionFeedbackRecord {
+   728→  id                    String  @id @default(cuid())
+   729→  merchantId            String
+   730→  recoveryCaseId        String
+   731→  recoveryAttemptId     String
+   732→  interventionEvaluationId String
+   733→  action                String
+   734→  outcome               InterventionOutcome
+   735→  /** Amount recovered (paise). 0 if not recovered. */
+   736→  recoveredAmount       Int     @default(0)
+   737→  /** Amount at risk on the case (paise). */
+   738→  eligibleAmount        Int     @default(0)
+   739→  /** Customer value segment at time of intervention. */
+   740→  customerValueSegment  String  @default("unknown")
+   741→  /** Failure reason code on the original payment. */
+   742→  failureReason         String  @default("")
+   743→  /** Whether an anomaly was active when this intervention ran. */
+   744→  anomalyActive         Boolean @default(false)
+   745→  feedbackModelVersion  String  @default("1.0.0")
+   746→  createdAt             DateTime @default(now())
+   747→
+   748→  merchant                Merchant                @relation(fields: [merchantId], references: [id])
+   749→  interventionEvaluation  InterventionEvaluation   @relation(fields: [interventionEvaluationId], references: [id])
+   750→
+   751→  @@unique([interventionEvaluationId])
+   752→  @@index([merchantId, action])
+   753→  @@index([action, outcome])
+   754→  @@index([feedbackModelVersion])
+   755→  @@index([createdAt])
+   756→}
+   757→

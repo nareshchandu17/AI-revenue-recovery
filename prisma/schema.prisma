@@ -176,6 +176,9 @@ model Merchant {
   subscriptions Subscription[]
   recoveryCases RecoveryCase[]
   communicationEvents CommunicationEvent[]
+  riskAnomalies RiskAnomaly[]
+  interventionFeedbackStats InterventionFeedbackStats[]
+  interventionFeedbackRecords InterventionFeedbackRecord[]
 
   @@index([email])
 }
@@ -605,9 +608,149 @@ model InterventionEvaluation {
 
   recoveryAttempt     RecoveryAttempt    @relation(fields: [recoveryAttemptId], references: [id])
   recoveryCase        RecoveryCase       @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
-
+  feedbackRecords     InterventionFeedbackRecord[]
   @@index([recoveryCaseId])
   @@index([outcome])
   @@index([evaluationVersion])
   @@index([evaluatedAt])
+}
+
+// =================================================================
+// Anomaly Detection (Feature 13)
+//
+// Records statistically unusual deviations in merchant payment behavior.
+// Idempotent: deterministic identity based on merchant+metric+time bucket+detectionVersion.
+// Severity comes from deterministic logic — NOT from AI.
+// =================================================================
+
+enum AnomalySeverity {
+  NORMAL
+  WATCH
+  ELEVATED
+  CRITICAL
+}
+
+enum AnomalyStatus {
+  active
+  resolved
+  expired
+  insufficient_data
+}
+
+enum AnomalyMetric {
+  PAYMENT_FAILURE_RATE
+  PAYMENT_SUCCESS_RATE
+  FAILED_PAYMENT_VALUE
+  CHECKOUT_ABANDONMENT_RATE
+  RECOVERY_FAILURE_RATE
+}
+
+model RiskAnomaly {
+  id              String          @id @default(cuid())
+  merchantId      String
+  metric          AnomalyMetric
+  /** Start of the observation window (UTC). */
+  windowStart     DateTime
+  /** End of the observation window (UTC). */
+  windowEnd       DateTime
+  /** Historical baseline value (0-1 for rates, paise for value). */
+  baselineValue   Float
+  /** Observed value in the current window. */
+  observedValue   Float
+  /** (observed - baseline) / baseline — signed. */
+  deviation       Float
+  severity        AnomalySeverity
+  /** Number of observations in the current window. */
+  sampleSize      Int
+  /** Number of observations in the baseline window. */
+  baselineSampleSize Int
+  /** Version of the detection algorithm. */
+  detectionVersion String         @default("1.0.0")
+  status          AnomalyStatus   @default(active)
+  resolvedAt      DateTime?
+  detectedAt      DateTime        @default(now())
+
+  merchant        Merchant        @relation(fields: [merchantId], references: [id])
+
+  @@unique([merchantId, metric, windowStart, windowEnd, detectionVersion])
+  @@index([merchantId, status])
+  @@index([severity])
+  @@index([metric])
+  @@index([detectedAt])
+}
+
+// =================================================================
+// Intervention Feedback Statistics (Feature 15)
+//
+// Aggregated outcome statistics per intervention action.
+// Versioned: changing the smoothing model bumps the version.
+// Bayesian smoothing (Beta-Binomial) prevents small-sample instability.
+// =================================================================
+
+model InterventionFeedbackStats {
+  id                    String  @id @default(cuid())
+  merchantId            String
+  action                String
+  /** Number of interventions that resulted in recovery. */
+  successCount          Int     @default(0)
+  /** Total number of evaluated executed interventions. */
+  trialCount            Int     @default(0)
+  /** Total recovered amount in paise. */
+  recoveredAmount       Int     @default(0)
+  /** Total eligible amount in paise. */
+  eligibleAmount        Int     @default(0)
+  /** Bayesian-smoothed probability estimate. */
+  smoothedProbability   Float   @default(0)
+  /** Confidence derived from sample size. */
+  confidence            Float   @default(0)
+  /** Version of the feedback model that produced this. */
+  feedbackModelVersion  String  @default("1.0.0")
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  merchant  Merchant  @relation(fields: [merchantId], references: [id])
+
+  @@unique([merchantId, action, feedbackModelVersion])
+  @@index([merchantId])
+  @@index([action])
+  @@index([feedbackModelVersion])
+}
+
+// =================================================================
+// Feedback Records (Feature 15)
+//
+// Individual intervention outcome records used for computing
+// aggregated feedback statistics. Links evaluation to feedback.
+// Idempotent: one record per evaluation.
+// =================================================================
+
+model InterventionFeedbackRecord {
+  id                    String  @id @default(cuid())
+  merchantId            String
+  recoveryCaseId        String
+  recoveryAttemptId     String
+  interventionEvaluationId String
+  action                String
+  outcome               InterventionOutcome
+  /** Amount recovered (paise). 0 if not recovered. */
+  recoveredAmount       Int     @default(0)
+  /** Amount at risk on the case (paise). */
+  eligibleAmount        Int     @default(0)
+  /** Customer value segment at time of intervention. */
+  customerValueSegment  String  @default("unknown")
+  /** Failure reason code on the original payment. */
+  failureReason         String  @default("")
+  /** Whether an anomaly was active when this intervention ran. */
+  anomalyActive         Boolean @default(false)
+  feedbackModelVersion  String  @default("1.0.0")
+  createdAt             DateTime @default(now())
+
+  merchant                Merchant                @relation(fields: [merchantId], references: [id])
+  interventionEvaluation  InterventionEvaluation   @relation(fields: [interventionEvaluationId], references: [id])
+
+  @@unique([interventionEvaluationId])
+  @@index([merchantId, action])
+  @@index([action, outcome])
+  @@index([feedbackModelVersion])
+  @@index([createdAt])
 }

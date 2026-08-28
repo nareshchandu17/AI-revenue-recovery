@@ -10,6 +10,7 @@ import { db } from "@/lib/db"
 import type { MerchantPolicy } from "./types"
 import { DEFAULT_MERCHANT_POLICY } from "./policy"
 import type { RecoveryContext, CustomerSummary, PreviousAttempt, SourceContext } from "./types"
+import { getTimeDecayInfo, TIME_DECAY_VERSION } from "../time-decay"
 
 /**
  * Build a full RecoveryContext for a given case ID.
@@ -76,10 +77,11 @@ export async function buildRecoveryContext(
   // 6. Build source context
   const source = buildSourceContext(recoveryCase, subscription)
 
-  // 7. Calculate age
+  // 7. Calculate age and time decay
   const now = Date.now()
   const detectedAt = recoveryCase.detectedAt.getTime()
   const ageMinutes = Math.floor((now - detectedAt) / 60_000)
+  const timeDecay = getTimeDecayInfo(ageMinutes)
 
   // 8. Format amount for display
   const amountDisplay = formatAmount(
@@ -124,6 +126,7 @@ export async function buildRecoveryContext(
   } catch { /* non-fatal */ }
 
   return {
+    riskModelVersion: `scoring-v1.0 + decay-${TIME_DECAY_VERSION}`,
     case: {
       id: recoveryCase.id,
       amountAtRisk: recoveryCase.amountAtRisk,
@@ -135,6 +138,11 @@ export async function buildRecoveryContext(
       status: recoveryCase.status,
       detectedAt: recoveryCase.detectedAt.toISOString(),
       ageMinutes,
+      timeDecayInfo: {
+        factor: timeDecay.factor,
+        interpretation: timeDecay.explanation.interpretation,
+        ageDisplay: timeDecay.explanation.ageDisplay,
+      },
     },
     customer: {
       ...customer,

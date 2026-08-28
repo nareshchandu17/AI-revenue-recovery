@@ -26,16 +26,13 @@
 import { db } from '@/lib/db'
 import { logAudit } from '@/services/audit/log'
 import { logger } from '@/lib/logger'
-import { TERMINAL_ATTEMPT_STATUSES } from '@/lib/state-machine'
 import {
   EVALUATION_VERSION,
   INEFFECTIVE_WINDOW_HOURS,
-  EVALUABLE_ACTIONS,
-  EXECUTED_STATUSES,
-  NON_INTERVENTION_STATUSES,
 } from './types'
 import type { EvaluationResult } from './types'
 import type { InterventionOutcome } from '@prisma/client'
+import { recordFeedbackFromEvaluation } from '../feedback'
 
 // --- Public API -----------------------------------------------------------
 
@@ -112,6 +109,17 @@ export async function evaluateAttempt(attemptId: string): Promise<EvaluationResu
     evaluationVersion: EVALUATION_VERSION,
   })
 
+  // Feature 15: Record feedback from this evaluation (non-blocking, fire-and-forget)
+  // This triggers the feedback loop: evaluation → feedback record → aggregated stats
+  // Only RECOVERED and INEFFECTIVE outcomes will actually create feedback records.
+  recordFeedbackFromEvaluation(evaluation.id).catch((err) => {
+    logger.error('FEEDBACK_RECORDING_FAILED', {
+      evaluationId: evaluation.id,
+      attemptId: attempt.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+
   return evaluationToResult(evaluation)
 }
 
@@ -169,6 +177,15 @@ export async function markRecovered(attemptId: string, attributionId: string): P
     attribution: attributionId,
   })
 
+  // Feature 15: Record feedback from this RECOVERED evaluation
+  recordFeedbackFromEvaluation(evaluation.id).catch((err) => {
+    logger.error('FEEDBACK_RECORDING_FAILED', {
+      evaluationId: evaluation.id,
+      attemptId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+
   return evaluationToResult(evaluation)
 }
 
@@ -183,7 +200,7 @@ export async function batchEvaluatePending(maxCount: number = 100): Promise<numb
   // Find attempts that are terminal and evaluatable but not yet evaluated
   const unevaulatedAttempts = await db.recoveryAttempt.findMany({
     where: {
-      status: { in: [...EXECUTED_STATUSES, ...NON_INTERVENTION_STATUSES] },
+      status: { in: ['succeeded', 'failed', 'blocked', 'cancelled', 'pending', 'queued', 'running'] as const },
       interventionEvaluation: null,
       completedAt: { not: null },
     },

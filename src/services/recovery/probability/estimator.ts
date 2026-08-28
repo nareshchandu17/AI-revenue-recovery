@@ -27,6 +27,7 @@ import type {
   InterventionProbability,
 } from "./types"
 import { CURRENT_MODEL_VERSION } from "./types"
+import { computeTimeDecayFactor } from "../time-decay"
 
 const log = logger.child({ service: "probability_estimator" })
 
@@ -93,11 +94,29 @@ export function estimateActionProbability(
     throw new Error(`Unsupported intervention for probability estimation: ${action}`)
   }
 
+  // Feature 15: Use feedback-adjusted base if available.
+  // Feedback affects the BASE probability, NOT the signal adjustments.
+  // Policy gates (DND, contact frequency, discount ceiling) are unaffected.
+  const feedbackPrior = signals.feedbackAdjustedPriors?.[action]
+  let effectiveBase = prior.base
+  let feedbackFactor: ProbabilityFactor | null = null
+
+  if (feedbackPrior) {
+    effectiveBase = feedbackPrior.probability
+    // Clamp to prior bounds
+    effectiveBase = Math.max(prior.min, Math.min(prior.max, effectiveBase))
+    feedbackFactor = {
+      signal: 'historical_feedback',
+      direction: feedbackPrior.probability > prior.base ? 'positive' : feedbackPrior.probability < prior.base ? 'negative' : 'neutral',
+      detail: `Historical outcome feedback (${feedbackPrior.source}, n=${feedbackPrior.sampleSize}) adjusts base: ${(prior.base * 100).toFixed(0)}% → ${(effectiveBase * 100).toFixed(0)}%`,
+    }
+  }
+
   const factors = precomputedFactors ?? computeSignalAdjustments(signals)
   const relevantFactors = selectRelevantFactors(action, factors, signals)
 
-  // Start from base prior
-  let probability = prior.base
+  // Start from feedback-adjusted base (or static prior)
+  let probability = effectiveBase
 
   // Apply each relevant factor
   for (const f of relevantFactors) {
@@ -117,19 +136,30 @@ export function estimateActionProbability(
   probability = Math.round(probability * 1000) / 1000 // 3 decimal places
 
   // Compute confidence: more signals → higher confidence
+  // Feature 15: Boost confidence when feedback data is available
   const signalCount = relevantFactors.filter(
     (f) => f.factor.direction !== "neutral"
   ).length
   const maxSignals = 8
-  const confidence = Math.round(
+  let confidence = Math.round(
     Math.min(0.95, 0.4 + (signalCount / maxSignals) * 0.55) * 1000
   ) / 1000
+
+  // Slightly boost confidence if backed by established feedback
+  if (feedbackPrior && feedbackPrior.sampleSize >= 5) {
+    confidence = Math.min(0.95, confidence + 0.05)
+  }
+
+  // Build factors list, prepending feedback factor if present
+  const finalFactors = feedbackFactor
+    ? [feedbackFactor, ...relevantFactors.map((f) => f.factor)]
+    : relevantFactors.map((f) => f.factor)
 
   return {
     action,
     probability,
     confidence,
-    factors: relevantFactors.map((f) => f.factor),
+    factors: finalFactors,
     modelVersion: CURRENT_MODEL_VERSION,
   }
 }
@@ -279,31 +309,27 @@ function assessCustomerValue(signals: ProbabilitySignals): SignalAdjustment {
 
 function assessCaseAge(signals: ProbabilitySignals): SignalAdjustment {
   const hours = signals.ageHours
+  const ageMinutes = hours * 60
+  const decayFactor = computeTimeDecayFactor(ageMinutes)
 
-  if (hours <= 6) {
-    return {
-      factor: { signal: "case_age", direction: "positive", detail: `Case is very fresh (${hours.toFixed(0)}h old)` },
-      delta: 0.5,
-    }
-  } else if (hours <= 24) {
-    return {
-      factor: { signal: "case_age", direction: "positive", detail: `Case is recent (${hours.toFixed(0)}h old)` },
-      delta: 0.3,
-    }
-  } else if (hours <= 72) {
-    return {
-      factor: { signal: "case_age", direction: "neutral", detail: `Case is ${hours.toFixed(0)}h old — moderate recovery window` },
-      delta: 0.0,
-    }
-  } else if (hours <= 168) {
-    return {
-      factor: { signal: "case_age", direction: "negative", detail: `Case is ${hours.toFixed(0)}h old — recovery likelihood declining` },
-      delta: -0.3,
-    }
-  }
+  // Map decay factor to a signal delta
+  // decayFactor 1.0 → delta 0.5 (positive, very fresh)
+  // decayFactor 0.5 → delta 0.0 (neutral, half-life)
+  // decayFactor < 0.2 → delta -0.5 (negative, very old)
+  const normalizedDelta = (decayFactor - 0.5) * 1.0  // maps [0,1] → [-0.5, 0.5]
+
+  let direction: 'positive' | 'neutral' | 'negative'
+  if (normalizedDelta > 0.1) direction = 'positive'
+  else if (normalizedDelta < -0.1) direction = 'negative'
+  else direction = 'neutral'
+
   return {
-    factor: { signal: "case_age", direction: "negative", detail: `Case is very old (${hours.toFixed(0)}h) — recovery unlikely` },
-    delta: -0.6,
+    factor: {
+      signal: 'case_age',
+      direction,
+      detail: `Case is ${hours.toFixed(0)}h old. Time decay factor: ${decayFactor.toFixed(3)}. ${decayFactor >= 0.9 ? 'Very fresh — high recovery likelihood.' : decayFactor >= 0.5 ? 'Moderate age — decay is accelerating.' : 'Significantly aged — recovery opportunity declining.'}`,
+    },
+    delta: Math.max(-0.6, Math.min(0.5, normalizedDelta)),
   }
 }
 

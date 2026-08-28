@@ -385,13 +385,14 @@ describe("Edge cases", () => {
     expect(isPaymentEligible("failed", -100, false).eligible).toBe(false)
   })
 
-  it("180-day-old failure → zero recency", () => {
+  it("180-day-old failure → heavy time decay", () => {
     const result = computeRecoveryScore({
       customerStats: LOYAL_CUSTOMER, recoverability: "high",
       createdAt: new Date("2024-12-20T10:00:00.000Z"), amountPaise: 49900, now: NOW,
     })
-    const r = result.factors.find(f => f.name === "Recency")!
-    expect(r.points).toBe(0)
+    const r = result.factors.find(f => f.name === "Time Decay")!
+    expect(r).toBeDefined()
+    expect(r.points).toBeLessThan(0)
   })
 
   it("classifier infers PAYMENT_TIMEOUT from reason text", () => {

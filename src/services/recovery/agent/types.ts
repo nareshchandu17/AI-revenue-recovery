@@ -70,6 +70,7 @@ export interface SourceContext {
 
 /** The full context sent to the AI. Designed to be useful without leaking secrets. */
 export interface RecoveryContext {
+  riskModelVersion?: string
   case: {
     id: string
     amountAtRisk: number // paise
@@ -81,6 +82,11 @@ export interface RecoveryContext {
     status: string
     detectedAt: string // ISO date
     ageMinutes: number
+    timeDecayInfo?: {
+      factor: number
+      interpretation: string
+      ageDisplay: string
+    }
   }
   customer: CustomerSummary
   source: SourceContext

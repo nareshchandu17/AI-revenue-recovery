@@ -64,6 +64,10 @@ export interface ProbabilitySignals {
   previousAttemptCount: number
   previousAttemptActions: string[]
   previousAttemptSuccessCount: number
+  // Feature 15: Feedback-adjusted priors (optional — populated from DB)
+  // Maps action → { probability, source, sampleSize }
+  // If not provided, the estimator falls back to configured static priors.
+  feedbackAdjustedPriors?: Record<string, { probability: number; source: string; sampleSize: number }>
 }
 
 /** Model version for the current estimator. */

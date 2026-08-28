@@ -144,6 +144,8 @@ export const queryKeys = {
   cases: (params?: Record<string, string>) => ["cases", params] as const,
   caseDetail: (id: string) => ["case", id] as const,
   audit: (params?: Record<string, string>) => ["audit", params] as const,
+  anomalies: ["anomalies"] as const,
+  feedback: ["feedback"] as const,
 }
 
 // --- Error helpers ---
@@ -297,5 +299,79 @@ export function useAnalyzeCase() {
       return res.json()
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["case"] }); qc.invalidateQueries({ queryKey: ["cases"] }) },
+  })
+}
+
+// --- Feature 13: Anomaly Hooks ---
+
+export interface AnomalyItem {
+  id: string
+  merchantId: string
+  metric: string
+  windowStart: string
+  windowEnd: string
+  baselineValue: number
+  observedValue: number
+  deviation: number
+  severity: string
+  sampleSize: number
+  baselineSampleSize: number
+  detectionVersion: string
+  status: string
+  resolvedAt: string | null
+  detectedAt: string
+}
+
+export interface AnomaliesResponse {
+  success: boolean
+  anomalies: AnomalyItem[]
+}
+
+export function useAnomalies(status?: string) {
+  return useQuery({
+    queryKey: ["anomalies", status],
+    queryFn: async (): Promise<AnomaliesResponse> => {
+      const url = "/api/recovery/anomalies" + (status ? "?status=" + status : "")
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to load anomaly data"))
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+}
+
+// --- Feature 15: Feedback Hooks ---
+
+export interface FeedbackActionStats {
+  action: string
+  successCount: number
+  trialCount: number
+  recoveredAmount: number
+  eligibleAmount: number
+  smoothedProbability: number
+  confidence: number
+  feedbackModelVersion: string
+  sampleSize: number
+  isColdStart: boolean
+}
+
+export interface FeedbackData {
+  success: boolean
+  totalEvaluatedInterventions: number
+  totalPendingOutcomes: number
+  feedbackCoverage: number | null
+  byAction: Record<string, FeedbackActionStats>
+  overallSmoothedRate: number | null
+}
+
+export function useFeedback() {
+  return useQuery({
+    queryKey: ["feedback"],
+    queryFn: async (): Promise<FeedbackData> => {
+      const res = await fetch("/api/recovery/feedback")
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to load feedback data"))
+      return res.json()
+    },
+    staleTime: 30_000,
   })
 }

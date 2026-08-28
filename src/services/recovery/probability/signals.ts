@@ -1,10 +1,14 @@
 /**
  * Collects ProbabilitySignals from database records for a given recovery case.
  * This is the bridge between DB data and the probability estimator.
+ *
+ * Feature 15: Now also collects feedback-adjusted priors for each action.
  */
 
 import { db } from "@/lib/db"
 import { assessCustomerValue } from "../customer-value"
+import { getFeedbackAdjustedPrior } from "../feedback"
+import { SUPPORTED_ACTIONS, getPriorForAction } from "./priors"
 import type { ProbabilitySignals } from "./types"
 
 /**
@@ -91,6 +95,28 @@ export async function collectSignals(
   // 5. Recovery history signals
   const previousAttemptActions = recoveryCase.recoveryAttempts.map((a) => a.action)
 
+  // 6. Feature 15: Collect feedback-adjusted priors for all supported actions
+  // This is done in parallel — one query per action.
+  // Non-fatal: if feedback service fails, we fall back to static priors.
+  let feedbackAdjustedPriors: ProbabilitySignals['feedbackAdjustedPriors'] = undefined
+  try {
+    const feedbackPromises = SUPPORTED_ACTIONS
+      .filter((a) => a !== "no_action")
+      .map(async (action) => {
+        const configuredBase = getPriorForAction(action)?.base ?? 0.5
+        const adjusted = await getFeedbackAdjustedPrior(
+          recoveryCase.merchantId,
+          action,
+          configuredBase,
+        )
+        return [action, adjusted] as const
+      })
+    const results = await Promise.all(feedbackPromises)
+    feedbackAdjustedPriors = Object.fromEntries(results)
+  } catch {
+    // Non-fatal — fall back to static priors
+  }
+
   return {
     amountAtRisk: recoveryCase.amountAtRisk,
     category: recoveryCase.category,
@@ -112,5 +138,6 @@ export async function collectSignals(
     previousAttemptSuccessCount: recoveryCase.recoveryAttempts.filter(
       (a) => a.status === "succeeded"
     ).length,
+    feedbackAdjustedPriors,
   }
 }

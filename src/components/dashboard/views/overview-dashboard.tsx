@@ -1,13 +1,16 @@
 "use client"
 
-import { useMetrics, useCases } from "@/lib/hooks/use-queries"
+import { useMetrics, useCases, useAnomalies, useFeedback } from "@/lib/hooks/use-queries"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { EmptyState } from "@/components/dashboard/empty-state"
 import { ErrorState } from "@/components/dashboard/error-state"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, TrendingDown, TrendingUp, AlertCircle, Activity, IndianRupee, BarChart3, Zap, ShieldCheck, UserCheck } from "lucide-react"
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+import { ArrowRight, TrendingDown, TrendingUp, AlertCircle, Activity, IndianRupee, BarChart3, Zap, ShieldCheck, UserCheck, Clock } from "lucide-react"
 import { formatCurrency, formatPercent, formatCategory, formatAction, truncate } from "@/lib/format"
 import type { AppView } from "@/components/app-shell/app-sidebar"
 
@@ -24,6 +27,14 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
     sortOrder: "desc",
     limit: "5",
   })
+  const { data: anomaliesData } = useAnomalies("active")
+  const { data: feedbackData } = useFeedback()
+
+  const activeAnomaly = anomaliesData?.anomalies?.length
+    ? anomaliesData.anomalies.find(a => a.severity === "CRITICAL" || a.severity === "ELEVATED")
+      ?? anomaliesData.anomalies.find(a => a.severity === "WATCH")
+      ?? null
+    : null
 
   if (metricsError) {
     return <ErrorState message="Failed to load dashboard metrics. Please try again." onRetry={() => refetchMetrics()} />
@@ -86,6 +97,46 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
           variant={metrics && metrics.highPriorityCases > 0 ? "warning" : "default"}
         />
       </div>
+
+      {/* ── Payment Failure Spike Alert (Feature 13) ── */}
+      {activeAnomaly && (
+        <Card className={cn(
+          "border-l-4",
+          activeAnomaly.severity === 'CRITICAL' ? 'border-l-red-500 bg-red-50/50 dark:bg-red-950/20' :
+          activeAnomaly.severity === 'ELEVATED' ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20' :
+          'border-l-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20'
+        )}>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                Payment Failure Spike Detected
+              </CardTitle>
+              <Badge variant={activeAnomaly.severity === 'CRITICAL' ? 'destructive' : 'secondary'} className="text-[10px]">
+                {activeAnomaly.severity}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="text-xs space-y-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-bold text-foreground">
+                {(activeAnomaly.observedValue * 100).toFixed(1)}%
+              </span>
+              <span className="text-muted-foreground">failures</span>
+              <span className="text-muted-foreground">vs</span>
+              <span className="font-medium">
+                {(activeAnomaly.baselineValue * 100).toFixed(1)}% baseline
+              </span>
+            </div>
+            <p className="text-muted-foreground">
+              {activeAnomaly.deviation > 0
+                ? `${(activeAnomaly.deviation * 100).toFixed(0)}% above normal  •  ${activeAnomaly.sampleSize} payments in window`
+                : `${Math.abs(activeAnomaly.deviation * 100).toFixed(0)}% below normal  •  ${activeAnomaly.sampleSize} payments in window`
+              }
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Recovery Summary Flow ── */}
       <Card>
@@ -166,6 +217,32 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                             {c.priority} Priority
                           </span>
                           <StatusBadge status={c.status} />
+                          {/* Time decay indicator */}
+                          {(() => {
+                            const ageMs = Date.now() - new Date(c.detectedAt).getTime()
+                            const ageHours = ageMs / 3_600_000
+                            if (ageHours < 1) return null
+                            const decayFactor = Math.exp(-0.693 * ageHours / 24)
+                            const isAging = decayFactor < 0.7
+                            return (
+                              <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className={cn(
+                                      "text-[10px] tabular-nums ml-auto",
+                                      isAging ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                                    )}>
+                                      <Clock className="inline h-3 w-3 mr-0.5" />
+                                      {decayFactor >= 0.9 ? 'Fresh' : decayFactor >= 0.7 ? 'Aging' : decayFactor >= 0.4 ? 'Old' : 'Stale'}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="text-xs">
+                                    Case is {ageHours < 24 ? `${ageHours.toFixed(0)}h` : `${(ageHours / 24).toFixed(1)}d`} old — decay factor {decayFactor.toFixed(2)}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )
+                          })()}
                         </div>
                         <span className="text-sm font-bold shrink-0">
                           {formatCurrency(c.amountAtRisk)}
@@ -282,6 +359,53 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Outcome Feedback Loop (Feature 15) ── */}
+      {feedbackData && Object.keys(feedbackData.byAction).length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Intervention Feedback
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(feedbackData.byAction).map(([action, stats]) => (
+                <div key={action} className="flex items-center gap-3">
+                  <span className="text-xs font-medium w-32 shrink-0 truncate" title={action}>
+                    {formatAction(action)}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          stats.smoothedProbability >= 0.6 ? "bg-emerald-500" :
+                          stats.smoothedProbability >= 0.4 ? "bg-amber-500" : "bg-red-400"
+                        )}
+                        style={{ width: `${Math.round(stats.smoothedProbability * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold tabular-nums w-10 text-right">
+                    {(stats.smoothedProbability * 100).toFixed(0)}%
+                  </span>
+                  <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">
+                    n={stats.sampleSize}
+                  </span>
+                </div>
+              ))}
+              {feedbackData.overallSmoothedRate !== null && (
+                <p className="text-[10px] text-muted-foreground pt-1 border-t">
+                  Overall smoothed recovery rate: {(feedbackData.overallSmoothedRate * 100).toFixed(1)}%
+                  {feedbackData.feedbackCoverage !== null && `  •  Feedback coverage: ${(feedbackData.feedbackCoverage * 100).toFixed(0)}%`}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

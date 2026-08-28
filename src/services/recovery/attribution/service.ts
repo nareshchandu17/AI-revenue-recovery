@@ -42,9 +42,7 @@ export async function attemptAttribution(
   const { paymentId, amount, customerId, merchantId, providerPaymentId, providerOrderId } = input
 
   const attributionLog = logger.child({
-    paymentId,
-    providerPaymentId,
-    providerOrderId: providerOrderId ?? null,
+    externalPaymentId: providerPaymentId,
   })
 
   // Audit: payment received for attribution
@@ -377,6 +375,41 @@ async function createAttribution(
         confidence,
         recoveryAttemptId,
         wasPartial: !fullyRecovered,
+      },
+    })
+
+    // 9. Trigger outcome evaluation for the linked attempt (cross-feature integration)
+    if (recoveryAttemptId) {
+      try {
+        const { markRecovered } = await import("../outcome")
+        await markRecovered(recoveryAttemptId, attribution.id)
+      } catch (err) {
+        // Outcome evaluation failure must NOT break the attribution flow
+        logger.error("OUTCOME_EVALUATION_FAILED_AFTER_ATTRIBUTION", {
+          attributionId: attribution.id,
+          recoveryAttemptId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    // 10. Audit: payment attributed
+    await logAudit({
+      caseId: recoveryCaseId,
+      actor: { type: "webhook", source: "razorpay" },
+      eventType: "PAYMENT_ATTRIBUTED",
+      entityType: "payment",
+      entityId: paymentId,
+      action: "payment_attributed",
+      details: `Payment attributed to recovery case via ${source} (${(confidence * 100).toFixed(0)}% confidence). ₹${(actualIncrement / 100).toFixed(2)} recovered.`,
+      metadata: {
+        attributionId: attribution.id,
+        paymentId,
+        recoveryCaseId,
+        source,
+        confidence,
+        amount: actualIncrement,
+        recoveryAttemptId,
       },
     })
 

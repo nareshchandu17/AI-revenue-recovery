@@ -18,6 +18,7 @@ import { computePriority } from "./priority"
 import { createRecoveryCase } from "../case-service"
 import { logAudit } from "@/services/audit/log"
 import { OPEN_CASE_STATUSES } from "./constants"
+import { getActiveAnomalyAdjustment } from "@/services/anomaly"
 import type { DetectionResult, RiskCandidate, CustomerPaymentStats } from "./types"
 import type { RiskCategory } from "@prisma/client"
 
@@ -75,7 +76,7 @@ async function hasOpenSubscriptionCase(subscriptionId: string): Promise<boolean>
 
 // --- Source scanners ------------------------------------------------------
 
-async function scanFailedPayments(result: DetectionResult, now: Date) {
+async function scanFailedPayments(result: DetectionResult, now: Date, anomalyCache: Map<string, number>) {
   const payments = await db.payment.findMany({
     where: {
       status: { in: ["failed", "cancelled"] },
@@ -115,6 +116,9 @@ async function scanFailedPayments(result: DetectionResult, now: Date) {
       customerValueWeight = cv.percentile.valueWeight
     } catch { /* non-fatal */ }
 
+    // Feature 13: Get anomaly factor for this merchant (cached)
+    const anomalyFactor = await getOrFetchAnomalyFactor(anomalyCache, payment.merchantId)
+
     const score = computeRecoveryScore({
       customerStats,
       recoverability: classification.recoverability,
@@ -123,6 +127,7 @@ async function scanFailedPayments(result: DetectionResult, now: Date) {
       amountPaise: payment.amount,
       now,
       customerValueWeight,
+      anomalyFactor,
     })
     const priority = computePriority(score.score, payment.amount)
 
@@ -154,7 +159,7 @@ async function scanFailedPayments(result: DetectionResult, now: Date) {
   }
 }
 
-async function scanAbandonedCheckouts(result: DetectionResult, now: Date) {
+async function scanAbandonedCheckouts(result: DetectionResult, now: Date, anomalyCache: Map<string, number>) {
   const checkouts = await db.checkout.findMany({
     where: {
       status: "abandoned",
@@ -182,12 +187,14 @@ async function scanAbandonedCheckouts(result: DetectionResult, now: Date) {
 
     const classification = classifyFailure("", "", "checkout")
     const customerStats = await getCustomerStats(checkout.customerId)
+    const anomalyFactor = await getOrFetchAnomalyFactor(anomalyCache, checkout.merchantId)
     const score = computeRecoveryScore({
       customerStats,
       recoverability: classification.recoverability,
       createdAt: checkout.abandonedAt ?? checkout.createdAt,
       amountPaise: checkout.amount,
       now,
+      anomalyFactor,
     })
     const priority = computePriority(score.score, checkout.amount)
 
@@ -217,7 +224,7 @@ async function scanAbandonedCheckouts(result: DetectionResult, now: Date) {
   }
 }
 
-async function scanPastDueSubscriptions(result: DetectionResult, now: Date) {
+async function scanPastDueSubscriptions(result: DetectionResult, now: Date, anomalyCache: Map<string, number>) {
   const subscriptions = await db.subscription.findMany({
     where: {
       status: "past_due",
@@ -242,6 +249,7 @@ async function scanPastDueSubscriptions(result: DetectionResult, now: Date) {
 
     const classification = classifyFailure("", "", "subscription")
     const customerStats = await getCustomerStats(sub.customerId)
+    const anomalyFactor = await getOrFetchAnomalyFactor(anomalyCache, sub.merchantId)
     const score = computeRecoveryScore({
       customerStats,
       recoverability: classification.recoverability,
@@ -249,6 +257,7 @@ async function scanPastDueSubscriptions(result: DetectionResult, now: Date) {
       amountPaise: sub.amount,
       retryCount: sub.retryCount,
       now,
+      anomalyFactor,
     })
     const priority = computePriority(score.score, sub.amount)
 
@@ -291,6 +300,28 @@ function mapToRiskCategory(
   return "payment_failed"
 }
 
+// --- Feature 13: Anomaly factor cache per merchant ------------------------
+
+/**
+ * Get anomaly factor for a merchant from cache, or fetch and cache it.
+ * Avoids N+1 queries during detection scans.
+ */
+async function getOrFetchAnomalyFactor(
+  cache: Map<string, number>,
+  merchantId: string
+): Promise<number> {
+  if (cache.has(merchantId)) return cache.get(merchantId)!
+  try {
+    const adjustment = await getActiveAnomalyAdjustment(merchantId)
+    cache.set(merchantId, adjustment.anomalyFactor)
+    return adjustment.anomalyFactor
+  } catch {
+    // Non-fatal — if anomaly service fails, no adjustment
+    cache.set(merchantId, 1.0)
+    return 1.0
+  }
+}
+
 // --- Public API -----------------------------------------------------------
 
 /**
@@ -312,20 +343,23 @@ export async function runDetection(now: Date = new Date()): Promise<DetectionRes
     errors: [],
   }
 
+  // Feature 13: Cache anomaly factors per merchant for the scan
+  const anomalyCache = new Map<string, number>()
+
   try {
-    await scanFailedPayments(result, now)
+    await scanFailedPayments(result, now, anomalyCache)
   } catch (err) {
     result.errors.push(`payment_scan: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   try {
-    await scanAbandonedCheckouts(result, now)
+    await scanAbandonedCheckouts(result, now, anomalyCache)
   } catch (err) {
     result.errors.push(`checkout_scan: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   try {
-    await scanPastDueSubscriptions(result, now)
+    await scanPastDueSubscriptions(result, now, anomalyCache)
   } catch (err) {
     result.errors.push(`subscription_scan: ${err instanceof Error ? err.message : String(err)}`)
   }

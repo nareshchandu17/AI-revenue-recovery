@@ -5,22 +5,22 @@
  * Same inputs → same output. No randomness.
  *
  * The score answers: "How likely is this revenue to be recovered?"
+ *
+ * Feature 14: Recency is now handled via multiplicative exponential time decay
+ * (see ../time-decay) instead of the old additive scoreRecency bucket approach.
  */
 
 import {
   SCORE_CUSTOMER_HISTORY_MAX,
   SCORE_FAILURE_REASON_MAX,
   SCORE_PAYMENT_METHOD_MAX,
-  SCORE_RECENCY_MAX,
   SCORE_AMOUNT_MAX,
-  RECENCY_VERY_RECENT_MS,
-  RECENCY_RECENT_MS,
-  RECENCY_MODERATE_MS,
   AMOUNT_LOW_THRESHOLD,
   AMOUNT_SWEET_SPOT_MIN,
   AMOUNT_SWEET_SPOT_MAX,
   AMOUNT_HIGH_VALUE,
 } from "./constants"
+import { computeTimeDecayFactor, TIME_DECAY_HALF_LIFE_MINUTES } from "../time-decay"
 import type { RecoveryScore, ScoreFactor, CustomerPaymentStats, Recoverability } from "./types"
 
 // --- Individual factor scorers --------------------------------------------
@@ -116,28 +116,6 @@ function scorePaymentMethod(method: string | null | undefined): ScoreFactor {
   }
 }
 
-function scoreRecency(createdAt: Date, now: Date = new Date()): ScoreFactor {
-  const ageMs = now.getTime() - createdAt.getTime()
-  let points: number
-  let detail: string
-
-  if (ageMs <= RECENCY_VERY_RECENT_MS) {
-    points = 15
-    detail = "Less than 7 days old"
-  } else if (ageMs <= RECENCY_RECENT_MS) {
-    points = 10
-    detail = "Less than 30 days old"
-  } else if (ageMs <= RECENCY_MODERATE_MS) {
-    points = 5
-    detail = "Less than 90 days old"
-  } else {
-    points = 0
-    detail = "Over 90 days old"
-  }
-
-  return { name: "Recency", points, maxPoints: SCORE_RECENCY_MAX, detail }
-}
-
 function scoreAmount(amountPaise: number): ScoreFactor {
   let points: number
   let detail: string
@@ -174,6 +152,8 @@ export interface ScoreInput {
   retryCount?: number
   /** Customer value weight from CLV percentile (0.7–1.4). Default 1.0. */
   customerValueWeight?: number
+  /** Feature 13: Anomaly adjustment factor (1.0 = no anomaly, up to 1.5). Applied as multiplicative boost. */
+  anomalyFactor?: number
   now?: Date
 }
 
@@ -182,13 +162,15 @@ export interface ScoreInput {
  *
  * Returns 0-100 with explainable factors.
  * Same inputs always produce the same output.
+ *
+ * Feature 14: The old additive recency scorer (scoreRecency) has been replaced
+ * by multiplicative exponential time decay applied after all additive factors.
  */
 export function computeRecoveryScore(input: ScoreInput): RecoveryScore {
   const factors: ScoreFactor[] = [
     scoreCustomerHistory(input.customerStats),
     scoreFailureReason(input.recoverability),
     scorePaymentMethod(input.paymentMethod),
-    scoreRecency(input.createdAt, input.now),
     scoreAmount(input.amountPaise),
     scoreCustomerValue(input),
   ]
@@ -225,6 +207,45 @@ export function computeRecoveryScore(input: ScoreInput): RecoveryScore {
     }
   }
 
+  // Apply multiplicative time decay (Feature 14)
+  const ageMs = (input.now ?? new Date()).getTime() - input.createdAt.getTime()
+  const ageMinutes = ageMs / 60_000
+  const timeDecayFactor = computeTimeDecayFactor(ageMinutes)
+  const decayedScore = Math.round(totalPoints * timeDecayFactor)
+
+  // Apply anomaly adjustment factor (Feature 13)
+  // Anomaly factor is a multiplicative boost to urgency (1.0 to 1.5).
+  // It increases the score without changing the underlying assessment.
+  // Example: score 50 × 1.3 = 65 (anomaly raises urgency).
+  let scoreAfterDecay = decayedScore
+  let scoreAfterAnomaly = decayedScore
+
+  if (input.anomalyFactor && input.anomalyFactor > 1.0) {
+    scoreAfterAnomaly = Math.round(decayedScore * input.anomalyFactor)
+    scoreAfterAnomaly = Math.min(100, Math.max(0, scoreAfterAnomaly))
+  }
+  const finalScore = scoreAfterAnomaly
+
+  // Add decay explainability factor
+  if (timeDecayFactor < 0.99) {
+    factors.push({
+      name: "Time Decay",
+      points: Math.min(0, Math.round(decayedScore - totalPoints)),
+      maxPoints: 0,
+      detail: `Multiplicative decay factor ${timeDecayFactor.toFixed(3)} applied (${(ageMinutes / 60).toFixed(1)}h old, half-life ${TIME_DECAY_HALF_LIFE_MINUTES / 60}h). Score: ${totalPoints} → ${decayedScore}.`,
+    })
+  }
+
+  // Add anomaly explainability factor
+  if (input.anomalyFactor && input.anomalyFactor > 1.0) {
+    factors.push({
+      name: "Anomaly Boost",
+      points: scoreAfterAnomaly - scoreAfterDecay,
+      maxPoints: 0,
+      detail: `Active payment failure anomaly detected — urgency multiplied by ${input.anomalyFactor.toFixed(2)}. Score: ${scoreAfterDecay} → ${scoreAfterAnomaly}.`,
+    })
+  }
+
   // Confidence: higher when we have more data signals
   const hasHistory = input.customerStats.totalPayments > 0
   const hasMethod = !!input.paymentMethod
@@ -232,5 +253,5 @@ export function computeRecoveryScore(input: ScoreInput): RecoveryScore {
   const signalCount = [hasHistory, hasMethod, hasFailureInfo].filter(Boolean).length
   const confidence = signalCount === 3 ? 0.9 : signalCount === 2 ? 0.7 : 0.5
 
-  return { score: totalPoints, confidence, factors }
+  return { score: finalScore, confidence, factors }
 }
