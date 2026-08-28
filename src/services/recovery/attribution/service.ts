@@ -39,24 +39,65 @@ import type { AttributionStatus, AttributionSource } from "@prisma/client"
 export async function attemptAttribution(
   input: AttributePaymentInput
 ): Promise<AttributionResult | null> {
-  const { paymentId, amount, customerId, merchantId, externalId } = input
+  const { paymentId, amount, customerId, merchantId, providerPaymentId, providerOrderId } = input
+
+  const attributionLog = logger.child({
+    paymentId,
+    providerPaymentId,
+    providerOrderId: providerOrderId ?? null,
+  })
+
+  // Audit: payment received for attribution
+  await logAudit({
+    actor: { type: 'webhook', source: 'razorpay' },
+    eventType: 'PAYMENT_RECEIVED',
+    entityType: 'payment',
+    entityId: paymentId,
+    action: 'attribution_attempted',
+    details: `Attribution check for captured payment ${providerPaymentId}`,
+    metadata: { paymentId, providerPaymentId, providerOrderId: providerOrderId ?? null, amount, customerId, merchantId },
+  })
+
+  // Audit: attribution flow started
+  await logAudit({
+    actor: { type: 'webhook', source: 'razorpay' },
+    eventType: 'ATTRIBUTION_ATTEMPTED',
+    entityType: 'payment',
+    entityId: paymentId,
+    action: 'attribution_attempted',
+    details: `Attempting attribution for provider payment ${providerPaymentId}`,
+    metadata: { paymentId, providerPaymentId, amount, customerId, merchantId },
+  })
 
   // 1. Check if this payment was already attributed to any case (idempotent)
   const existingByPayment = await db.recoveryAttribution.findFirst({
     where: { paymentId },
   })
   if (existingByPayment) {
+    attributionLog.info('ATTRIBUTION_SKIPPED', { reason: 'ALREADY_ATTRIBUTED', attributionId: existingByPayment.id })
     return null // Already attributed — idempotent
   }
 
   // 2. Try each attribution signal in order of confidence
-  const retryResult = await tryPaymentRetryAttribution(externalId, amount)
+  const retryResult = await tryPaymentRetryAttribution(providerPaymentId, amount, attributionLog)
   if (retryResult) return retryResult
 
-  const linkResult = await tryPaymentLinkAttribution(customerId, merchantId, paymentId, amount)
+  const linkResult = await tryPaymentLinkAttribution(customerId, merchantId, paymentId, amount, attributionLog)
   if (linkResult) return linkResult
 
   // 3. No strong signal found — do NOT auto-attribute by customer+amount
+  attributionLog.info('ATTRIBUTION_UNRESOLVED', { reason: 'NO_DETERMINISTIC_REFERENCE' })
+
+  await logAudit({
+    actor: { type: 'webhook', source: 'razorpay' },
+    eventType: 'PAYMENT_UNATTRIBUTED',
+    entityType: 'payment',
+    entityId: paymentId,
+    action: 'attribution_unresolved',
+    details: `No deterministic attribution signal found for payment ${providerPaymentId}`,
+    metadata: { paymentId, providerPaymentId, reason: 'NO_DETERMINISTIC_REFERENCE' },
+  })
+
   return null
 }
 
@@ -67,28 +108,38 @@ export async function attemptAttribution(
  * that's a direct payment retry.
  */
 async function tryPaymentRetryAttribution(
-  externalId: string,
-  amount: number
+  providerPaymentId: string,
+  amount: number,
+  log: ReturnType<typeof logger.child>
 ): Promise<AttributionResult | null> {
-  // Find the payment by externalId
+  // Find the payment by its provider payment ID (stored in Payment.externalId)
   const payment = await db.payment.findUnique({
-    where: { externalId },
+    where: { externalId: providerPaymentId },
   })
-  if (!payment) return null
+  if (!payment) {
+    log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'payment_retry', reason: 'NO_MATCHING_PAYMENT', providerPaymentId })
+    return null
+  }
 
   // Find an open recovery case linked to this payment
   const recoveryCase = await db.recoveryCase.findUnique({
     where: { paymentId: payment.id },
   })
-  if (!recoveryCase) return null
-
-  // Case must be in an open state
-  if (TERMINAL_CASE_SET.has(recoveryCase.status)) {
+  if (!recoveryCase) {
+    log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'payment_retry', reason: 'NO_OPEN_CASE_FOR_PAYMENT' })
     return null
   }
 
-  // Amount should match (or be close — handle partial recovery)
+  // Case must be in an open state
+  if (TERMINAL_CASE_SET.has(recoveryCase.status)) {
+    log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'payment_retry', reason: 'CASE_IN_TERMINAL_STATE', caseId: recoveryCase.id, caseStatus: recoveryCase.status })
+    return null
+  }
+
+  // Amount should be positive
   if (amount <= 0) return null
+
+  log.info('ATTRIBUTION_SUCCESS', { signal: 'payment_retry', case: recoveryCase.id, attempt: null, providerPaymentId })
 
   return createAttribution({
     recoveryCaseId: recoveryCase.id,
@@ -96,7 +147,7 @@ async function tryPaymentRetryAttribution(
     amount: Math.min(amount, recoveryCase.amountAtRisk), // Cap at amountAtRisk
     source: "payment_retry",
     confidence: SOURCE_CONFIDENCE.payment_retry,
-    reason: `Original payment ${externalId} was retried and captured. Amount: ₹${(amount / 100).toFixed(2)}`,
+    reason: `Original payment ${providerPaymentId} was retried and captured. Amount: ₹${(amount / 100).toFixed(2)}`,
   })
 }
 
@@ -113,7 +164,8 @@ async function tryPaymentLinkAttribution(
   customerId: string,
   merchantId: string,
   newPaymentId: string,
-  amount: number
+  amount: number,
+  log: ReturnType<typeof logger.child>
 ): Promise<AttributionResult | null> {
   if (amount <= 0) return null
 
@@ -160,6 +212,8 @@ async function tryPaymentLinkAttribution(
     // If the attempt created a payment link, the new payment could be from that link
     // We attribute with payment_link source if the amounts are reasonable
     if (amount <= recoveryCase.amountAtRisk) {
+      log.info('ATTRIBUTION_SUCCESS', { signal: 'payment_link', case: recoveryCase.id, attempt: latestAttempt.id, providerPaymentId: newPaymentId })
+
       return createAttribution({
         recoveryCaseId: recoveryCase.id,
         paymentId: newPaymentId,
@@ -172,6 +226,7 @@ async function tryPaymentLinkAttribution(
     }
   }
 
+  log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'payment_link', reason: 'NO_MATCHING_OPEN_CASE_WITH_SUCCEEDED_ATTEMPT' })
   return null
 }
 

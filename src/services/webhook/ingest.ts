@@ -239,7 +239,8 @@ export async function ingestWebhook(
         amount: payment.amount,
         customerId: customer.id,
         merchantId,
-        externalId: rpPayment.externalId,
+        providerPaymentId: rpPayment.id,
+        providerOrderId: rpPayment.order_id,
       })
     } catch (err) {
       // Attribution failure should not break the webhook processing

@@ -56,7 +56,10 @@ export interface AttributePaymentInput {
   amount: number
   customerId: string
   merchantId: string
-  externalId: string
+  /** The provider's payment ID (e.g. Razorpay `pay_xxx`). Used for payment-retry signal. */
+  providerPaymentId: string
+  /** The provider's order ID if available (e.g. Razorpay `order_xxx`). */
+  providerOrderId?: string | null
 }
 
 /** Enhanced metrics including attribution data. */

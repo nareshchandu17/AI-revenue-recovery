@@ -127,6 +127,31 @@ enum AuditActorType {
   webhook
 }
 
+// =================================================================
+// Intervention Outcome Evaluation (Feature 7)
+//
+// Classifies executed recovery interventions by their actual outcome.
+// Each evaluation is versioned and immutable — new evaluations create
+// new records. Historical evaluations are never silently rewritten.
+//
+// Outcome Definitions:
+//   RECOVERED  — Attempt executed + verified attribution linked
+//   INEFFECTIVE — Attempt executed but no attribution after evaluation window
+//   BLOCKED   — Attempt was blocked (DND, policy, contact limit) — NOT an intervention
+//   CANCELLED — Attempt was cancelled before execution — NOT an intervention
+//   PREEMPTED — Payment captured before attempt execution — NOT an intervention
+//   UNKNOWN   — Insufficient time or data to classify
+// =================================================================
+
+enum InterventionOutcome {
+  RECOVERED
+  INEFFECTIVE
+  BLOCKED
+  CANCELLED
+  PREEMPTED
+  UNKNOWN
+}
+
 // --- Models -------------------------------------------------------
 
 model Merchant {
@@ -295,6 +320,7 @@ model RecoveryCase {
   probabilityEstimates        RecoveryProbabilityEstimate[]
   auditEvents                 AuditEvent[]
   communicationEvents         CommunicationEvent[]
+  interventionEvaluations     InterventionEvaluation[]
 
   @@index([merchantId, status])
   @@index([status])
@@ -363,6 +389,7 @@ model RecoveryAttempt {
   agentDecision      AgentDecision?       @relation(fields: [agentDecisionId], references: [id])
   recoveryAttributions RecoveryAttribution[]
   communicationEvent  CommunicationEvent?
+  interventionEvaluation InterventionEvaluation?
 
   @@index([recoveryCaseId])
   @@index([agentDecisionId])
@@ -554,4 +581,33 @@ model RecoveryProbabilityEstimate {
   @@index([agentDecisionId])
   @@index([action])
   @@index([modelVersion])
+}
+
+// =================================================================
+// Intervention Evaluation (Feature 7)
+//
+// Persists the outcome classification of each executed intervention.
+// Immutable: new evaluations create new records; old ones are preserved.
+// evaluationVersion ensures historical stability.
+// =================================================================
+
+model InterventionEvaluation {
+  id                 String             @id @default(cuid())
+  recoveryAttemptId   String             @unique
+  recoveryCaseId     String
+  /** The classified outcome of this intervention. */
+  outcome            InterventionOutcome
+  /** Human-readable explanation of why this outcome was assigned. */
+  classificationReason String
+  /** Version of the evaluation logic that produced this classification. */
+  evaluationVersion  String             @default("1.0.0")
+  evaluatedAt        DateTime           @default(now())
+
+  recoveryAttempt     RecoveryAttempt    @relation(fields: [recoveryAttemptId], references: [id])
+  recoveryCase        RecoveryCase       @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+
+  @@index([recoveryCaseId])
+  @@index([outcome])
+  @@index([evaluationVersion])
+  @@index([evaluatedAt])
 }
