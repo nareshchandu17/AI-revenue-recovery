@@ -50,6 +50,8 @@ async function main() {
   console.log('\nCleaning existing data...')
   const delAudit = await prisma.auditEvent.deleteMany()
   console.log(`  AuditEvent:      ${delAudit.count} deleted`)
+  const delComm = await prisma.communicationEvent.deleteMany()
+  console.log(`  CommunicationEvent: ${delComm.count} deleted`)
   const delAttempts = await prisma.recoveryAttempt.deleteMany()
   console.log(`  RecoveryAttempt: ${delAttempts.count} deleted`)
   const delDecisions = await prisma.agentDecision.deleteMany()
@@ -130,6 +132,14 @@ async function main() {
     data: { id: 'cust_b4', merchantId: merchantB.id, email: 'ishita.gupta@example.com', phone: '+91-91099-98877', displayName: 'Ishita Gupta', createdAt: T.d5 },
   })
 
+  // DND test customers (Feature 5)
+  const custDnd1 = await prisma.customer.create({
+    data: { id: 'cust_dnd1', merchantId: merchantA.id, email: 'dnd.global@example.com', phone: '+91-90000-00001', displayName: 'DND Global Customer', createdAt: T.d3, doNotContact: true, optedOutAt: T.d5, optOutReason: 'Too many messages', optOutSource: 'CUSTOMER' },
+  })
+  const custDnd2 = await prisma.customer.create({
+    data: { id: 'cust_dnd2', merchantId: merchantA.id, email: 'dnd.channel@example.com', phone: '+91-90000-00002', displayName: 'DND Channel Customer', createdAt: T.d4, emailOptOut: true, optedOutAt: T.d6, optOutReason: 'Unsubscribe from email', optOutSource: 'CUSTOMER' },
+  })
+
   // Additional TechNova customers (cust_a7 to cust_a14)
   const custA7  = await prisma.customer.create({ data: { id: 'cust_a7',  merchantId: merchantA.id, email: 'kiran.desai@example.com',    phone: '+91-89988-77665', displayName: 'Kiran Desai',    createdAt: T.d6 } })
   const custA8  = await prisma.customer.create({ data: { id: 'cust_a8',  merchantId: merchantA.id, email: 'nisha.roy@example.com',      phone: '+91-88877-66554', displayName: 'Nisha Roy',      createdAt: T.d7 } })
@@ -148,7 +158,7 @@ async function main() {
   const custB9  = await prisma.customer.create({ data: { id: 'cust_b9',  merchantId: merchantB.id, email: 'nikhil.shukla@example.com',phone: '+91-77066-55432', displayName: 'Nikhil Shukla', createdAt: T.d10 } })
   const custB10 = await prisma.customer.create({ data: { id: 'cust_b10', merchantId: merchantB.id, email: 'ritu.agarwal@example.com', phone: '+91-76055-44321', displayName: 'Ritu Agarwal',  createdAt: T.d11 } })
 
-  console.log(`  Customers: 24 created (14 TechNova, 10 FitLife)`)
+  console.log(`  Customers: 26 created (14 TechNova, 10 FitLife, 2 DND test)`)
 
   // ----------------------------------------------------------------
   // 4. PAYMENTS (55)
@@ -804,17 +814,19 @@ async function main() {
     recoveryAttempts:await prisma.recoveryAttempt.count(),
     attributions:     await prisma.recoveryAttribution.count(),
     auditEvents:     await prisma.auditEvent.count(),
+    communicationEvents: await prisma.communicationEvent.count(),
   }
-  console.log(`  Merchants:        ${counts.merchants}`)
-  console.log(`  Customers:        ${counts.customers}`)
-  console.log(`  Payments:         ${counts.payments}`)
-  console.log(`  Checkouts:        ${counts.checkouts}`)
-  console.log(`  Subscriptions:    ${counts.subscriptions}`)
-  console.log(`  Recovery Cases:   ${counts.recoveryCases}`)
-  console.log(`  Agent Decisions:  ${counts.agentDecisions}`)
-  console.log(`  Recovery Attempts:${counts.recoveryAttempts}`)
-  console.log(`  Attributions:     ${counts.attributions}`)
-  console.log(`  Audit Events:     ${counts.auditEvents}`)
+  console.log(`  Merchants:             ${counts.merchants}`)
+  console.log(`  Customers:             ${counts.customers}`)
+  console.log(`  Payments:              ${counts.payments}`)
+  console.log(`  Checkouts:             ${counts.checkouts}`)
+  console.log(`  Subscriptions:         ${counts.subscriptions}`)
+  console.log(`  Recovery Cases:        ${counts.recoveryCases}`)
+  console.log(`  Agent Decisions:       ${counts.agentDecisions}`)
+  console.log(`  Recovery Attempts:     ${counts.recoveryAttempts}`)
+  console.log(`  Attributions:          ${counts.attributions}`)
+  console.log(`  Audit Events:          ${counts.auditEvents}`)
+  console.log(`  Communication Events: ${counts.communicationEvents}`)
   console.log('========================================')
 
   // Revenue at risk summary

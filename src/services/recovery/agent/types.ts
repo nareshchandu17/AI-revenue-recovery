@@ -100,6 +100,18 @@ export interface RecoveryContext {
     interventions: { action: string; probability: number; confidence: number; explanation: string[] }[]
     modelVersion: string
   }
+  /** Contact eligibility — AI receives this but cannot override backend enforcement. */
+  customerContactPolicy?: {
+    communicationAllowed: boolean
+    dnd: boolean
+    allowedChannels: string[]
+    contactUsage?: {
+      contactsLast24h: number
+      contactsLast7d: number
+      dailyLimit: number
+      weeklyLimit: number
+    }
+  }
 }
 
 // --- AI Structured Output (what the model returns) --------------------------

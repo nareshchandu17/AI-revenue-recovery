@@ -103,6 +103,26 @@ export async function buildRecoveryContext(
     ? (customerTotalSpend / 100).toLocaleString("en-IN")
     : null
 
+  // 10. Check contact eligibility (non-blocking — informational for AI)
+  let customerContactPolicy: RecoveryContext['customerContactPolicy'] = undefined
+  try {
+    const { checkDNDEligibility } = await import('@/services/dnd')
+    const { getContactUsage } = await import('@/services/contact-policy')
+    const dndResult = await checkDNDEligibility({ customerId, merchantId: recoveryCase.merchantId })
+    const usage = await getContactUsage(customerId, recoveryCase.merchantId)
+    customerContactPolicy = {
+      communicationAllowed: dndResult.allowed,
+      dnd: dndResult.globalDND,
+      allowedChannels: dndResult.allowedChannels,
+      contactUsage: {
+        contactsLast24h: usage.contactsLast24h,
+        contactsLast7d: usage.contactsLast7d,
+        dailyLimit: usage.dailyLimit,
+        weeklyLimit: usage.weeklyLimit,
+      },
+    }
+  } catch { /* non-fatal */ }
+
   return {
     case: {
       id: recoveryCase.id,
@@ -118,7 +138,6 @@ export async function buildRecoveryContext(
     },
     customer: {
       ...customer,
-      // Include aggregated value info (no PII)
       historicalSpendDisplay: spendDisplay
         ? `₹${spendDisplay} historical spend (${customerSuccessCount} successful payment${customerSuccessCount !== 1 ? "s" : ""})`
         : "No successful payments",
@@ -135,6 +154,7 @@ export async function buildRecoveryContext(
       maximumRecoveryAmountForAutomation: policy.maximumRecoveryAmountForAutomation,
       maxDiscountPercent: policy.maxDiscountPercent,
     },
+    ...(customerContactPolicy ? { customerContactPolicy } : {}),
   }
 }
 

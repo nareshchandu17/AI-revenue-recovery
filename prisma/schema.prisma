@@ -137,11 +137,20 @@ model Merchant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // --- Contact Frequency Policy (Feature 4) ---
+  /** Max customer-facing contacts per customer per rolling 24h window. */
+  maxContactsPerDay         Int @default(3)
+  /** Max customer-facing contacts per customer per rolling 7-day window. */
+  maxContactsPerWeek        Int @default(7)
+  /** Minimum minutes between consecutive contacts to the same customer. */
+  minContactIntervalMinutes Int @default(60)
+
   customers    Customer[]
   payments     Payment[]
   checkouts    Checkout[]
   subscriptions Subscription[]
   recoveryCases RecoveryCase[]
+  communicationEvents CommunicationEvent[]
 
   @@index([email])
 }
@@ -155,14 +164,31 @@ model Customer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  merchant     Merchant      @relation(fields: [merchantId], references: [id])
+  // --- Communication Consent (Feature 5) ---
+  /** Global do-not-contact flag. When true, ALL customer-facing communications are blocked. */
+  doNotContact           Boolean   @default(false)
+  /** Per-channel opt-out flags. Null = use global doNotContact. True = opted out. */
+  emailOptOut            Boolean   @default(false)
+  smsOptOut              Boolean   @default(false)
+  whatsappOptOut         Boolean   @default(false)
+  voiceOptOut            Boolean   @default(false)
+  /** When the customer last opted out (any channel). */
+  optedOutAt             DateTime?
+  /** Free-text reason for opt-out (e.g. "too many messages"). */
+  optOutReason           String   @default("")
+  /** Who set the preference: MERCHANT, CUSTOMER, SYSTEM, IMPORT. */
+  optOutSource           String   @default("SYSTEM")
+
+  merchant     Merchant              @relation(fields: [merchantId], references: [id])
   payments     Payment[]
   checkouts    Checkout[]
   subscriptions Subscription[]
+  communicationEvents  CommunicationEvent[]
 
   @@unique([merchantId, email])
   @@index([merchantId])
   @@index([email])
+  @@index([merchantId, doNotContact])
 }
 
 model Payment {
@@ -268,6 +294,7 @@ model RecoveryCase {
   recoveryAttributions        RecoveryAttribution[]
   probabilityEstimates        RecoveryProbabilityEstimate[]
   auditEvents                 AuditEvent[]
+  communicationEvents         CommunicationEvent[]
 
   @@index([merchantId, status])
   @@index([status])
@@ -335,6 +362,7 @@ model RecoveryAttempt {
   recoveryCase       RecoveryCase          @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
   agentDecision      AgentDecision?       @relation(fields: [agentDecisionId], references: [id])
   recoveryAttributions RecoveryAttribution[]
+  communicationEvent  CommunicationEvent?
 
   @@index([recoveryCaseId])
   @@index([agentDecisionId])
@@ -366,6 +394,94 @@ model AuditEvent {
   @@index([actorType])
   @@index([createdAt])
   @@index([entityType, entityId])
+}
+
+// =================================================================
+// Communication Events (Feature 4)
+//
+// Tracks every customer-facing communication sent by the recovery
+// system. This is DISTINCT from RecoveryAttempt — a RecoveryAttempt
+// may or may not result in a CommunicationEvent (e.g. no_action,
+// update_payment_method do not contact the customer).
+//
+// Only SENT/DELIVERED events count toward contact frequency limits.
+// QUEUED events ALSO count to prevent burst bypass.
+// BLOCKED events are recorded but do NOT count toward limits.
+// =================================================================
+
+enum CommunicationChannel {
+  email
+  sms
+  whatsapp
+  voice
+  push
+}
+
+enum CommunicationEventStatus {
+  planned
+  queued
+  sent
+  delivered
+  failed
+  cancelled
+  blocked
+}
+
+enum CommunicationAction {
+  SEND_REMINDER
+  SEND_PAYMENT_LINK
+  EMAIL
+  SMS
+  WHATSAPP
+  VOICE
+}
+
+enum CommunicationBlockReason {
+  CONTACT_FREQUENCY_LIMIT
+  DO_NOT_CONTACT
+  CHANNEL_OPT_OUT
+  CASE_ALREADY_RECOVERED
+  DAILY_CAP_REACHED
+  WEEKLY_CAP_REACHED
+  MINIMUM_INTERVAL_NOT_MET
+  CUSTOMER_DND_ACTIVE
+}
+
+model CommunicationEvent {
+  id              String                 @id @default(cuid())
+  customerId      String
+  merchantId      String
+  recoveryCaseId  String?
+  recoveryAttemptId String? @unique
+  /** Which communication was attempted. */
+  action          CommunicationAction
+  /** Delivery channel used. */
+  channel         CommunicationChannel
+  status          CommunicationEventStatus @default(planned)
+  /** If blocked, structured reason. */
+  blockReason     CommunicationBlockReason?
+  /** ISO-8601 when customer becomes eligible again (if blocked). */
+  nextEligibleAt  DateTime?
+  /** Idempotency key: prevents duplicate contacts on retry/re-execution. */
+  idempotencyKey  String                 @default("")
+  /** Short human-readable detail. */
+  details         String                 @default("")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  customer        Customer               @relation(fields: [customerId], references: [id])
+  merchant        Merchant               @relation(fields: [merchantId], references: [id])
+  recoveryCase    RecoveryCase?          @relation(fields: [recoveryCaseId], references: [id])
+  recoveryAttempt RecoveryAttempt?       @relation(fields: [recoveryAttemptId], references: [id])
+
+  @@unique([idempotencyKey])
+  @@index([customerId, createdAt])
+  @@index([customerId, channel])
+  @@index([merchantId, customerId, createdAt])
+  @@index([recoveryCaseId])
+  @@index([recoveryAttemptId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model RecoveryAttribution {

@@ -158,7 +158,10 @@ async function processJob(
     }
   }
 
-  // 5. Re-check execution gate
+  // 5. Re-check execution gate (includes DND + contact frequency)
+  const wCustomerId = attempt.recoveryCase.payment?.customerId ?? ''
+  const wIdempotencyKey = `attempt:${recoveryCaseId}:${action}:${agentDecisionId}`
+
   const gateResult = await checkExecutionGate({
     caseId: recoveryCaseId,
     decisionId: agentDecisionId,
@@ -166,6 +169,8 @@ async function processJob(
     merchantId: attempt.recoveryCase.merchantId,
     amountAtRisk: attempt.recoveryCase.amountAtRisk,
     recoveryProbability: attempt.recoveryCase.recoveryProbability,
+    customerId: wCustomerId,
+    idempotencyKey: wIdempotencyKey,
   })
 
   if (!gateResult.eligible) {
