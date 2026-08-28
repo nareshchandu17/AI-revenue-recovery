@@ -45,6 +45,10 @@ export interface CustomerSummary {
   successRate: number
   lastSuccessfulPaymentAt: string | null // ISO date
   lastFailedPaymentAt: string | null // ISO date
+  /** Aggregated historical spend display (safe for LLM). */
+  historicalSpendDisplay?: string
+  /** Customer value weight from CLV percentile. */
+  customerValueWeight?: number
 }
 
 /** Previous recovery attempts on this case. */

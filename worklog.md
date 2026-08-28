@@ -41,3 +41,31 @@ Stage Summary:
 - All metrics come from verified database data
 - Lint clean, build-ready
 - End-to-end demo verified via API: analyze → approve → execute → webhook → attribution → completed
+
+---
+Task ID: 11
+Agent: Main
+Task: Phase 1 Final Steps — API + UI (case detail), Typecheck + Lint + Verification
+
+Work Log:
+- Enhanced case detail API (GET /api/recovery/cases/:id) to include customer value assessment (CLV, percentile, tier, valueWeight) via assessCustomerValue()
+- Added probabilityEstimates and reviewedBy/reviewedAt to the API response includes
+- Updated CaseDetail TypeScript type in use-queries.ts: added ProbabilityEstimateItem, CustomerValueData interfaces, probabilityEstimates array, and customerValue field
+- Rewrote case-detail.tsx with three new Phase 1 feature sections:
+  1. Customer Value Intelligence card: Historical Spend, Avg Transaction, Value Percentile (P-bar), Value Weight (with tooltip)
+  2. Recovery Probability Model card: Baseline vs per-intervention probabilities with visual bars, uplift percentages, signal factors, AI Recommended badges, model version badge
+  3. Discount Ceiling info: Shows when AI recommended offer_discount — displays merchant maximum vs AI requested, pass/fail status
+- Fixed pre-existing bugs: scoring.ts (missing scoreCustomerHistory function), fallback.ts (broken syntax/toAIDecisionOutput), context.ts (invalid object literal), agent.ts (dangling character), detection/index.ts (duplicate exports), audit/log.ts (union type narrowing), detection/detector.ts (undefined customerValueWeight), logger.ts (missing service field), probability/estimator.ts (undefined prior arrays for baseline)
+- Fixed probability estimator crash: BASELINE_PRIOR cast to InterventionPrior lacked effectiveFor/ineffectiveFor, causing .some() crash on undefined
+- Fixed agent fallback path: probability estimates now persisted even when AI fails and fallback is used
+- Cleaned up insert-card.js
+- Verified: 0 lint errors, 0 warnings. Only 2 pre-existing TS errors remain (razorpay-service capture arg, ingest.ts externalId)
+- Browser verified: All 3 Phase 1 sections render correctly in case detail view with real data
+
+Stage Summary:
+- Case detail API now returns customerValue assessment alongside probabilityEstimates
+- Case detail UI displays per-intervention probability model with visual bars, uplift metrics, and explainability
+- Case detail UI displays CLV/Customer Value Intelligence section with percentile and weight
+- Case detail UI shows Discount Ceiling guardrail when offer_discount is recommended
+- All pre-existing code quality issues fixed — clean lint and minimal TS errors
+- End-to-end verified: probability model computes and persists estimates, UI renders all sections

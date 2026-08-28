@@ -101,10 +101,11 @@ export function estimateActionProbability(
 
   // Apply each relevant factor
   for (const f of relevantFactors) {
-    if (f.direction === "positive") {
+    const dir = f.factor.direction
+    if (dir === "positive") {
       const boost = (prior.max - prior.base) * prior.boostRate * Math.abs(f.delta)
       probability += boost
-    } else if (f.direction === "negative") {
+    } else if (dir === "negative") {
       const decay = (prior.base - prior.min) * prior.decayRate * Math.abs(f.delta)
       probability -= decay
     }
@@ -117,7 +118,7 @@ export function estimateActionProbability(
 
   // Compute confidence: more signals → higher confidence
   const signalCount = relevantFactors.filter(
-    (f) => f.direction !== "neutral"
+    (f) => f.factor.direction !== "neutral"
   ).length
   const maxSignals = 8
   const confidence = Math.round(
@@ -406,6 +407,8 @@ function selectRelevantFactors(
 
   const selected: SignalAdjustment[] = []
   const failureReason = signals.failureCode.toUpperCase()
+  const ineffectiveFor = prior.ineffectiveFor ?? []
+  const effectiveFor = prior.effectiveFor ?? []
 
   for (const f of allFactors) {
     // Include all non-failure-type factors
@@ -415,11 +418,11 @@ function selectRelevantFactors(
     }
 
     // Failure type factors: check if this intervention is effective for this failure
-    const isIneffective = prior.ineffectiveFor.some(
+    const isIneffective = ineffectiveFor.some(
       (code) => failureReason.includes(code) || signals.failureReason.toUpperCase().includes(code.replace("_", " "))
     )
 
-    if (isIneffective && f.direction === "positive") {
+    if (isIneffective && f.factor.direction === "positive") {
       // Downgrade positive failure signal to neutral when intervention is ineffective
       selected.push({
         factor: {
@@ -430,13 +433,13 @@ function selectRelevantFactors(
         delta: 0,
       })
     } else {
-      const isEffective = prior.effectiveFor.some(
+      const isEffective = effectiveFor.some(
         (code) => failureReason.includes(code) || signals.failureReason.toUpperCase().includes(code.replace("_", " "))
       )
-      if (isEffective && f.direction === "positive") {
+      if (isEffective && f.factor.direction === "positive") {
         // Boost positive failure signal when intervention is particularly effective
         selected.push({ ...f, delta: f.delta * 1.3 })
-      } else if (isEffective && f.direction === "negative") {
+      } else if (isEffective && f.factor.direction === "negative") {
         // Reduce negative signal when intervention bypasses the failure
         selected.push({ ...f, delta: f.delta * 0.5 })
       } else {

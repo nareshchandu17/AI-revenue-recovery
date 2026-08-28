@@ -1,0 +1,555 @@
+     1→     1→"use client"
+     2→     2→
+     3→     3→import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase } from "@/lib/hooks/use-queries"
+     4→     4→import { StatusBadge } from "@/components/dashboard/status-badge"
+     5→     5→import { ErrorState } from "@/components/dashboard/error-state"
+     6→     6→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+     7→     7→import { Button } from "@/components/ui/button"
+     8→     8→import { Badge } from "@/components/ui/badge"
+     9→     9→import { Skeleton } from "@/components/ui/skeleton"
+    10→    10→import { Separator } from "@/components/ui/separator"
+    11→    11→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+    12→    12→import { toast } from "sonner"
+    13→    13→import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle } from "lucide-react"
+    14→    14→import { formatCurrency, formatCurrencyFull, formatPercent, formatCategory, formatAction, formatPriority, formatDateTime, formatRelativeTime, formatActorType } from "@/lib/format"
+    15→    15→import { cn } from "@/lib/utils"
+    16→    16→
+    17→    17→interface CaseDetailProps {
+    18→    18→  caseId: string
+    19→    19→  onBack: () => void
+    20→    20→}
+    21→    21→
+    22→    22→function TrustStep({ icon: Icon, label, status }: { icon: React.ElementType; label: string; status: "done" | "active" | "pending" }) {
+    23→    23→  return (
+    24→    24→    <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
+    25→    25→      <div className={cn(
+    26→    26→        "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+    27→    27→        status === "done" && "bg-emerald-100 dark:bg-emerald-900/30",
+    28→    28→        status === "active" && "bg-amber-100 dark:bg-amber-900/30 ring-2 ring-amber-400/50",
+    29→    29→        status === "pending" && "bg-muted",
+    30→    30→      )}>
+    31→    31→        {status === "pending" ? <Icon className="h-4 w-4 text-muted-foreground" /> : <Icon className={cn("h-4 w-4", status === "done" ? "text-emerald-600" : "text-amber-600")} />}
+    32→    32→      </div>
+    33→    33→      <p className={cn(
+    34→    34→        "text-[10px] font-medium text-center leading-tight",
+    35→    35→        status === "done" ? "text-emerald-700 dark:text-emerald-400" :
+    36→    36→        status === "active" ? "text-amber-700 dark:text-amber-400" :
+    37→    37→        "text-muted-foreground"
+    38→    38→      )}>{label}</p>
+    39→    39→    </div>
+    40→    40→  )
+    41→    41→}
+    42→    42→
+    43→    43→export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
+    44→    44→  const { data, isLoading, error, refetch } = useCaseDetail(caseId)
+    45→    45→  const approveMutation = useApproveDecision()
+    46→    46→  const rejectMutation = useRejectDecision()
+    47→    47→  const executeMutation = useExecuteRecovery()
+    48→    48→  const stopMutation = useStopRecovery()
+    49→    49→  const analyzeMutation = useAnalyzeCase()
+    50→    50→
+    51→    51→  if (error) {
+    52→    52→    return <ErrorState message="Failed to load case details. The case may not exist." onRetry={() => refetch()} />
+    53→    53→  }
+    54→    54→
+    55→    55→  if (isLoading || !data) {
+    56→    56→    return (
+    57→    57→      <div className="space-y-4">
+    58→    58→        <Skeleton className="h-6 w-48" />
+    59→    59→        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    60→    60→          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+    61→    61→        </div>
+    62→    62→        <Skeleton className="h-64 rounded-lg" />
+    63→    63→        <Skeleton className="h-48 rounded-lg" />
+    64→    64→      </div>
+    65→    65→    )
+    66→    66→  }
+    67→    67→
+    68→    68→  const c = data.case
+    69→    69→  const decision = c.agentDecisions[0]
+    70→    70→  const openStatuses = ["detected", "diagnosing", "diagnosed", "awaiting_approval", "executing"]
+    71→    71→  const isOpen = openStatuses.includes(c.status)
+    72→    72→  const isAwaitingApproval = c.status === "awaiting_approval"
+    73→    73→  const hasApprovedDecision = decision?.status === "approved"
+    74→    74→  const canApprove = isAwaitingApproval && decision?.status === "pending"
+    75→    75→  const canExecute = hasApprovedDecision && (c.status === "awaiting_approval" || c.status === "diagnosed") && c.recoveryAttempts.filter(a => a.status === "pending" || a.status === "queued" || a.status === "running").length === 0
+    76→    76→  const canStop = isOpen && c.status !== "completed"
+    77→    77→  const canAnalyze = c.status === "detected" || c.status === "diagnosed"
+    78→    78→
+    79→    79→  const remainingAmount = c.amountAtRisk - c.recoveredAmount
+    80→    80→
+    81→    81→  // Customer info from payment relation
+    82→    82→  const customerName = c.payment?.customer?.displayName ?? "Unknown Customer"
+    83→    83→  const customerEmail = c.payment?.customer?.email ?? null
+    84→    84→
+    85→    85→  // Parse reasoning JSON
+    86→    86→  let reasoningParsed: Record<string, unknown> = {}
+    87→    87→  let factors: Array<{ type: "positive" | "negative"; text: string }> = []
+    88→    88→  if (decision?.reasoningJson) {
+    89→    89→    try {
+    90→    90→      reasoningParsed = typeof decision.reasoningJson === "string" ? JSON.parse(decision.reasoningJson) : decision.reasoningJson as Record<string, unknown>
+    91→    91→      if (reasoningParsed.factors && Array.isArray(reasoningParsed.factors)) {
+    92→    92→        factors = (reasoningParsed.factors as Array<Record<string, unknown>>).map((f) => ({
+    93→    93→          type: f.positive !== false && f.type !== "negative" ? "positive" as const : "negative" as const,
+    94→    94→          text: (f.text ?? f.factor ?? "Unknown factor") as string,
+    95→    95→        }))
+    96→    96→      }
+    97→    97→    } catch {}
+    98→    98→  }
+    99→    99→
+   100→   100→  // Diagnosis text
+   101→   101→  let diagnosisText = decision?.diagnosis ?? ""
+   102→   102→  if (!diagnosisText && reasoningParsed.diagnosis) {
+   103→   103→    diagnosisText = reasoningParsed.diagnosis as string
+   104→   104→  } else if (!diagnosisText && reasoningParsed.reasoning) {
+   105→   105→    diagnosisText = reasoningParsed.reasoning as string
+   106→   106→  }
+   107→   107→
+   108→   108→  // Policy gate result
+   109→   109→  const policyResult = reasoningParsed.policyResult as Record<string, unknown> | undefined
+   110→   110→  const policyPassed = policyResult?.passed === true
+   111→   111→  const policyViolations = Array.isArray(policyResult?.violations) ? policyResult.violations as string[] : []
+   112→   112→  const policyReason = (policyResult?.reason ?? policyResult?.summary) as string | null
+   113→   113→
+   114→   114→  const handleApprove = () => {
+   115→   115→    if (!decision) return
+   116→   116→    approveMutation.mutate(decision.id, {
+   117→   117→      onSuccess: () => toast.success("Decision approved"),
+   118→   118→      onError: (e) => toast.error(e.message),
+   119→   119→    })
+   120→   120→  }
+   121→   121→
+   122→   122→  const handleReject = () => {
+   123→   123→    if (!decision) return
+   124→   124→    rejectMutation.mutate(decision.id, {
+   125→   125→      onSuccess: () => toast.success("Decision rejected"),
+   126→   126→      onError: (e) => toast.error(e.message),
+   127→   127→    })
+   128→   128→  }
+   129→   129→
+   130→   130→  const handleExecute = () => {
+   131→   131→    executeMutation.mutate(c.id, {
+   132→   132→      onSuccess: () => toast.success("Recovery action queued"),
+   133→   133→      onError: (e) => toast.error(e.message),
+   134→   134→    })
+   135→   135→  }
+   136→   136→
+   137→   137→  const handleStop = () => {
+   138→   138→    stopMutation.mutate(c.id, {
+   139→   139→      onSuccess: () => toast.success("Recovery stopped"),
+   140→   140→      onError: (e) => toast.error(e.message),
+   141→   141→    })
+   142→   142→  }
+   143→   143→
+   144→   144→  const handleAnalyze = () => {
+   145→   145→    analyzeMutation.mutate(c.id, {
+   146→   146→      onSuccess: () => toast.success("Analysis started"),
+   147→   147→      onError: (e) => toast.error(e.message),
+   148→   148→    })
+   149→   149→  }
+   150→   150→
+   151→   151→  // Determine trust flow states
+   152→   152→  const hasDecision = !!decision
+   153→   153→  const aiStep = hasDecision ? "done" as const : "pending" as const
+   154→   154→  const policyStep = hasDecision && policyResult ? (policyPassed ? "done" as const : "active" as const) : (hasDecision ? "active" as const : "pending" as const)
+   155→   155→  const merchantStep = decision?.status === "approved" ? "done" as const : decision?.status === "rejected" ? "active" as const : (isAwaitingApproval ? "active" as const : "pending" as const)
+   156→   156→
+   157→   157→  return (
+   158→   158→    <div className="space-y-6">
+   159→   159→      {/* ── Case Header ── */}
+   160→   160→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   161→   161→        <div className="flex items-center gap-3 flex-wrap">
+   162→   162→          <span className={cn(
+   163→   163→            "text-xs font-bold uppercase px-2 py-0.5 rounded",
+   164→   164→            c.priority === "critical" ? "bg-destructive/10 text-destructive" :
+   165→   165→            c.priority === "high" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :
+   166→   166→            c.priority === "medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
+   167→   167→            "bg-zinc-100 text-zinc-600"
+   168→   168→          )}>
+   169→   169→            {formatPriority(c.priority)} Priority
+   170→   170→          </span>
+   171→   171→          <StatusBadge status={c.status} />
+   172→   172→          <span className="text-xs text-muted-foreground font-mono">{c.id}</span>
+   173→   173→        </div>
+   174→   174→        <div className="flex gap-2 flex-wrap">
+   175→   175→          {canApprove && (
+   176→   176→            <Button size="sm" onClick={handleApprove} disabled={approveMutation.isPending}>
+   177→   177→              <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve Recovery
+   178→   178→            </Button>
+   179→   179→          )}
+   180→   180→          {canApprove && (
+   181→   181→            <Button size="sm" variant="outline" onClick={handleReject} disabled={rejectMutation.isPending}>
+   182→   182→              <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+   183→   183→            </Button>
+   184→   184→          )}
+   185→   185→          {canExecute && (
+   186→   186→            <Button size="sm" onClick={handleExecute} disabled={executeMutation.isPending}>
+   187→   187→              {executeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <SquarePlay className="h-3.5 w-3.5 mr-1" />}
+   188→   188→              Execute Recovery
+   189→   189→            </Button>
+   190→   190→          )}
+   191→   191→          {canStop && !canApprove && !canExecute && (
+   192→   192→            <Button size="sm" variant="outline" onClick={handleStop} disabled={stopMutation.isPending}>
+   193→   193→              <Ban className="h-3.5 w-3.5 mr-1" /> Stop Recovery
+   194→   194→            </Button>
+   195→   195→          )}
+   196→   196→          {canAnalyze && (
+   197→   197→            <Button size="sm" variant="secondary" onClick={handleAnalyze} disabled={analyzeMutation.isPending}>
+   198→   198→              {analyzeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Brain className="h-3.5 w-3.5 mr-1" />}
+   199→   199→              Analyze Again
+   200→   200→            </Button>
+   201→   201→          )}
+   202→   202→        </div>
+   203→   203→      </div>
+   204→   204→
+   205→   205→      {/* ── Key Metrics Row ── */}
+   206→   206→      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+   207→   207→        <Card className="p-3">
+   208→   208→          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Amount At Risk</p>
+   209→   209→          <p className="text-lg font-bold mt-0.5">{formatCurrencyFull(c.amountAtRisk)}</p>
+   210→   210→        </Card>
+   211→   211→        <Card className="p-3">
+   212→   212→          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recovered</p>
+   213→   213→          <p className={cn("text-lg font-bold mt-0.5", c.recoveredAmount > 0 ? "text-emerald-600" : "")}>{formatCurrencyFull(c.recoveredAmount)}</p>
+   214→   214→        </Card>
+   215→   215→        <Card className="p-3">
+   216→   216→          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Remaining</p>
+   217→   217→          <p className={cn("text-lg font-bold mt-0.5", remainingAmount > 0 ? "text-amber-600" : "text-muted-foreground")}>{formatCurrencyFull(remainingAmount)}</p>
+   218→   218→        </Card>
+   219→   219→        <Card className="p-3">
+   220→   220→          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recovery Probability</p>
+   221→   221→          <p className="text-lg font-bold mt-0.5">{formatPercent(c.recoveryProbability)}</p>
+   222→   222→        </Card>
+   223→   223→        <Card className="p-3 col-span-2 md:col-span-1">
+   224→   224→          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Attempts</p>
+   225→   225→          <p className="text-lg font-bold mt-0.5">{c.recoveryAttempts.length}</p>
+   226→   226→        </Card>
+   227→   227→      </div>
+   228→   228→
+   229→   229→      {/* ── Customer & Payment Info ── */}
+   230→   230→      <Card>
+   231→   231→        <CardHeader className="pb-3">
+   232→   232→          <CardTitle className="text-sm font-semibold">Case Details</CardTitle>
+   233→   233→        </CardHeader>
+   234→   234→        <CardContent className="text-sm space-y-3">
+   235→   235→          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   236→   236→            <div>
+   237→   237→              <p className="text-xs text-muted-foreground">Customer</p>
+   238→   238→              <p className="font-medium">{customerName}</p>
+   239→   239→              {customerEmail && <p className="text-xs text-muted-foreground mt-0.5">{customerEmail}</p>}
+   240→   240→            </div>
+   241→   241→            <div>
+   242→   242→              <p className="text-xs text-muted-foreground">Category</p>
+   243→   243→              <p className="font-medium">{formatCategory(c.category)}</p>
+   244→   244→            </div>
+   245→   245→            <div>
+   246→   246→              <p className="text-xs text-muted-foreground">Detected</p>
+   247→   247→              <p className="font-medium">{formatDateTime(c.detectedAt)}</p>
+   248→   248→            </div>
+   249→   249→            {c.resolvedAt && (
+   250→   250→              <div>
+   251→   251→                <p className="text-xs text-muted-foreground">Resolved</p>
+   252→   252→                <p className="font-medium">{formatDateTime(c.resolvedAt)}</p>
+   253→   253→              </div>
+   254→   254→            )}
+   255→   255→          </div>
+   256→   256→          {c.payment && (
+   257→   257→            <>
+   258→   258→              <Separator />
+   259→   259→              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   260→   260→                <div>
+   261→   261→                  <p className="text-xs text-muted-foreground">Payment ID</p>
+   262→   262→                  <p className="font-mono text-xs">{c.payment.externalId}</p>
+   263→   263→                </div>
+   264→   264→                <div>
+   265→   265→                  <p className="text-xs text-muted-foreground">Method</p>
+   266→   266→                  <p className="font-medium capitalize">{c.payment.method}</p>
+   267→   267→                </div>
+   268→   268→                <div className="md:col-span-2">
+   269→   269→                  <p className="text-xs text-muted-foreground">Failure Reason</p>
+   270→   270→                  <p className="text-xs">{c.payment.failureReason ?? c.payment.description ?? "N/A"}</p>
+   271→   271→                </div>
+   272→   272→              </div>
+   273→   273→            </>
+   274→   274→          )}
+   275→   275→        </CardContent>
+   276→   276→      </Card>
+   277→   277→
+   278→   278→      {/* ── AI Recovery Analysis ── */}
+   279→   279→      {decision && (
+   280→   280→        <Card>
+   281→   281→          <CardHeader className="pb-3">
+   282→   282→            <div className="flex items-center gap-2">
+   283→   283→              <Brain className="h-4 w-4 text-violet-500" />
+   284→   284→              <CardTitle className="text-sm font-semibold">AI Recovery Analysis</CardTitle>
+   285→   285→              <StatusBadge status={decision.status} showDot={false} />
+   286→   286→            </div>
+   287→   287→          </CardHeader>
+   288→   288→          <CardContent className="space-y-5">
+   289→   289→            {/* 3-Layer Trust Model Flow */}
+   290→   290→            <div className="rounded-lg border bg-muted/30 px-4 py-4">
+   291→   291→              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3 text-center">3-Layer Trust Model</p>
+   292→   292→              <div className="flex items-start gap-2 sm:gap-4">
+   293→   293→                <TrustStep icon={Zap} label="AI Recommended" status={aiStep} />
+   294→   294→                <div className="flex items-center pt-3">
+   295→   295→                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+   296→   296→                </div>
+   297→   297→                <TrustStep icon={ShieldCheck} label="Policy Gate" status={policyStep} />
+   298→   298→                <div className="flex items-center pt-3">
+   299→   299→                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+   300→   300→                </div>
+   301→   301→                <TrustStep icon={UserCheck} label="Merchant Approval" status={merchantStep} />
+   302→   302→              </div>
+   303→   303→            </div>
+   304→   304→
+   305→   305→            {/* Decision Status Callout */}
+   306→   306→            {decision.status === "pending" && canApprove && (
+   307→   307→              <Alert className="border-amber-500/30 bg-amber-50 dark:bg-amber-950/20">
+   308→   308→                <Clock className="h-4 w-4 text-amber-600" />
+   309→   309→                <AlertTitle className="text-amber-800 dark:text-amber-300">Awaiting your approval to proceed</AlertTitle>
+   310→   310→                <AlertDescription className="text-amber-700/80 dark:text-amber-400/80">
+   311→   311→                  Review the AI recommendation and policy gate result below, then approve or reject this recovery action.
+   312→   312→                </AlertDescription>
+   313→   313→              </Alert>
+   314→   314→            )}
+   315→   315→            {decision.status === "approved" && (
+   316→   316→              <Alert className="border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20">
+   317→   317→                <CheckCircle className="h-4 w-4 text-emerald-600" />
+   318→   318→                <AlertTitle className="text-emerald-800 dark:text-emerald-300">Approved — ready to execute</AlertTitle>
+   319→   319→                <AlertDescription className="text-emerald-700/80 dark:text-emerald-400/80">
+   320→   320→                  This recovery action has been approved. Click &quot;Execute Recovery&quot; to start the process.
+   321→   321→                </AlertDescription>
+   322→   322→              </Alert>
+   323→   323→            )}
+   324→   324→            {decision.status === "rejected" && (
+   325→   325→              <Alert className="border-red-500/30 bg-red-50 dark:bg-red-950/20">
+   326→   326→                <XCircle className="h-4 w-4 text-red-600" />
+   327→   327→                <AlertTitle className="text-red-800 dark:text-red-300">Rejected by policy</AlertTitle>
+   328→   328→                <AlertDescription className="text-red-700/80 dark:text-red-400/80">
+   329→   329→                  {policyReason ?? "This recovery action was rejected. You can re-analyze the case to get a new recommendation."}
+   330→   330→                </AlertDescription>
+   331→   331→              </Alert>
+   332→   332→            )}
+   333→   333→
+   334→   334→            {/* Recommended Action + Confidence */}
+   335→   335→            <div className="flex flex-col sm:flex-row gap-4">
+   336→   336→              <div className="flex-1">
+   337→   337→                <p className="text-xs text-muted-foreground mb-1">Recommended Action</p>
+   338→   338→                <p className="font-semibold text-base">{formatAction(decision.recommendedAction)}</p>
+   339→   339→              </div>
+   340→   340→              <div>
+   341→   341→                <p className="text-xs text-muted-foreground mb-1">Confidence</p>
+   342→   342→                <div className="flex items-center gap-2">
+   343→   343→                  <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+   344→   344→                    <div className="h-full rounded-full bg-violet-500" style={{ width: `${decision.confidence * 100}%` }} />
+   345→   345→                  </div>
+   346→   346→                  <span className="text-sm font-semibold">{formatPercent(decision.confidence)}</span>
+   347→   347→                </div>
+   348→   348→              </div>
+   349→   349→            </div>
+   350→   350→
+   351→   351→            {/* Diagnosis */}
+   352→   352→            {diagnosisText && (
+   353→   353→              <div>
+   354→   354→                <p className="text-xs text-muted-foreground mb-1">Diagnosis</p>
+   355→   355→                <p className="text-sm leading-relaxed">{diagnosisText}</p>
+   356→   356→              </div>
+   357→   357→            )}
+   358→   358→
+   359→   359→            {/* Policy Gate Result */}
+   360→   360→            {policyResult && (
+   361→   361→              <div className="rounded-lg border p-3 space-y-2">
+   362→   362→                <div className="flex items-center gap-2">
+   363→   363→                  <ShieldCheck className={cn("h-4 w-4", policyPassed ? "text-emerald-600" : "text-red-600")} />
+   364→   364→                  <p className="text-xs font-semibold">Policy Gate Result</p>
+   365→   365→                  <Badge variant={policyPassed ? "secondary" : "destructive"} className={cn(
+   366→   366→                    "text-[10px] ml-auto",
+   367→   367→                    policyPassed ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" : ""
+   368→   368→                  )}>
+   369→   369→                    {policyPassed ? "Passed" : "Rejected"}
+   370→   370→                  </Badge>
+   371→   371→                </div>
+   372→   372→                {policyViolations.length > 0 && (
+   373→   373→                  <ul className="space-y-1 ml-6">
+   374→   374→                    {policyViolations.map((v, i) => (
+   375→   375→                      <li key={i} className="text-xs text-red-600 flex items-start gap-1.5">
+   376→   376→                        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+   377→   377→                        <span>{v}</span>
+   378→   378→                      </li>
+   379→   379→                    ))}
+   380→   380→                  </ul>
+   381→   381→                )}
+   382→   382→                {policyReason && policyViolations.length === 0 && (
+   383→   383→                  <p className="text-xs text-muted-foreground ml-6">{policyReason}</p>
+   384→   384→                )}
+   385→   385→              </div>
+   386→   386→            )}
+   387→   387→
+   388→   388→            {/* Why this recommendation? */}
+   389→   389→            {factors.length > 0 && (
+   390→   390→              <div>
+   391→   391→                <p className="text-xs font-medium text-muted-foreground mb-2">Why this recommendation?</p>
+   392→   392→                <ul className="space-y-1">
+   393→   393→                  {factors.map((f, i) => (
+   394→   394→                    <li key={i} className="flex items-start gap-2 text-sm">
+   395→   395→                      <span className={f.type === "positive" ? "text-emerald-500" : "text-red-500"}>{f.type === "positive" ? "+" : "-"}</span>
+   396→   396→                      <span>{f.text}</span>
+   397→   397→                    </li>
+   398→   398→                  ))}
+   399→   399→                </ul>
+   400→   400→              </div>
+   401→   401→            )}
+   402→   402→          </CardContent>
+   403→   403→        </Card>
+   404→   404→      )}
+   405→   405→
+   406→   406→      {/* ── Recovery Timeline ── */}
+   407→   407→      <Card>
+   408→   408→        <CardHeader className="pb-3">
+   409→   409→          <CardTitle className="text-sm font-semibold">Recovery Timeline</CardTitle>
+   410→   410→        </CardHeader>
+   411→   411→        <CardContent>
+   412→   412→          <div className="relative space-y-0">
+   413→   413→            {/* Case Detection */}
+   414→   414→            <div className="flex gap-3 pb-4">
+   415→   415→              <div className="flex flex-col items-center">
+   416→   416→                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30 shrink-0">
+   417→   417→                  <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
+   418→   418→                </div>
+   419→   419→                <div className="w-px flex-1 bg-border" />
+   420→   420→              </div>
+   421→   421→              <div className="pb-2">
+   422→   422→                <p className="text-xs font-medium">Failure Detected</p>
+   423→   423→                <p className="text-xs text-muted-foreground">{formatCategory(c.category)} · {formatCurrency(c.amountAtRisk)} at risk</p>
+   424→   424→                <p className="text-[10px] text-muted-foreground mt-0.5">{formatRelativeTime(c.detectedAt)}</p>
+   425→   425→              </div>
+   426→   426→            </div>
+   427→   427→
+   428→   428→            {/* AI Decisions */}
+   429→   429→            {c.agentDecisions.map((dec) => (
+   430→   430→              <div key={dec.id} className="flex gap-3 pb-4">
+   431→   431→                <div className="flex flex-col items-center">
+   432→   432→                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/30 shrink-0">
+   433→   433→                    <Brain className="h-3.5 w-3.5 text-violet-600" />
+   434→   434→                  </div>
+   435→   435→                  <div className="w-px flex-1 bg-border" />
+   436→   436→                </div>
+   437→   437→                <div className="pb-2">
+   438→   438→                  <div className="flex items-center gap-2">
+   439→   439→                    <p className="text-xs font-medium">AI Recommended: {formatAction(dec.recommendedAction)}</p>
+   440→   440→                    <StatusBadge status={dec.status} showDot={false} />
+   441→   441→                  </div>
+   442→   442→                  <p className="text-xs text-muted-foreground">{formatPercent(dec.confidence)} confidence</p>
+   443→   443→                  {dec.diagnosis && <p className="text-xs text-muted-foreground mt-0.5 italic">{dec.diagnosis.length > 100 ? dec.diagnosis.slice(0, 100) + "…" : dec.diagnosis}</p>}
+   444→   444→                  <p className="text-[10px] text-muted-foreground mt-0.5">{formatRelativeTime(dec.createdAt)}</p>
+   445→   445→                  {dec.reviewedBy && (
+   446→   446→                    <p className="text-[10px] text-muted-foreground mt-0.5">
+   447→   447→                      Reviewed by {dec.reviewedBy} {dec.reviewedAt ? `· ${formatRelativeTime(dec.reviewedAt)}` : ""}
+   448→   448→                    </p>
+   449→   449→                  )}
+   450→   450→                </div>
+   451→   451→              </div>
+   452→   452→            ))}
+   453→   453→
+   454→   454→            {/* Recovery Attempts */}
+   455→   455→            {c.recoveryAttempts.map((att) => (
+   456→   456→              <div key={att.id} className="flex gap-3 pb-4">
+   457→   457→                <div className="flex flex-col items-center">
+   458→   458→                  <div className={cn(
+   459→   459→                    "flex h-7 w-7 items-center justify-center rounded-full shrink-0",
+   460→   460→                    att.status === "succeeded" ? "bg-emerald-100 dark:bg-emerald-900/30" :
+   461→   461→                    att.status === "failed" ? "bg-red-100 dark:bg-red-900/30" :
+   462→   462→                    att.status === "running" ? "bg-sky-100 dark:bg-sky-900/30" :
+   463→   463→                    "bg-zinc-100 dark:bg-zinc-800"
+   464→   464→                  )}>
+   465→   465→                    <SquarePlay className={cn(
+   466→   466→                      "h-3.5 w-3.5",
+   467→   467→                      att.status === "succeeded" ? "text-emerald-600" :
+   468→   468→                      att.status === "failed" ? "text-red-600" :
+   469→   469→                      att.status === "running" ? "text-sky-600 animate-pulse" :
+   470→   470→                      "text-zinc-400"
+   471→   471→                    )} />
+   472→   472→                  </div>
+   473→   473→                  <div className="w-px flex-1 bg-border" />
+   474→   474→                </div>
+   475→   475→                <div className="pb-2 min-w-0">
+   476→   476→                  <div className="flex items-center gap-2">
+   477→   477→                    <p className="text-xs font-medium">Attempt #{att.attemptNumber}: {formatAction(att.action)}</p>
+   478→   478→                    <StatusBadge status={att.status} showDot={false} />
+   479→   479→                  </div>
+   480→   480→                  <p className="text-xs text-muted-foreground">
+   481→   481→                    {att.simulated ? "Simulated" : "Live"}{att.externalRef ? ` · Ref: ${att.externalRef}` : ""}
+   482→   482→                  </p>
+   483→   483→                  {att.startedAt && <p className="text-[10px] text-muted-foreground mt-0.5">Started {formatRelativeTime(att.startedAt)}</p>}
+   484→   484→                  {att.completedAt && <p className="text-[10px] text-muted-foreground">Completed {formatRelativeTime(att.completedAt)}</p>}
+   485→   485→                  {att.failureReason && <p className="text-xs text-red-600 mt-1">{att.failureReason}</p>}
+   486→   486→                  {att.recoveredAmount > 0 && <p className="text-xs text-emerald-600 font-medium mt-1">Recovered {formatCurrencyFull(att.recoveredAmount)}</p>}
+   487→   487→                </div>
+   488→   488→              </div>
+   489→   489→            ))}
+   490→   490→
+   491→   491→            {/* Attributions */}
+   492→   492→            {c.recoveryAttributions.map((attr) => (
+   493→   493→              <div key={attr.id} className="flex gap-3 pb-2">
+   494→   494→                <div className="flex flex-col items-center">
+   495→   495→                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
+   496→   496→                    <ExternalLink className="h-3.5 w-3.5 text-emerald-600" />
+   497→   497→                  </div>
+   498→   498→                </div>
+   499→   499→                <div className="min-w-0">
+   500→   500→                  <div className="flex items-center gap-2">
+   501→   501→                    <p className="text-xs font-medium">Payment Verified</p>
+   502→   502→                    <StatusBadge status={attr.status} showDot={false} />
+   503→   503→                  </div>
+   504→   504→                  <p className="text-xs text-emerald-600 font-semibold">{formatCurrencyFull(attr.amount)} recovered</p>
+   505→   505→                  <p className="text-[10px] text-muted-foreground mt-0.5">
+   506→   506→                    Source: {attr.source} · {formatPercent(attr.confidence)} confidence
+   507→   507→                    {attr.payment && <> · <span className="font-mono">{attr.payment.externalId}</span></>}
+   508→   508→                  </p>
+   509→   509→                  {attr.reason && <p className="text-[10px] text-muted-foreground mt-0.5">{attr.reason}</p>}
+   510→   510→                </div>
+   511→   511→              </div>
+   512→   512→            ))}
+   513→   513→
+   514→   514→            {/* Empty timeline end */}
+   515→   515→            {c.agentDecisions.length === 0 && c.recoveryAttempts.length === 0 && c.recoveryAttributions.length === 0 && (
+   516→   516→              <div className="flex gap-3">
+   517→   517→                <div className="flex flex-col items-center">
+   518→   518→                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted shrink-0">
+   519→   519→                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+   520→   520→                  </div>
+   521→   521→                </div>
+   522→   522→                <div>
+   523→   523→                  <p className="text-xs text-muted-foreground">Waiting for AI analysis to begin…</p>
+   524→   524→                </div>
+   525→   525→              </div>
+   526→   526→            )}
+   527→   527→          </div>
+   528→   528→        </CardContent>
+   529→   529→      </Card>
+   530→   530→
+   531→   531→      {/* ── Audit Trail ── */}
+   532→   532→      {c.auditEvents.length > 0 && (
+   533→   533→        <Card>
+   534→   534→          <CardHeader className="pb-3">
+   535→   535→            <CardTitle className="text-sm font-semibold">Audit Trail</CardTitle>
+   536→   536→          </CardHeader>
+   537→   537→          <CardContent>
+   538→   538→            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+   539→   539→              {c.auditEvents.map((evt) => (
+   540→   540→                <div key={evt.id} className="flex gap-3 py-1.5">
+   541→   541→                  <div className="w-16 shrink-0 text-[10px] text-muted-foreground text-right pt-0.5">{formatRelativeTime(evt.createdAt)}</div>
+   542→   542→                  <div className="flex-1 min-w-0">
+   543→   543→                    <p className="text-xs"><span className="font-medium">{formatActorType(evt.actorType)}</span> <span className="text-muted-foreground">{evt.action}</span></p>
+   544→   544→                    {evt.details && <p className="text-xs text-muted-foreground mt-0.5 truncate">{evt.details}</p>}
+   545→   545→                  </div>
+   546→   546→                </div>
+   547→   547→              ))}
+   548→   548→            </div>
+   549→   549→          </CardContent>
+   550→   550→        </Card>
+   551→   551→      )}
+   552→   552→    </div>
+   553→   553→  )
+   554→   554→}
+   555→   555→

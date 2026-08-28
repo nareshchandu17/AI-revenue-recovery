@@ -2,8 +2,8 @@
  * Detection engine public API.
  */
 
-export { runDetection, computeRecoveryScore, computePriority, classifyFailure, checkEligibility } from "./detector"
-export { computeRecoveryScore as scoreRecovery } from "./scoring"
+export { runDetection } from "./detector"
+export { computeRecoveryScore } from "./scoring"
 export { computePriority } from "./priority"
 export { classifyFailure } from "./classifier"
 export { checkEligibility } from "./eligibility"

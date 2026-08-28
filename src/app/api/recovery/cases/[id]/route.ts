@@ -1,11 +1,13 @@
 /**
  * GET /api/recovery/cases/:id
  *
- * Returns a single recovery case with all related data.
+ * Returns a single recovery case with all related data,
+ * including per-intervention probability estimates and customer value assessment.
  */
 
 import { NotFoundError, errorResponse } from "@/lib/errors"
 import { db } from "@/lib/db"
+import { assessCustomerValue } from "@/services/recovery/customer-value"
 
 export async function GET(
   _request: Request,
@@ -27,7 +29,7 @@ export async function GET(
         },
         agentDecisions: {
           orderBy: { createdAt: "desc" },
-          select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, reasoningJson: true, createdAt: true },
+          select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, reasoningJson: true, createdAt: true, reviewedBy: true, reviewedAt: true },
         },
         probabilityEstimates: {
           orderBy: { createdAt: "desc" },
@@ -55,7 +57,41 @@ export async function GET(
       throw new NotFoundError(`RecoveryCase ${id} not found`)
     }
 
-    return Response.json({ success: true, case: recoveryCase })
+    // Compute customer value assessment (CLV + percentile + weight)
+    let customerValue: {
+      totalSuccessfulSpend: number
+      successfulPaymentCount: number
+      avgTransactionValue: number
+      totalPaymentCount: number
+      failedPaymentCount: number
+      lastSuccessfulAt: string | null
+      percentile: number
+      tier: string
+      valueWeight: number
+      populationSize: number
+    } | null = null
+    const customerId = recoveryCase.payment?.customer?.id
+    if (customerId && recoveryCase.merchantId) {
+      try {
+        const assessment = await assessCustomerValue(customerId, recoveryCase.merchantId)
+        customerValue = {
+          totalSuccessfulSpend: assessment.value.totalSuccessfulSpend,
+          successfulPaymentCount: assessment.value.successfulPaymentCount,
+          avgTransactionValue: assessment.value.avgTransactionValue,
+          totalPaymentCount: assessment.value.totalPaymentCount,
+          failedPaymentCount: assessment.value.failedPaymentCount,
+          lastSuccessfulAt: assessment.value.lastSuccessfulAt,
+          percentile: assessment.percentile.percentile,
+          tier: assessment.percentile.tier,
+          valueWeight: assessment.percentile.valueWeight,
+          populationSize: assessment.percentile.populationSize,
+        }
+      } catch {
+        // Customer value assessment is non-critical — don't block the response
+      }
+    }
+
+    return Response.json({ success: true, case: recoveryCase, customerValue })
   } catch (err) {
     return errorResponse(err)
   }

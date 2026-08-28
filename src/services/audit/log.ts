@@ -35,10 +35,10 @@ export async function logAudit(params: LogAuditParams) {
     | "webhook"
 
   const actorId =
-    actorType === "merchant"
-      ? params.actor.merchantId
-      : actorType === "webhook"
-        ? params.actor.source
+    actorType === "merchant" && "merchantId" in params.actor
+      ? (params.actor as { merchantId: string }).merchantId
+      : actorType === "webhook" && "source" in params.actor
+        ? (params.actor as { source: string }).source
         : ""
 
   return db.auditEvent.create({

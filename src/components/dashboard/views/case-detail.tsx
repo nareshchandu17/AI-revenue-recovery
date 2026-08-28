@@ -1,6 +1,7 @@
 "use client"
 
 import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase } from "@/lib/hooks/use-queries"
+import type { ProbabilityEstimateItem, CustomerValueData } from "@/lib/hooks/use-queries"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { ErrorState } from "@/components/dashboard/error-state"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,8 +10,9 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
-import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle } from "lucide-react"
+import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle, TrendingUp, Users, Percent, Info } from "lucide-react"
 import { formatCurrency, formatCurrencyFull, formatPercent, formatCategory, formatAction, formatPriority, formatDateTime, formatRelativeTime, formatActorType } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +20,8 @@ interface CaseDetailProps {
   caseId: string
   onBack: () => void
 }
+
+// ── Trust Flow Step ──
 
 function TrustStep({ icon: Icon, label, status }: { icon: React.ElementType; label: string; status: "done" | "active" | "pending" }) {
   return (
@@ -40,6 +44,58 @@ function TrustStep({ icon: Icon, label, status }: { icon: React.ElementType; lab
   )
 }
 
+// ── Probability Bar ──
+
+function ProbabilityBar({ probability, confidence, isRecommended, isBaseline }: { probability: number; confidence: number; isRecommended: boolean; isBaseline?: boolean }) {
+  const pct = Math.round(probability * 100)
+  const barColor = isBaseline
+    ? "bg-zinc-400"
+    : pct >= 60
+      ? "bg-emerald-500"
+      : pct >= 40
+        ? "bg-amber-500"
+        : "bg-red-400"
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="h-2 rounded-full bg-muted overflow-hidden">
+          <div className={cn("h-full rounded-full transition-all", barColor)} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <span className="text-sm font-bold tabular-nums w-12 text-right">{pct}%</span>
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right">{(confidence * 100).toFixed(0)}% c.</span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">Confidence: {(confidence * 100).toFixed(1)}%</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      {isRecommended && !isBaseline && (
+        <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-[9px] px-1.5 py-0 h-4 shrink-0">
+          Best
+        </Badge>
+      )}
+    </div>
+  )
+}
+
+// ── Customer Value Tier Badge ──
+
+function ValueTierBadge({ tier }: { tier: string }) {
+  const config: Record<string, { label: string; className: string }> = {
+    very_high: { label: "Very High", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" },
+    high: { label: "High", className: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
+    normal: { label: "Normal", className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" },
+    low: { label: "Low", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
+  }
+  const c = config[tier] ?? config.normal
+  return <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0", c.className)}>{c.label}</Badge>
+}
+
+// ── Main Component ──
+
 export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const { data, isLoading, error, refetch } = useCaseDetail(caseId)
   const approveMutation = useApproveDecision()
@@ -56,8 +112,8 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-6 w-48" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
         </div>
         <Skeleton className="h-64 rounded-lg" />
         <Skeleton className="h-48 rounded-lg" />
@@ -66,6 +122,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   }
 
   const c = data.case
+  const cv: CustomerValueData | null = data.customerValue
   const decision = c.agentDecisions[0]
   const openStatuses = ["detected", "diagnosing", "diagnosed", "awaiting_approval", "executing"]
   const isOpen = openStatuses.includes(c.status)
@@ -110,6 +167,29 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const policyPassed = policyResult?.passed === true
   const policyViolations = Array.isArray(policyResult?.violations) ? policyResult.violations as string[] : []
   const policyReason = (policyResult?.reason ?? policyResult?.summary) as string | null
+
+  // Discount ceiling info from reasoning
+  const aiDiscountPercent = reasoningParsed.discountPercent as number | null
+  const isDiscountAction = decision?.recommendedAction === "offer_discount"
+  const maxDiscountPercent = 10 // from DEFAULT_MERCHANT_POLICY
+
+  // ── Probability Estimates processing ──
+  // Get the latest set of estimates (deduplicated by action, keeping latest per action)
+  const latestEstimates = processProbabilityEstimates(c.probabilityEstimates)
+  const baselineEstimate = latestEstimates.find(e => e.isBaseline)
+  const interventionEstimates = latestEstimates.filter(e => !e.isBaseline).sort((a, b) => b.probability - a.probability)
+  const bestIntervention = interventionEstimates[0] ?? null
+  const hasProbabilityData = latestEstimates.length > 0
+
+  // Parse factors from probability estimates
+  function parseFactors(factorsJson: unknown): Array<{ signal: string; direction: string; detail: string }> {
+    try {
+      const raw = typeof factorsJson === "string" ? JSON.parse(factorsJson) : factorsJson
+      return Array.isArray(raw) ? raw : []
+    } catch {
+      return []
+    }
+  }
 
   const handleApprove = () => {
     if (!decision) return
@@ -217,8 +297,8 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
           <p className={cn("text-lg font-bold mt-0.5", remainingAmount > 0 ? "text-amber-600" : "text-muted-foreground")}>{formatCurrencyFull(remainingAmount)}</p>
         </Card>
         <Card className="p-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recovery Probability</p>
-          <p className="text-lg font-bold mt-0.5">{formatPercent(c.recoveryProbability)}</p>
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Best Recovery Prob.</p>
+          <p className="text-lg font-bold mt-0.5">{bestIntervention ? formatPercent(bestIntervention.probability) : formatPercent(c.recoveryProbability)}</p>
         </Card>
         <Card className="p-3 col-span-2 md:col-span-1">
           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Attempts</p>
@@ -274,6 +354,209 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Customer Value / CLV ── */}
+      {cv && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-teal-600" />
+              <CardTitle className="text-sm font-semibold">Customer Value Intelligence</CardTitle>
+              <ValueTierBadge tier={cv.tier} />
+            </div>
+            <p className="text-[10px] text-muted-foreground">Historical Customer Value (HCV) — based on verified payment data</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Historical Spend</p>
+                <p className="text-base font-bold mt-0.5">{formatCurrencyFull(cv.totalSuccessfulSpend)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{cv.successfulPaymentCount} successful payment{cv.successfulPaymentCount !== 1 ? "s" : ""}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Avg. Transaction</p>
+                <p className="text-base font-bold mt-0.5">{formatCurrencyFull(cv.avgTransactionValue)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{cv.totalPaymentCount} total, {cv.failedPaymentCount} failed</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Value Percentile</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-base font-bold">P{cv.percentile}</p>
+                  <span className="text-[10px] text-muted-foreground">of {cv.populationSize} customers</span>
+                </div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      cv.percentile >= 80 ? "bg-emerald-500" :
+                      cv.percentile >= 50 ? "bg-teal-500" :
+                      cv.percentile >= 20 ? "bg-zinc-400" : "bg-amber-500"
+                    )}
+                    style={{ width: `${cv.percentile}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Value Weight</p>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <p className={cn(
+                    "text-base font-bold",
+                    cv.valueWeight >= 1.2 ? "text-emerald-600" :
+                    cv.valueWeight <= 0.8 ? "text-amber-600" : ""
+                  )}>{cv.valueWeight.toFixed(2)}x</p>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs text-xs">
+                        Multiplicative weight applied to recovery signals. Range: 0.70x (P0) to 1.40x (P100). Median (P50) = 1.00x.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {cv.valueWeight >= 1.2 ? "Amplifies recovery signals" :
+                   cv.valueWeight <= 0.8 ? "Reduces recovery signals" :
+                   "Neutral recovery signal impact"}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Per-Intervention Recovery Probability ── */}
+      {hasProbabilityData && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-violet-500" />
+                <CardTitle className="text-sm font-semibold">Recovery Probability Model</CardTitle>
+              </div>
+              <Badge variant="outline" className="text-[10px] font-mono">
+                v{interventionEstimates[0]?.modelVersion ?? baselineEstimate?.modelVersion ?? "—"}
+              </Badge>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              P(recover | case, intervention) — deterministic signal-based estimates, not LLM-generated
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Baseline row */}
+            {baselineEstimate && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">Baseline (no intervention)</span>
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs text-xs">
+                          Probability the customer would recover on their own without any action from the system.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+                <ProbabilityBar probability={baselineEstimate.probability} confidence={baselineEstimate.confidence} isRecommended={false} isBaseline />
+                {/* Baseline factors */}
+                {(() => {
+                  const f = parseFactors(baselineEstimate.factorsJson)
+                  if (f.length === 0) return null
+                  return (
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 ml-1">
+                      {f.slice(0, 4).map((factor, i) => (
+                        <span key={i} className={cn(
+                          "text-[10px]",
+                          factor.direction === "positive" ? "text-emerald-600" :
+                          factor.direction === "negative" ? "text-red-500" : "text-muted-foreground"
+                        )}>
+                          {factor.direction === "positive" ? "+" : factor.direction === "negative" ? "−" : "~"}{factor.signal}
+                        </span>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Separator between baseline and interventions */}
+            {baselineEstimate && interventionEstimates.length > 0 && (
+              <div className="flex items-center gap-2 pt-1">
+                <Separator className="flex-1" />
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Interventions</span>
+                <Separator className="flex-1" />
+              </div>
+            )}
+
+            {/* Intervention rows */}
+            <div className="space-y-3">
+              {interventionEstimates.map((est) => {
+                const isRecommended = decision?.recommendedAction === est.action
+                const isDisountCeilingHit = isDiscountAction && est.action === "offer_discount" && policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED"))
+                return (
+                  <div key={est.id} className={cn(
+                    "rounded-lg border p-3 space-y-2 transition-colors",
+                    isRecommended ? "border-violet-300 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20" :
+                    isDisountCeilingHit ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/10" :
+                    "border-transparent bg-muted/30"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={cn(
+                          "text-xs font-medium",
+                          isRecommended ? "text-violet-700 dark:text-violet-300" : ""
+                        )}>
+                          {formatAction(est.action)}
+                        </span>
+                        {isRecommended && (
+                          <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-[9px] px-1.5 py-0 h-4">
+                            AI Recommended
+                          </Badge>
+                        )}
+                        {isDisountCeilingHit && (
+                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4">
+                            Ceiling Exceeded
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <ProbabilityBar probability={est.probability} confidence={est.confidence} isRecommended={isRecommended} />
+                    {/* Uplift over baseline */}
+                    {baselineEstimate && est.probability > baselineEstimate.probability && (
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                        +{((est.probability - baselineEstimate.probability) * 100).toFixed(1)}pp uplift over baseline
+                      </p>
+                    )}
+                    {/* Intervention factors (expandable) */}
+                    {(() => {
+                      const f = parseFactors(est.factorsJson)
+                      if (f.length === 0) return null
+                      return (
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 ml-1">
+                          {f.slice(0, 5).map((factor, i) => (
+                            <span key={i} className={cn(
+                              "text-[10px]",
+                              factor.direction === "positive" ? "text-emerald-600 dark:text-emerald-400" :
+                              factor.direction === "negative" ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
+                            )}>
+                              {factor.direction === "positive" ? "+" : factor.direction === "negative" ? "−" : "~"}{factor.signal}
+                            </span>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── AI Recovery Analysis ── */}
       {decision && (
@@ -347,6 +630,47 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                 </div>
               </div>
             </div>
+
+            {/* Discount Ceiling Info */}
+            {isDiscountAction && (
+              <div className={cn(
+                "rounded-lg border p-3 space-y-2",
+                policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED"))
+                  ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/10"
+                  : "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/10"
+              )}>
+                <div className="flex items-center gap-2">
+                  <Percent className={cn("h-4 w-4", policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED")) ? "text-red-600" : "text-emerald-600")} />
+                  <p className="text-xs font-semibold">Discount Ceiling</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Merchant Maximum</p>
+                    <p className="font-semibold">{maxDiscountPercent}%</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">AI Requested</p>
+                    <p className={cn(
+                      "font-semibold",
+                      (aiDiscountPercent ?? 0) > maxDiscountPercent ? "text-red-600" : ""
+                    )}>{aiDiscountPercent != null ? `${aiDiscountPercent}%` : "N/A"}
+                    </p>
+                  </div>
+                </div>
+                {policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED")) && (
+                  <p className="text-xs text-red-600 mt-1">
+                    <AlertTriangle className="h-3 w-3 inline mr-1" />
+                    AI requested {aiDiscountPercent}% discount which exceeds the merchant ceiling of {maxDiscountPercent}%. Policy gate blocked this action.
+                  </p>
+                )}
+                {!policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED")) && aiDiscountPercent != null && aiDiscountPercent <= maxDiscountPercent && (
+                  <p className="text-xs text-emerald-600 mt-1">
+                    <CheckCircle className="h-3 w-3 inline mr-1" />
+                    Discount {aiDiscountPercent}% is within the merchant ceiling of {maxDiscountPercent}%.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Diagnosis */}
             {diagnosisText && (
@@ -551,4 +875,21 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
       )}
     </div>
   )
+}
+
+// ── Utility: Deduplicate probability estimates ──
+
+/**
+ * Process raw probability estimates from the API.
+ * Deduplicates by action (keeps latest per action).
+ */
+function processProbabilityEstimates(estimates: ProbabilityEstimateItem[]): ProbabilityEstimateItem[] {
+  const seen = new Map<string, ProbabilityEstimateItem>()
+  // API returns ordered by createdAt desc, so first seen per action is the latest
+  for (const est of estimates) {
+    if (!seen.has(est.action)) {
+      seen.set(est.action, est)
+    }
+  }
+  return Array.from(seen.values())
 }

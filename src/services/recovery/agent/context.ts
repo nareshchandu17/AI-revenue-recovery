@@ -174,9 +174,6 @@ async function buildCustomerSummary(customerId: string): Promise<CustomerSummary
     successRate: total > 0 ? successful / total : 0,
     lastSuccessfulPaymentAt: lastSuccess?.createdAt.toISOString() ?? null,
     lastFailedPaymentAt: lastFailure?.createdAt.toISOString() ?? null,
-    // Aggregated financial context (safe for LLM — no PII)
-    historicalSpendDisplay?: string,
-    customerValueWeight?: number,
   }
 }
 

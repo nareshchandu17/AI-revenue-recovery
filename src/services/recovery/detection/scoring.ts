@@ -25,27 +25,11 @@ import type { RecoveryScore, ScoreFactor, CustomerPaymentStats, Recoverability }
 
 // --- Individual factor scorers --------------------------------------------
 
-// --- Individual factor scorers --------------------------------------------
+function scoreCustomerHistory(stats: CustomerPaymentStats): ScoreFactor {
+  const { successfulPayments, totalPayments, failedPayments } = stats
+  const successRate = totalPayments > 0 ? successfulPayments / totalPayments : 0
 
-function scoreCustomerValue(input: ScoreInput): ScoreFactor {
-  const w = input.customerValueWeight ?? 1.0
-  if (w === 1.0) {
-    return { name: "Customer Value", points: 0, maxPoints: 8, detail: "Customer value weight is neutral (1.0x — average customer)" }
-  }
-  // The adjustment is applied multiplicatively in computeRecoveryScore,
-  // but we still emit a factor here for explainability.
-  // Points reflect the magnitude of adjustment.
-  const magnitude = Math.abs(w - 1.0) * 10 // 0.3 deviation → 3 points
-  const clamped = Math.min(8, Math.round(magnitude))
-  const direction = w > 1 ? "positive" : "negative"
-
-  return {
-    name: "Customer Value",
-    points: direction === "positive" ? clamped : -clamped,
-    maxPoints: 8,
-    detail: `Customer value weight ${w.toFixed(2)}x (${direction === "positive" ? "above" : "below"} average — ${w < 0.85 ? "low" : w > 1.15 ? "high" : "normal"} value customer)`,
-  }
-}
+  if (totalPayments === 0) {
     return { name: "Customer History", points: 0, maxPoints: SCORE_CUSTOMER_HISTORY_MAX, detail: "No payment history" }
   }
 
@@ -80,6 +64,23 @@ function scoreCustomerValue(input: ScoreInput): ScoreFactor {
   }
 }
 
+function scoreCustomerValue(input: ScoreInput): ScoreFactor {
+  const w = input.customerValueWeight ?? 1.0
+  if (w === 1.0) {
+    return { name: "Customer Value", points: 0, maxPoints: 8, detail: "Customer value weight is neutral (1.0x — average customer)" }
+  }
+  const magnitude = Math.abs(w - 1.0) * 10
+  const clamped = Math.min(8, Math.round(magnitude))
+  const direction = w > 1 ? "positive" : "negative"
+
+  return {
+    name: "Customer Value",
+    points: direction === "positive" ? clamped : -clamped,
+    maxPoints: 8,
+    detail: `Customer value weight ${w.toFixed(2)}x (${direction === "positive" ? "above" : "below"} average — ${w < 0.85 ? "low" : w > 1.15 ? "high" : "normal"} value customer)`,
+  }
+}
+
 function scoreFailureReason(recoverability: Recoverability): ScoreFactor {
   const pointsMap: Record<Recoverability, number> = {
     high: 22,
@@ -111,7 +112,7 @@ function scorePaymentMethod(method: string | null | undefined): ScoreFactor {
     name: "Payment Method",
     points,
     maxPoints: SCORE_PAYMENT_METHOD_MAX,
-    detail: `${method} (retry difficulty varies)` ,
+    detail: `${method} (retry difficulty varies)`,
   }
 }
 
@@ -189,7 +190,7 @@ export function computeRecoveryScore(input: ScoreInput): RecoveryScore {
     scorePaymentMethod(input.paymentMethod),
     scoreRecency(input.createdAt, input.now),
     scoreAmount(input.amountPaise),
-  scoreCustomerValue(input),
+    scoreCustomerValue(input),
   ]
 
   let totalPoints = factors.reduce((sum, f) => sum + f.points, 0)
@@ -209,11 +210,10 @@ export function computeRecoveryScore(input: ScoreInput): RecoveryScore {
   // Clamp to 0-100
   totalPoints = Math.min(100, Math.max(0, totalPoints))
 
-  // 11. Apply customer value weight as a multiplicative modifier
+  // Apply customer value weight as a multiplicative modifier
   if (input.customerValueWeight !== undefined && input.customerValueWeight !== 1.0) {
     const weighted = Math.round(totalPoints * input.customerValueWeight)
     const clamped = Math.min(100, Math.max(0, weighted))
-    // If the weight changed the score meaningfully, add an explainability factor
     if (Math.abs(clamped - totalPoints) >= 1) {
       factors.push({
         name: "Customer Value",

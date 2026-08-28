@@ -106,6 +106,15 @@ async function scanFailedPayments(result: DetectionResult, now: Date) {
     )
 
     const customerStats = await getCustomerStats(payment.customerId)
+
+    // Compute customer value weight (non-fatal)
+    let customerValueWeight: number | undefined
+    try {
+      const { assessCustomerValue } = await import("../customer-value")
+      const cv = await assessCustomerValue(payment.customerId, payment.merchantId)
+      customerValueWeight = cv.percentile.valueWeight
+    } catch { /* non-fatal */ }
+
     const score = computeRecoveryScore({
       customerStats,
       recoverability: classification.recoverability,
@@ -337,7 +346,7 @@ export async function runDetection(now: Date = new Date()): Promise<DetectionRes
       `Revenue at risk: ₹${(result.totalRevenueAtRisk / 100).toLocaleString("en-IN")}`,
       `High priority: ${result.highPriorityCases}`,
     ].join(" | "),
-    metadata: result,
+    metadata: result as unknown as Record<string, unknown>,
   })
 
   return result

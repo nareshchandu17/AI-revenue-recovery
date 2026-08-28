@@ -84,6 +84,17 @@ export async function analyzeCase(
   } catch (err) {
     // AI failed — use deterministic fallback
     const fallbackResult = handleAIFailure(err, context, probabilityAssessment, policy)
+
+    // Persist probability estimates even on fallback path
+    if (probabilityAssessment) {
+      try {
+        const { persistAssessment } = await import("../probability/persistence")
+        await persistAssessment(probabilityAssessment, fallbackResult.decisionId)
+      } catch {
+        // non-fatal
+      }
+    }
+
     return fallbackResult
   }
 
@@ -488,7 +499,6 @@ async function handleAIFailure(
 
 export type { AgentAnalysisResult }
 
-n
 // --- Internal: Augment Context with Probabilities -------
 
 function augmentContextWithProbabilities(

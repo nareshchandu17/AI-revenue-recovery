@@ -65,6 +65,30 @@ export interface CasesResponse {
   statusSummary: Record<string, number>
 }
 
+export interface ProbabilityEstimateItem {
+  id: string
+  action: string
+  probability: number
+  confidence: number
+  isBaseline: boolean
+  factorsJson: unknown
+  modelVersion: string
+  createdAt: string
+}
+
+export interface CustomerValueData {
+  totalSuccessfulSpend: number
+  successfulPaymentCount: number
+  avgTransactionValue: number
+  totalPaymentCount: number
+  failedPaymentCount: number
+  lastSuccessfulAt: string | null
+  percentile: number
+  tier: "low" | "normal" | "high" | "very_high"
+  valueWeight: number
+  populationSize: number
+}
+
 export interface CaseDetail {
   success: boolean
   case: {
@@ -84,10 +108,12 @@ export interface CaseDetail {
     merchant: { id: string; name: string }
     payment: { id: string; externalId: string; amount: number; status: string; method: string; failureCode: string | null; failureReason: string | null; description: string | null; createdAt: string; customer: { id: string; displayName: string; email: string } | null } | null
     agentDecisions: { id: string; recommendedAction: string; confidence: number; status: string; diagnosis: string | null; reasoningJson: unknown; createdAt: string; reviewedBy: string | null; reviewedAt: string | null }[]
+    probabilityEstimates: ProbabilityEstimateItem[]
     recoveryAttempts: { id: string; action: string; status: string; attemptNumber: number; recoveredAmount: number; externalRef: string | null; simulated: boolean; failureReason: string | null; startedAt: string | null; completedAt: string | null; attemptedAt: string | null }[]
     recoveryAttributions: { id: string; amount: number; status: string; source: string; confidence: number; reason: string | null; createdAt: string; payment: { id: string; externalId: string; amount: number; status: string; method: string; createdAt: string } }[]
     auditEvents: { id: string; eventType: string; action: string; details: string | null; actorType: string; createdAt: string }[]
   }
+  customerValue: CustomerValueData | null
 }
 
 export interface AuditEvent {

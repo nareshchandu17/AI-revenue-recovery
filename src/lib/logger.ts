@@ -6,6 +6,8 @@
  */
 
 export interface LogContext {
+  /** Service/module name for log categorization */
+  service?: string
   requestId?: string
   merchantId?: string
   recoveryCaseId?: string
@@ -38,6 +40,7 @@ interface LogEntry {
 
 function formatEntry(entry: LogEntry): string {
   const ctx: Record<string, string> = {}
+  if (entry.ctx.service) ctx.svc = entry.ctx.service
   if (entry.ctx.requestId) ctx.req = entry.ctx.requestId
   if (entry.ctx.merchantId) ctx.merchant = entry.ctx.merchantId
   if (entry.ctx.recoveryCaseId || entry.ctx.caseId) ctx.case = entry.ctx.recoveryCaseId ?? entry.ctx.caseId ?? ""
