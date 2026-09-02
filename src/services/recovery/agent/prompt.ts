@@ -27,6 +27,7 @@ RULES:
 - Prefer the LEAST risky effective intervention.
 - If evidence is insufficient, choose no_action or escalate_to_merchant.
 - Respect retry limits, cooldowns, and merchant policy constraints.
+- **ECONOMIC GATING**: Review the 'economicEvaluations' object. If an action's 'economicDecision' is 'DO_NOT_ACT', it means the expected incremental recovery does not justify the intervention cost. You should strongly prefer the 'bestCandidateAction' or 'no_action' if all interventions are negative.
 - Return ONLY valid JSON matching the required schema. No extra text.
 
 ALLOWED ACTIONS:

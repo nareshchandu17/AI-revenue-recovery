@@ -5,6 +5,8 @@
  * The AI produces an AIDecisionOutput which is then validated
  * and optionally overridden by the policy guardrail.
  */
+import type { EconomicEvaluation, EconomicDecision } from "../../economic/types"
+
 
 // --- Allowed Actions (maps to Prisma RecoveryAction enum) --------------------
 
@@ -118,6 +120,11 @@ export interface RecoveryContext {
       weeklyLimit: number
     }
   }
+  /** Economic evaluation of all candidates */
+  economicEvaluations?: {
+    bestCandidateAction: string
+    evaluations: Record<string, EconomicEvaluation>
+  }
 }
 
 // --- AI Structured Output (what the model returns) --------------------------
@@ -176,6 +183,7 @@ export interface AgentAnalysisResult {
   usedFallback: boolean
   decisionId: string
   decisionStatus: "pending" | "approved" | "rejected"
+  economicEvaluation?: EconomicEvaluation
 }
 
 // --- Batch Analysis ---------------------------------------------------------

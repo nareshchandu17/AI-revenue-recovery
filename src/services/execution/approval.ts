@@ -12,6 +12,7 @@ import { TERMINAL_CASE_STATUSES } from "@/services/recovery/detection/constants"
 import { NotFoundError, ValidationError } from "@/lib/errors"
 import { logger } from "@/lib/logger"
 import { validateDecisionTransition } from "@/lib/state-machine"
+import { CURRENT_AUTONOMY_LEVEL } from "@/lib/autonomy"
 import type { ApprovalResult } from "./types"
 
 export interface ApproveDecisionParams {
@@ -88,6 +89,7 @@ export async function approveDecision(params: ApproveDecisionParams): Promise<Ap
       confidence: updated.confidence,
       merchantId,
       note,
+      autonomyLevel: CURRENT_AUTONOMY_LEVEL,
     },
   })
 
@@ -163,6 +165,7 @@ export async function rejectDecision(params: RejectDecisionParams): Promise<Appr
       recommendedAction: updated.recommendedAction,
       merchantId,
       reason,
+      autonomyLevel: CURRENT_AUTONOMY_LEVEL,
     },
   })
 

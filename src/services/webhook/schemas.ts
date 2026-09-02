@@ -61,6 +61,15 @@ export const webhookEnvelopeSchema = z.object({
         .object({ entity: razorpayPaymentEntitySchema })
         .passthrough()
         .optional(),
+      payment_link: z
+        .object({
+          entity: z.object({
+            id: z.string(),
+            reference_id: z.string().nullable().default(null),
+          }).passthrough(),
+        })
+        .passthrough()
+        .optional(),
     })
     .passthrough(),
 })

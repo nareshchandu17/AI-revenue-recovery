@@ -15,22 +15,54 @@ export class DiscountExecutor implements ActionExecutor {
   readonly action: RecoveryAction = "offer_discount"
 
   async execute(context: ExecutorContext): Promise<ExecutorResult> {
-    // In this system, discount amount is computed from the approved
-    // discountPercent (stored in the AgentDecision reasoningJson)
-    // and validated by the policy engine before reaching the executor.
-    // The executor does NOT re-validate the ceiling.
+    const { db } = await import("@/lib/db")
+    const { DEFAULT_MERCHANT_POLICY } = await import("@/services/recovery/agent/policy")
+    
+    // 1. Fetch decision to get the proposed discount
+    const decision = await db.agentDecision.findUnique({ where: { id: context.agentDecisionId! } })
+    if (!decision) throw new Error("Agent decision not found")
+
+    let discountPercent = 0
+    if (decision.reasoningJson && typeof decision.reasoningJson === "object" && "discountPercent" in decision.reasoningJson) {
+        discountPercent = Number((decision.reasoningJson as any).discountPercent)
+    }
+
+    if (isNaN(discountPercent) || discountPercent < 0) {
+        throw new Error("Invalid or negative discount percent")
+    }
+    if (discountPercent > 100) {
+        throw new Error("Discount cannot exceed 100%")
+    }
+
+    // 2. Fetch merchant policy to check ceiling
+    const merchant: any = await db.merchant.findUnique({ where: { id: context.merchantId } })
+    const maxDiscount = merchant?.maxDiscountPercent ?? DEFAULT_MERCHANT_POLICY.maxDiscountPercent
+
+    if (discountPercent > maxDiscount) {
+        throw new Error(`Proposed discount ${discountPercent}% exceeds merchant ceiling of ${maxDiscount}%`)
+    }
+
+    const discountAmount = Math.floor(context.amountAtRisk * (discountPercent / 100))
+    const finalAmount = context.amountAtRisk - discountAmount
+
+    if (finalAmount < 0) {
+        throw new Error("Final amount after discount cannot be negative")
+    }
 
     // SIMULATED: No Razorpay discount API available in sandbox
     return {
       success: true,
       externalRef: `simulated_discount_${context.recoveryCaseId}_${context.attemptNumber}`,
-      summary: `SIMULATED: Discount would be offered for ₹${(context.amountAtRisk / 100).toFixed(2)} ${context.currency} (test mode — Razorpay discount API not available)`,
+      summary: `SIMULATED: Discount of ${discountPercent}% (₹${(discountAmount / 100).toFixed(2)}) would be offered. Final amount: ₹${(finalAmount / 100).toFixed(2)} ${context.currency}`,
       simulated: true,
       details: {
         method: "simulated",
         caseId: context.recoveryCaseId,
         attemptNumber: context.attemptNumber,
-        amount: context.amountAtRisk,
+        originalAmount: context.amountAtRisk,
+        discountPercent,
+        discountAmount,
+        finalAmount,
         currency: context.currency,
       },
     }

@@ -23,6 +23,7 @@ import { checkContactEligibility, CUSTOMER_FACING_ACTIONS, ACTION_DEFAULT_CHANNE
 import type { RecoveryAction } from '@prisma/client'
 import type { GateResult } from './types'
 import { STOP_REASONS, DECISION_EXPIRY_MINUTES } from './types'
+import { evaluateStoppingRules } from './stop-evaluator'
 
 export interface GateInput {
   caseId: string
@@ -57,102 +58,22 @@ export interface GateInput {
 export async function checkExecutionGate(input: GateInput): Promise<GateResult> {
   const { caseId, decisionId, action, merchantId, amountAtRisk, recoveryProbability, customerId, idempotencyKey } = input
 
-  // 1. Load the case
+  // 1. Load the case and merchant
   const recoveryCase = await db.recoveryCase.findUnique({
     where: { id: caseId },
-    include: { payment: { select: { externalId: true, status: true, customerId: true } } },
+    include: { 
+      payment: { select: { externalId: true, status: true, customerId: true } },
+      merchant: { select: { autonomyLevel: true } }
+    },
   })
 
   if (!recoveryCase) {
     return { eligible: false, reason: `RecoveryCase ${caseId} not found`, requiresApproval: false }
   }
 
-  // Resolve customer ID from input or from case's payment
-  const effectiveCustomerId = customerId ?? recoveryCase.payment?.customerId ?? null
-
-  // 2. Case must be in an open state
-  if ((TERMINAL_CASE_STATUSES as readonly string[]).includes(recoveryCase.status)) {
-    return { eligible: false, reason: STOP_REASONS.CASE_ALREADY_RECOVERED, requiresApproval: false }
-  }
-
-  // 3. If the case's linked payment is now captured, stop
-  if (recoveryCase.payment?.status === 'captured') {
-    return { eligible: false, reason: STOP_REASONS.CASE_ALREADY_RECOVERED, requiresApproval: false }
-  }
-
-  // --- DND + Contact Frequency (only for customer-facing actions) ---
-  if (effectiveCustomerId && CUSTOMER_FACING_ACTIONS.has(action)) {
-    // 4. DND / opt-out check (HARD gate — no bypass)
-    const channel = ACTION_DEFAULT_CHANNEL[action] ?? 'email'
-    const dndResult = await checkDNDEligibility({
-      customerId: effectiveCustomerId,
-      merchantId,
-      channel: channel as 'email',
-      caseId,
-    })
-
-    if (!dndResult.allowed) {
-      return {
-        eligible: false,
-        reason: `DO_NOT_CONTACT: ${dndResult.reason}`,
-        requiresApproval: false,
-      }
-    }
-
-    // 5. Contact frequency cap
-    if (idempotencyKey) {
-      const contactResult = await checkContactEligibility({
-        customerId: effectiveCustomerId,
-        merchantId,
-        action,
-        channel,
-        caseId,
-        idempotencyKey,
-      })
-
-      if (!contactResult.allowed) {
-        return {
-          eligible: false,
-          reason: `CONTACT_FREQUENCY_LIMIT: ${contactResult.reason}`,
-          requiresApproval: false,
-        }
-      }
-    }
-  }
-
-  // 6. Load decision if provided
-  if (decisionId) {
-    const decision = await db.agentDecision.findUnique({
-      where: { id: decisionId },
-    })
-
-    if (!decision) {
-      return { eligible: false, reason: STOP_REASONS.DECISION_EXPIRED, requiresApproval: false }
-    }
-
-    if (decision.status === 'rejected') {
-      return { eligible: false, reason: 'Decision was rejected by policy', requiresApproval: false }
-    }
-
-    if (decision.status === 'expired') {
-      return { eligible: false, reason: STOP_REASONS.DECISION_EXPIRED, requiresApproval: false }
-    }
-
-    // Time-based expiry
-    const decisionAge = (Date.now() - decision.createdAt.getTime()) / 60_000
-    if (decisionAge > DECISION_EXPIRY_MINUTES) {
-      // Mark as expired in DB
-      await db.agentDecision.update({
-        where: { id: decisionId },
-        data: { status: 'expired' },
-      })
-      return { eligible: false, reason: STOP_REASONS.DECISION_EXPIRED, requiresApproval: false }
-    }
-
-    // Decision must belong to this case
-    if (decision.recoveryCaseId !== caseId) {
-      return { eligible: false, reason: 'Decision does not belong to this case', requiresApproval: false }
-    }
+  const stopResult = await evaluateStoppingRules(caseId, action, decisionId, null)
+  if (stopResult.shouldStop) {
+    return { eligible: false, reason: stopResult.reason ?? stopResult.rule, requiresApproval: false }
   }
 
   // 7. Amount validity
@@ -169,53 +90,22 @@ export async function checkExecutionGate(input: GateInput): Promise<GateResult> 
     return { eligible: false, reason: `Recovery probability ${(recoveryProbability * 100).toFixed(0)}% below minimum ${(DEFAULT_MERCHANT_POLICY.minimumRecoveryProbability * 100).toFixed(0)}%`, requiresApproval: false }
   }
 
-  // 9. Count existing attempts for this case
-  const existingAttempts = await db.recoveryAttempt.count({
-    where: { recoveryCaseId: caseId },
-  })
-
-  // 10. Retry limit
-  if (existingAttempts >= DEFAULT_MERCHANT_POLICY.maxRecoveryAttempts) {
-    return { eligible: false, reason: STOP_REASONS.RETRY_LIMIT_REACHED, requiresApproval: false }
-  }
-
-  // 11. Check for duplicate: same case + same action + non-terminal attempt
-  const duplicateAttempt = await db.recoveryAttempt.findFirst({
-    where: {
-      recoveryCaseId: caseId,
-      action,
-      status: { in: ['pending', 'queued', 'running'] },
-    },
-  })
-
-  if (duplicateAttempt) {
-    return { eligible: false, reason: STOP_REASONS.DUPLICATE_ATTEMPT, requiresApproval: false }
-  }
-
-  // 12. Cooldown check
-  if (action === 'retry_payment' || action === 'send_reminder') {
-    const lastAttempt = await db.recoveryAttempt.findFirst({
-      where: { recoveryCaseId: caseId },
-      orderBy: { attemptedAt: 'desc' },
-      select: { attemptedAt: true },
-    })
-
-    if (lastAttempt && DEFAULT_MERCHANT_POLICY.retryCooldownMinutes > 0) {
-      const elapsed = (Date.now() - lastAttempt.attemptedAt.getTime()) / 60_000
-      if (elapsed < DEFAULT_MERCHANT_POLICY.retryCooldownMinutes) {
-        return { eligible: false, reason: STOP_REASONS.COOLDOWN_ACTIVE, requiresApproval: false }
-      }
-    }
-  }
-
-  // 13. Determine if merchant approval is required
-  const requiresApproval = checkApprovalRequirement(action)
+  // 13. Determine if merchant approval is required based on autonomy level
+  const autonomyLevel = recoveryCase.merchant.autonomyLevel ?? 2
+  const requiresApproval = checkApprovalRequirement(action, autonomyLevel)
 
   return { eligible: true, reason: null, requiresApproval }
 }
 
-/** Check whether an action requires explicit merchant approval. */
-function checkApprovalRequirement(action: RecoveryAction): boolean {
+/** Check whether an action requires explicit merchant approval based on autonomy level. */
+function checkApprovalRequirement(action: RecoveryAction, autonomyLevel: number): boolean {
+  // L0 (Observe) and L1 (Manual) require approval for everything
+  if (autonomyLevel <= 1) return true
+
+  // L3 (Autonomous) and L4 (Max) do not require approval for any standard actions
+  if (autonomyLevel >= 3) return false
+
+  // L2 (Supervised) requires approval only for high-risk financial actions
   switch (action) {
     case 'retry_payment':
     case 'offer_discount':

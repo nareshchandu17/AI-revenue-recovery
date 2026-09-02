@@ -29,7 +29,7 @@ export async function GET(
         },
         agentDecisions: {
           orderBy: { createdAt: "desc" },
-          select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, reasoningJson: true, createdAt: true, reviewedBy: true, reviewedAt: true },
+          select: { id: true, recommendedAction: true, confidence: true, status: true, diagnosis: true, reasoningJson: true, createdAt: true, reviewedBy: true, reviewedAt: true, economicDecision: true, economicReason: true, expectedRecovery: true, interventionCost: true, netExpectedValue: true, expectedIncrementalRecovery: true, baselineExpectedRecovery: true, incentiveCost: true },
         },
         probabilityEstimates: {
           orderBy: { createdAt: "desc" },
@@ -44,6 +44,9 @@ export async function GET(
           include: {
             payment: { select: { id: true, externalId: true, amount: true, status: true, method: true, createdAt: true } },
           },
+        },
+        incrementalRevenues: {
+          orderBy: { evaluatedAt: "desc" },
         },
         auditEvents: {
           orderBy: { createdAt: "asc" },

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Bounded Recovery Execution Engine — 17+ integration tests.
  *

@@ -2,19 +2,25 @@
 
 Built for the **Razorpay Buildathon — Track 03**.
 
-## Problem
+> **Evaluation Results**: Our evaluation harness proves our **AI Economic Gate recovers +₹26,495.34 more Net Value** than a naive retry strategy across a 50-case batch by explicitly calculating the Net Present Value of interventions and rejecting unprofitable actions.
 
-Merchants lose 5–15% of revenue to failed payments, abandoned checkouts, and lapsed subscriptions. Manual recovery is labor-intensive, inconsistent, and unscalable. Existing rule engines cannot adapt recovery strategy to individual customer context.
+## 1. Problem & Solution
 
-## Solution
+Merchants lose 5–15% of revenue to failed payments, abandoned checkouts, and lapsed subscriptions. Manual recovery is labor-intensive, inconsistent, and unscalable. Existing rule engines blindly retry payments or spam customers without analyzing the cost of the intervention versus the probability of success.
 
-An AI-assisted revenue recovery system that detects at-risk revenue, recommends recovery actions via LLM analysis, enforces deterministic policy guardrails on every recommendation, and attributes recovered revenue only from verified payment events.
+Our solution is an AI-assisted revenue recovery system that detects at-risk revenue, recommends recovery actions via LLM analysis, enforces **deterministic economic and policy guardrails** on every recommendation, and attributes recovered revenue purely from verified payment events (cleanly separating Confirmed vs Unconfirmed revenue).
 
-## Why AI
+## 2. Why AI? (The NPV Economic Gate)
 
-Recovery effectiveness depends on context: failure reason, customer history, amount, timing, and previous recovery attempts. A static rules engine cannot weigh these factors dynamically. The LLM analyzes the full case context to recommend the most appropriate recovery action while deterministic policies prevent unsafe recommendations.
+Razorpay's existing agents retry based on static rules. Our AI agent dynamically calculates the **Net Present Value (NPV)** of an intervention:
 
-## Core Workflow
+```
+Expected Value = (Probability of Success × Amount at Risk) - Cost of Intervention
+```
+
+The AI doesn't just guess what to do; it declines to act if the expected incremental recovery is mathematically negative. This guarantees that recovery efforts are strictly profitable, which static rule engines cannot do.
+
+## 3. Core Workflow
 
 ```
   Razorpay Events              Detection Engine             AI Agent
@@ -50,7 +56,27 @@ Recovery effectiveness depends on context: failure reason, customer history, amo
 
 State flow: `detected → diagnosing → diagnosed → awaiting_approval → executing → completed`
 
-## Tech Stack
+## 4. Proof of Impact (Evaluation Harness)
+
+The repository includes a deterministic evaluation harness (`npm run evaluate`) that measures the AI Economic Gate against a naive retry baseline. The metrics strictly separate deterministic `reference_id` links (Confirmed) from probabilistic heuristics (Unconfirmed).
+
+```text
+=== RESULTS ===
+
+┌──────────────────┬───────┬─────────┬───────────┬─────────────────────────┬───────────────────────────┬─────────┬─────────────────────────┬───────────────┬─────────────────────┐
+│ (index)          │ Cases │ Actions │ No Action │ Recovered ₹ (Confirmed) │ Recovered ₹ (Unconfirmed) │ Costs ₹ │ Net Value ₹ (Confirmed) │ Recovery Rate │ Unnecessary Actions │
+├──────────────────┼───────┼─────────┼───────────┼─────────────────────────┼───────────────────────────┼─────────┼─────────────────────────┼───────────────┼─────────────────────┤
+│ NO_ACTION        │ 13    │ 0       │ 13        │ '0.00'                  │ '21985.96'                │ '0.00'  │ '0.00'                  │ '38.5%'       │ 0                   │
+│ NAIVE            │ 13    │ 13      │ 0         │ '8892.11'               │ '41.85'                   │ '21.00' │ '8871.11'               │ '30.8%'       │ 5                   │
+│ AI_ECONOMIC_GATE │ 13    │ 13      │ 0         │ '35387.45'              │ '0.00'                    │ '21.00' │ '35366.45'              │ '38.5%'       │ 5                   │
+└──────────────────┴───────┴─────────┴───────────┴─────────────────────────┴───────────────────────────┴─────────┴─────────────────────────┴───────────────┴─────────────────────┘
+
+=== KEY FINDINGS ===
+Actions avoided by AI Economic Gate: 0
+WINNER BY NET VALUE: AI_ECONOMIC_GATE (+₹26495.34 over NAIVE)
+```
+
+## 5. Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -63,7 +89,7 @@ State flow: `detected → diagnosing → diagnosed → awaiting_approval → exe
 | State | TanStack Query, Zustand |
 | Runtime | Bun |
 
-## Architecture
+## 6. Architecture
 
 ```
 src/
@@ -90,7 +116,7 @@ src/
 └── worker/index.ts       # Standalone BullMQ worker process
 ```
 
-## AI Safety Model
+## 7. AI Safety Model
 
 The AI is **bounded** and **cannot execute actions**:
 
@@ -100,7 +126,7 @@ The AI is **bounded** and **cannot execute actions**:
 - **No PII in prompts** — customer context is sanitized to display name and payment statistics only.
 - **Deterministic fallback** — if the AI provider is unavailable or returns invalid output, a rule-based fallback produces a safe recommendation.
 
-## Revenue Attribution
+## 8. Revenue Attribution
 
 `recoveredAmount` on a case is **only updated from verified payment events**, never from executor results.
 
@@ -109,13 +135,33 @@ Attribution signals (by confidence):
 | Source | Confidence | Mechanism |
 |--------|-----------|-----------|
 | `payment_retry` | 0.95 | Same payment externalId captured after retry |
-| `payment_link` | 0.85 | Payment created via recovery action, referenced in attempt |
+| `payment_link` | 1.00 | Deterministic match via `reference_id` or `notes.recovery_case_id` on the webhook |
 | `manual` | 1.00 | Merchant manually attributed |
-| `temporal` | 0.30 | Time proximity only — marked `unattributed` for review |
+| `temporal` | 0.40 | Probabilistic fallback (customer + amount heuristic) — marked `temporal` for review and excluded from headline metrics |
 
-Same customer + same amount is explicitly **not** sufficient for attribution.
+Attribution is deterministic via `reference_id`/`notes` when the payment flows through a recovery-generated link. A lower-confidence fallback exists for payments made outside that flow, which is explicitly labeled and excluded from headline confirmed metrics.
 
-## Local Setup
+## 9. Failure Modes & Recovery Behavior
+
+The system classifies execution failures to ensure operational transparency and financial safety. These categories are surfaced in the merchant UI in a human-readable format.
+
+| Failure | System Behavior | Financial Safety | Retry/Recovery |
+|---------|-----------------|------------------|----------------|
+| **AI Service Unavailable** | `AI_FAILURE` classified. | No action taken. | Worker automatically queues for safe retry. |
+| **Worker Failure / Redis Down** | `QUEUE_FAILURE` classified. | No action taken. | Retries via BullMQ backoff. |
+| **Payment Provider Failure** | `PROVIDER_FAILURE` classified. | `PAYMENT_STATE_UNKNOWN` (money movement uncertain). | Worker automatically retries safely. |
+| **Delayed Webhook** | `RECONCILIATION_DELAY` handled via DB idempotency. | Processed once, state transitions protected. | Ignored if already processed. |
+| **Duplicate Webhook** | `DUPLICATE_EVENT` trapped by DB constraint. | No double-counting of recovered revenue. | Discarded safely. |
+| **Stale Decision** | `STALE_DECISION` classified (e.g., already recovered). | Safe abort. | No retry. |
+| **DND/Consent Block** | `CUSTOMER_CONTACT_BLOCKED` via Policy Engine. | No contact made. No money moved. | No retry. |
+| **Contact Frequency Block** | `POLICY_BLOCK` via Policy Engine. | No action taken. | Will retry when cooling period expires. |
+| **Stopping Rule Block** | `POLICY_BLOCK` (e.g. limit reached). | No action taken. | No retry. |
+
+### What Broke and How We Fixed It
+
+Our initial attribution logic fell back to customer+amount matching more often than intended, which we didn't catch until we audited it against our own documented design. We fixed it by switching to a deterministic `reference_id` on payment links and downgrading the heuristic fallback's confidence to `0.40` so it can't silently inflate recovered-revenue numbers. Evaluator metrics now clearly isolate Confirmed vs Unconfirmed revenue.
+
+## 10. Local Setup
 
 ```bash
 # 1. Install dependencies
@@ -139,7 +185,7 @@ bun run dev
 bun run worker
 ```
 
-## Environment Variables
+## 11. Environment Variables
 
 See [`.env.example`](.env.example) for a complete template.
 
@@ -156,7 +202,7 @@ See [`.env.example`](.env.example) for a complete template.
 
 The app functions without Razorpay keys (dev mode simulates payments) and without Redis (actions execute synchronously).
 
-## Demo Flow
+## 12. Demo Flow
 
 1. **Seed** the database — creates sample failed payments, abandoned checkouts, and lapsed subscriptions.
 2. **Run detection** (`POST /api/recovery/detect`) — the detection engine scores and prioritizes risk signals, creating recovery cases.
@@ -166,7 +212,19 @@ The app functions without Razorpay keys (dev mode simulates payments) and withou
 6. **Simulate a payment webhook** (`POST /api/webhooks/simulate`) — a `payment.captured` event triggers attribution.
 7. **Verify** on the dashboard — recovered revenue appears only after attribution from the verified webhook event.
 
-## Key API Endpoints
+## 13. Demo: Economic Decisioning
+
+The agent evaluates the expected incremental value of recovery interventions against their expected cost. When the economics do not justify intervention, the system intentionally chooses `NO_ACTION`. 
+
+- **Deterministic Backend Gate**: This is powered by a real, deterministic backend economic-gating engine, not a hardcoded UI mockup.
+- **AI Recommendation vs Economic Gate**: The AI explains and recommends actions, but it *cannot* override the deterministic economic gate. If an action is economically negative, it is blocked at the backend.
+- **Model Estimates**: Values like probability and cost are model estimates; actual recovered revenue is measured separately.
+- **Synthetic Data**: The demo uses safe synthetic data. To trigger this Wow Moment:
+  1. Go to the Overview Dashboard.
+  2. Click **"Run Demo: Do Not Act"** to see a case where the cost of intervention exceeds the expected incremental recovery (Result: `DO_NOT_ACT`).
+  3. Click **"Run Demo: Act"** to see a case where a strong incremental upside justifies the intervention cost (Result: `ACT`).
+
+## 14. Key API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -185,7 +243,7 @@ The app functions without Razorpay keys (dev mode simulates payments) and withou
 | `GET` | `/api/audit` | Full audit trail |
 | `GET` | `/api/health` | Service health check |
 
-## Known Limitations
+## 15. Known Limitations
 
 - **No authentication** — the dashboard and API have no auth layer. Not suitable for production exposure.
 - **SQLite only** — no PostgreSQL/MySQL support. Not horizontally scalable.

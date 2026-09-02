@@ -75,9 +75,6 @@ export default function HomePage() {
             {currentView === "audit" && <AuditView onNavigateCase={navigateToCase} />}
             {currentView === "settings" && <SettingsView />}
           </main>
-          <footer className="border-t py-3 px-4 text-center text-xs text-muted-foreground mt-auto">
-            AI Revenue Recovery &middot; Razorpay Buildathon Track 03
-          </footer>
         </div>
       </SidebarProvider>
     </QueryClientProvider>

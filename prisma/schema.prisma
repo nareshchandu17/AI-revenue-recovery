@@ -170,6 +170,10 @@ model Merchant {
   /** Minimum minutes between consecutive contacts to the same customer. */
   minContactIntervalMinutes Int @default(60)
 
+  // --- Autonomy Settings (Feature 9) ---
+  /** Agent autonomy level: 0 (Observe), 1 (Manual), 2 (Supervised), 3 (Autonomous), 4 (Max). */
+  autonomyLevel             Int @default(2)
+
   customers    Customer[]
   payments     Payment[]
   checkouts    Checkout[]
@@ -212,6 +216,7 @@ model Customer {
   checkouts    Checkout[]
   subscriptions Subscription[]
   communicationEvents  CommunicationEvent[]
+  // consents     CommunicationConsent[] // Temporarily commented out due to missing model
 
   @@unique([merchantId, email])
   @@index([merchantId])
@@ -241,6 +246,7 @@ model Payment {
   customer              Customer              @relation(fields: [customerId], references: [id])
   recoveryCase          RecoveryCase?
   recoveryAttributions  RecoveryAttribution[]
+  incrementalRevenues   IncrementalRevenue[]
 
   @@index([merchantId, status])
   @@index([customerId])
@@ -324,6 +330,8 @@ model RecoveryCase {
   auditEvents                 AuditEvent[]
   communicationEvents         CommunicationEvent[]
   interventionEvaluations     InterventionEvaluation[]
+  evaluationResults           EvaluationResult[]
+  incrementalRevenues         IncrementalRevenue[]
 
   @@index([merchantId, status])
   @@index([status])
@@ -350,6 +358,18 @@ model AgentDecision {
   // If a merchant approved/rejected, who and when
   reviewedBy           String         @default("")
   reviewedAt           DateTime?
+
+  // --- Economic Gating ---
+  economicDecision     String?
+  economicReason       String?
+  expectedRecovery     Int?
+  baselineExpectedRecovery Int?
+  expectedIncrementalRecovery Int?
+  interventionCost     Int?
+  incentiveCost        Int?
+  netExpectedValue     Int?
+  economicModelVersion String?
+
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -373,6 +393,9 @@ model RecoveryAttempt {
   recoveredAmount    Int                   @default(0)
   // Short reason if the attempt failed
   failureReason      String               @default("")
+  // Feature 19: Failure Taxonomy
+  failureCategory    String?
+  nextStep           String?
   // External reference (e.g. Razorpay refund_id, retry payment_id)
   externalRef        String               @default("")
   // BullMQ job ID for tracing
@@ -388,9 +411,16 @@ model RecoveryAttempt {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
+  // Feature 17: Reconciliation fields
+  reconciliationAttempts Int              @default(0)
+  lastReconciledAt       DateTime?
+  nextReconciliationAt   DateTime?
+  finalReconciliationStatus String?
+
   recoveryCase       RecoveryCase          @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
   agentDecision      AgentDecision?       @relation(fields: [agentDecisionId], references: [id])
   recoveryAttributions RecoveryAttribution[]
+  incrementalRevenues  IncrementalRevenue[]
   communicationEvent  CommunicationEvent?
   interventionEvaluation InterventionEvaluation?
 
@@ -754,3 +784,121 @@ model InterventionFeedbackRecord {
   @@index([feedbackModelVersion])
   @@index([createdAt])
 }
+
+// =================================================================
+// Webhook Events (Feature 22)
+//
+// Ensures deduplication of incoming provider webhooks at the DB level.
+// =================================================================
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  merchantId      String
+  provider        String   @default("razorpay")
+  /** The unique event ID given by the provider (e.g. webhook event id) */
+  providerEventId String   @unique
+  /** Event type (e.g. payment.failed) */
+  event           String
+  processedAt     DateTime @default(now())
+  
+  @@index([merchantId])
+  @@index([createdAt])
+  createdAt       DateTime @default(now())
+}
+
+// =================================================================
+// Evaluation Harness Models (Feature 2)
+//
+// Separates evaluation runs and simulation results from real data.
+// =================================================================
+
+model EvaluationRun {
+  id                    String             @id @default(cuid())
+  datasetSeed           Int
+  datasetVersion        String             @default("1.0.0")
+  modelVersion          String             @default("1.0.0")
+  economicModelVersion  String             @default("1.0.0")
+  sampleSize            Int
+  
+  startedAt             DateTime           @default(now())
+  completedAt           DateTime?
+  
+  results               EvaluationResult[]
+
+  @@index([startedAt])
+}
+
+model EvaluationResult {
+  id              String         @id @default(cuid())
+  evaluationRunId String
+  recoveryCaseId  String
+  amountAtRisk    Int
+  
+  run             EvaluationRun  @relation(fields: [evaluationRunId], references: [id], onDelete: Cascade)
+  recoveryCase    RecoveryCase   @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  
+  strategyResults StrategyResult[]
+  
+  @@index([evaluationRunId])
+  @@index([recoveryCaseId])
+}
+
+model StrategyResult {
+  id                          String           @id @default(cuid())
+  evaluationResultId          String
+  strategyName                String           // e.g. "NO_ACTION_v1"
+  action                      String           // selected action (e.g., "no_action", "payment_link")
+  
+  // Economic metrics for the decision
+  expectedRecovery            Int?
+  expectedIncrementalRecovery Int?
+  interventionCost            Int?
+  incentiveCost               Int?
+  netExpectedValue            Int?
+  economicDecision            String?          // "ACT" or "DO_NOT_ACT"
+  
+  // Simulated final outcome
+  simulatedRecoveredAmount    Int              @default(0)
+  isUnnecessary               Boolean          @default(false)
+  
+  evaluationResult EvaluationResult @relation(fields: [evaluationResultId], references: [id], onDelete: Cascade)
+  
+  @@index([evaluationResultId])
+  @@index([strategyName])
+  @@index([action])
+}
+
+// =================================================================
+// Incremental Revenue Measurement (Feature 3)
+//
+// Explicit tracking of incremental vs total recovered revenue.
+// =================================================================
+
+model IncrementalRevenue {
+  id                     String   @id @default(cuid())
+  recoveryCaseId         String
+  recoveryAttemptId      String?
+  paymentId              String
+  
+  attributionType        String   // DIRECT, EVALUATED, ESTIMATED, UNATTRIBUTED, UNKNOWN
+  
+  recoveredAmount        Int      // The verified payment amount attributed to the case
+  baselineExpectedAmount Int      // The amount expected to be recovered without intervention
+  incrementalAmount      Int      // The computed incremental amount (0 if not causal/preempted)
+  
+  confidence             String   // high, model-derived, unavailable
+  methodologyVersion     String   @default("1.0.0")
+  
+  evaluatedAt            DateTime @default(now())
+  status                 String   @default("calculated") // calculated, superseded
+  
+  recoveryCase           RecoveryCase     @relation(fields: [recoveryCaseId], references: [id], onDelete: Cascade)
+  recoveryAttempt        RecoveryAttempt? @relation(fields: [recoveryAttemptId], references: [id])
+  payment                Payment          @relation(fields: [paymentId], references: [id])
+  
+  @@unique([recoveryCaseId, paymentId])
+  @@index([recoveryCaseId])
+  @@index([attributionType])
+}
+
+

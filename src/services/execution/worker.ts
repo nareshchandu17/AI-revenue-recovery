@@ -25,9 +25,11 @@ import { getRedisConnection, isRedisAvailable } from "./redis"
 import { QUEUE_NAME, VALID_TRANSITIONS, type RecoveryJobData, type RecoveryJobResult, STOP_REASONS, InvalidStateTransitionError } from "./types"
 import { getExecutor } from "./executors"
 import { checkExecutionGate } from "./gate"
+import { evaluateStoppingRules } from "./stop-evaluator"
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
 import { TERMINAL_CASE_STATUSES } from "@/services/recovery/detection/constants"
+import { classifyFailure } from "./failure-taxonomy"
 
 let _worker: Worker | null = null
 
@@ -137,46 +139,12 @@ async function processJob(
     return { recoveryAttemptId, status: "blocked", failureReason: `Invalid state: ${attempt.status}`, simulated: false }
   }
 
-  // 3. Re-check case status
-  const caseStatus = attempt.recoveryCase.status
-  if ((TERMINAL_CASE_STATUSES as readonly string[]).includes(caseStatus)) {
-    await transitionAttempt(attempt.id, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
-    await auditAttemptTransition(attempt, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
-    return { recoveryAttemptId, status: "blocked", failureReason: STOP_REASONS.CASE_ALREADY_RECOVERED, simulated: false }
-  }
-
-  // 4. Re-check payment status from DB (may have been captured since queuing)
-  if (attempt.recoveryCase.payment?.externalId) {
-    const freshPayment = await db.payment.findUnique({
-      where: { externalId: attempt.recoveryCase.payment.externalId },
-      select: { status: true },
-    })
-    if (freshPayment?.status === "captured") {
-      await transitionAttempt(attempt.id, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
-      await auditAttemptTransition(attempt, "blocked", STOP_REASONS.CASE_ALREADY_RECOVERED)
-      return { recoveryAttemptId, status: "blocked", failureReason: STOP_REASONS.CASE_ALREADY_RECOVERED, simulated: false }
-    }
-  }
-
-  // 5. Re-check execution gate (includes DND + contact frequency)
-  const wCustomerId = attempt.recoveryCase.payment?.customerId ?? ''
-  const wIdempotencyKey = `attempt:${recoveryCaseId}:${action}:${agentDecisionId}`
-
-  const gateResult = await checkExecutionGate({
-    caseId: recoveryCaseId,
-    decisionId: agentDecisionId,
-    action,
-    merchantId: attempt.recoveryCase.merchantId,
-    amountAtRisk: attempt.recoveryCase.amountAtRisk,
-    recoveryProbability: attempt.recoveryCase.recoveryProbability,
-    customerId: wCustomerId,
-    idempotencyKey: wIdempotencyKey,
-  })
-
-  if (!gateResult.eligible) {
-    await transitionAttempt(attempt.id, "blocked", gateResult.reason ?? "Gate blocked")
-    await auditAttemptTransition(attempt, "blocked", gateResult.reason ?? "Gate blocked")
-    return { recoveryAttemptId, status: "blocked", failureReason: gateResult.reason ?? undefined, simulated: false }
+  // 3. Evaluate stopping rules
+  const stopResult = await evaluateStoppingRules(recoveryCaseId, action, agentDecisionId, recoveryAttemptId)
+  if (stopResult.shouldStop) {
+    await transitionAttempt(attempt.id, "blocked", stopResult.reason ?? "Blocked by rule")
+    await auditAttemptTransition(attempt, "blocked", stopResult.reason ?? "Blocked by rule", { rule: stopResult.rule, details: stopResult.details })
+    return { recoveryAttemptId, status: "blocked", failureReason: stopResult.reason ?? "Blocked by rule", simulated: false }
   }
 
   // 6. Transition to 'running'
@@ -280,6 +248,13 @@ async function transitionAttempt(
   const updateData: Record<string, unknown> = {
     status: newStatus,
     failureReason: failureReason ?? "",
+  }
+
+  if (failureReason && (newStatus === "failed" || newStatus === "blocked")) {
+    const categoryHint = newStatus === "blocked" ? "POLICY_BLOCK" : undefined;
+    const explanation = classifyFailure(failureReason, categoryHint as any)
+    updateData.failureCategory = explanation.category
+    updateData.nextStep = explanation.nextAction
   }
 
   if (newStatus === "succeeded" || newStatus === "failed" || newStatus === "blocked") {

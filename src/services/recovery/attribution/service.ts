@@ -19,6 +19,7 @@ import { OPEN_CASE_STATUSES } from "../detection/constants"
 import { TERMINAL_CASE_STATUSES as TERMINAL_CASE_SET } from "@/lib/state-machine"
 import { logger } from "@/lib/logger"
 import { calculateRecoveryIncrement } from "@/lib/money"
+import { evaluateAttribution } from "../incremental/service"
 import { SOURCE_CONFIDENCE } from "./types"
 import type {
   AttributionResult,
@@ -39,7 +40,7 @@ import type { AttributionStatus, AttributionSource } from "@prisma/client"
 export async function attemptAttribution(
   input: AttributePaymentInput
 ): Promise<AttributionResult | null> {
-  const { paymentId, amount, customerId, merchantId, providerPaymentId, providerOrderId } = input
+  const { paymentId, amount, customerId, merchantId, providerPaymentId, providerOrderId, providerReferenceId, providerNotes } = input
 
   const attributionLog = logger.child({
     externalPaymentId: providerPaymentId,
@@ -73,15 +74,28 @@ export async function attemptAttribution(
   })
   if (existingByPayment) {
     attributionLog.info('ATTRIBUTION_SKIPPED', { reason: 'ALREADY_ATTRIBUTED', attributionId: existingByPayment.id })
+    await evaluateAttribution(existingByPayment.id).catch(e => attributionLog.error("INCREMENTAL_EVAL_FAILED", { error: e }))
     return null // Already attributed — idempotent
   }
 
   // 2. Try each attribution signal in order of confidence
   const retryResult = await tryPaymentRetryAttribution(providerPaymentId, amount, attributionLog)
-  if (retryResult) return retryResult
+  if (retryResult) {
+    if (retryResult.attributionId) await evaluateAttribution(retryResult.attributionId).catch(e => attributionLog.error("INCREMENTAL_EVAL_FAILED", { error: e }))
+    return retryResult
+  }
 
-  const linkResult = await tryPaymentLinkAttribution(customerId, merchantId, paymentId, amount, attributionLog)
-  if (linkResult) return linkResult
+  const deterministicResult = await tryDeterministicAttribution(providerReferenceId, providerNotes, paymentId, amount, attributionLog)
+  if (deterministicResult) {
+    if (deterministicResult.attributionId) await evaluateAttribution(deterministicResult.attributionId).catch(e => attributionLog.error("INCREMENTAL_EVAL_FAILED", { error: e }))
+    return deterministicResult
+  }
+
+  const fallbackResult = await attemptProbabilisticFallback(customerId, merchantId, paymentId, amount, attributionLog)
+  if (fallbackResult) {
+    if (fallbackResult.attributionId) await evaluateAttribution(fallbackResult.attributionId).catch(e => attributionLog.error("INCREMENTAL_EVAL_FAILED", { error: e }))
+    return fallbackResult
+  }
 
   // 3. No strong signal found — do NOT auto-attribute by customer+amount
   attributionLog.info('ATTRIBUTION_UNRESOLVED', { reason: 'NO_DETERMINISTIC_REFERENCE' })
@@ -149,16 +163,71 @@ async function tryPaymentRetryAttribution(
   })
 }
 
-// --- Signal 2: Payment Link (attempt's externalRef matches) ---------------
+// --- Signal 2: Deterministic Reference ID (payment link or notes) -----------
 
 /**
- * If a recovery attempt has an externalRef that contains a reference,
- * and a new payment arrives for the same customer, check if it matches.
- *
- * This handles: payment links created by the recovery action.
- * The payment link's ID or reference should match the attempt's externalRef.
+ * Checks for a deterministic reference_id or notes.recovery_case_id from the Razorpay webhook payload.
+ * If it directly matches an open recovery case, attribute it with high confidence (1.0).
  */
-async function tryPaymentLinkAttribution(
+async function tryDeterministicAttribution(
+  providerReferenceId: string | null | undefined,
+  providerNotes: Record<string, string> | null | undefined,
+  paymentId: string,
+  amount: number,
+  log: ReturnType<typeof logger.child>
+): Promise<AttributionResult | null> {
+  const caseId = providerReferenceId ?? providerNotes?.recovery_case_id;
+  if (!caseId) {
+    return null;
+  }
+
+  const recoveryCase = await db.recoveryCase.findUnique({
+    where: { id: caseId },
+    include: {
+      recoveryAttempts: {
+        where: {
+          status: "succeeded",
+          simulated: false,
+        },
+        orderBy: { attemptedAt: "desc" },
+      },
+    },
+  });
+
+  if (!recoveryCase) {
+    log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'deterministic', reason: 'CASE_NOT_FOUND', caseId });
+    return null;
+  }
+
+  if (TERMINAL_CASE_SET.has(recoveryCase.status)) {
+    log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'deterministic', reason: 'CASE_IN_TERMINAL_STATE', caseId, caseStatus: recoveryCase.status });
+    return null;
+  }
+
+  const latestAttempt = recoveryCase.recoveryAttempts[0];
+
+  log.info('ATTRIBUTION_SUCCESS', { signal: 'deterministic_reference', case: recoveryCase.id, providerReferenceId: caseId });
+
+  return createAttribution({
+    recoveryCaseId: recoveryCase.id,
+    paymentId,
+    recoveryAttemptId: latestAttempt?.id,
+    amount,
+    source: "payment_link",
+    confidence: 1.0,
+    reason: `Deterministic reference match (reference_id/notes). Case: ${recoveryCase.id}`,
+  });
+}
+
+// --- Signal 3: Probabilistic Fallback (heuristic) --------------------------
+
+/**
+ * If deterministic attribution fails, fallback to checking if there is an open case for this
+ * customer with an amount >= the payment amount.
+ *
+ * This is explicitly low confidence (0.4) and flagged for review.
+ */
+async function attemptProbabilisticFallback(
   customerId: string,
   merchantId: string,
   newPaymentId: string,
@@ -202,29 +271,24 @@ async function tryPaymentLinkAttribution(
       }
     }
 
-    // Check if any succeeded attempt has an externalRef that could link to this payment
-    // For payment links, the externalRef would contain the link/payment reference
     const latestAttempt = recoveryCase.recoveryAttempts[0]
-    if (!latestAttempt) continue
 
-    // If the attempt created a payment link, the new payment could be from that link
-    // We attribute with payment_link source if the amounts are reasonable
     if (amount <= recoveryCase.amountAtRisk) {
-      log.info('ATTRIBUTION_SUCCESS', { signal: 'payment_link', case: recoveryCase.id, attempt: latestAttempt.id, providerPaymentId: newPaymentId })
+      log.info('ATTRIBUTION_SUCCESS_HEURISTIC', { signal: 'customer_amount_heuristic', case: recoveryCase.id, attempt: latestAttempt?.id, providerPaymentId: newPaymentId })
 
       return createAttribution({
         recoveryCaseId: recoveryCase.id,
         paymentId: newPaymentId,
-        recoveryAttemptId: latestAttempt.id,
+        recoveryAttemptId: latestAttempt?.id,
         amount,
-        source: "payment_link",
-        confidence: SOURCE_CONFIDENCE.payment_link,
-        reason: `New payment after recovery action '${latestAttempt.action}'. Case: ${recoveryCase.id}, Attempt: ${latestAttempt.id}`,
+        source: "temporal",
+        confidence: 0.40,
+        reason: `Probabilistic fallback (customer + amount heuristic). Needs review. Case: ${recoveryCase.id}`,
       })
     }
   }
 
-  log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'payment_link', reason: 'NO_MATCHING_OPEN_CASE_WITH_SUCCEEDED_ATTEMPT' })
+  log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'probabilistic', reason: 'NO_MATCHING_OPEN_CASE' })
   return null
 }
 
@@ -586,6 +650,21 @@ export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
   const totalOpenAtRisk = openCasesAggregate._sum.amountAtRisk ?? 0
   const totalOpenRecovered = openCasesAggregate._sum.recoveredAmount ?? 0
   const totalRecoveredRevenue = attributionMetrics.attributedRevenue
+  
+  // Aggregate Incremental Revenue explicitly
+  const incrementalRevenueAggr = await db.incrementalRevenue.aggregate({
+    _sum: { incrementalAmount: true },
+    where: { attributionType: "DIRECT" }
+  })
+  const directlyAttributedRecoveredRevenue = incrementalRevenueAggr._sum.incrementalAmount ?? 0
+  const unattributedRecoveredRevenue = Math.max(0, totalRecoveredRevenue - directlyAttributedRecoveredRevenue)
+
+  const agentDecisionsAggr = await db.agentDecision.aggregate({
+    _sum: { expectedIncrementalRecovery: true },
+    where: { status: "approved" } // or whenever executed
+  })
+  const expectedIncrementalRecovery = agentDecisionsAggr._sum.expectedIncrementalRecovery ?? 0
+
   const remainingRevenueAtRisk = totalOpenAtRisk - totalOpenRecovered
 
   const recoveryDenominator = totalRecoveredRevenue + remainingRevenueAtRisk
@@ -624,6 +703,9 @@ export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
     totalRevenueProcessed,
     totalRevenueAtRisk: totalOpenAtRisk,
     totalRecoveredRevenue,
+    directlyAttributedRecoveredRevenue,
+    expectedIncrementalRecovery,
+    unattributedRecoveredRevenue,
     remainingRevenueAtRisk,
     recoveryRate,
     activeCases: activeCasesCount,

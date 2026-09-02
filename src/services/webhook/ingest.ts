@@ -119,6 +119,29 @@ export async function ingestWebhook(
     }
   }
 
+  // Feature 22: DB-level Webhook Deduplication
+  const providerEventId = `rzp_${rpPayment.id}_${event}_${rpPayment.status}`
+  try {
+    await db.webhookEvent.create({
+      data: {
+        merchantId,
+        provider: "razorpay",
+        providerEventId,
+        event,
+      }
+    })
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      log.info("Duplicate webhook trapped by DB uniqueness constraint", { providerEventId })
+      return {
+        paymentId: rpPayment.id,
+        customerId: "",
+        recoveryCaseCreated: false
+      }
+    }
+    throw err
+  }
+
   // 1. Upsert Customer (idempotent — unique constraint on merchantId+email)
   const customerEmail = rpPayment.email ?? ""
   const customerPhone = rpPayment.contact ?? ""
@@ -192,10 +215,10 @@ export async function ingestWebhook(
           method: paymentData.method,
           failureCode: paymentData.failureCode,
           failureReason: paymentData.failureReason,
-          updatedAt: new Date(),
+          updatedAt: new Date(rpPayment.created_at * 1000),
         },
       })
-    : await db.payment.create({ data: paymentData })
+    : await db.payment.create({ data: { ...paymentData, updatedAt: new Date(rpPayment.created_at * 1000) } })
 
   log.info("Payment upserted", {
     paymentId: payment.id,
@@ -241,6 +264,8 @@ export async function ingestWebhook(
         merchantId,
         providerPaymentId: rpPayment.id,
         providerOrderId: rpPayment.order_id,
+        providerReferenceId: envelope.payload.payment_link?.entity?.reference_id ?? null,
+        providerNotes: rpPayment.notes,
       })
     } catch (err) {
       // Attribution failure should not break the webhook processing

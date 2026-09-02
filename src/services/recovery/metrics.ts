@@ -33,6 +33,10 @@ export interface RecoveryMetrics {
   byCategory: Record<string, { count: number; amountAtRisk: number; recovered: number }>
   /** Breakdown by priority (open cases only). */
   byPriority: Record<string, number>
+  /** Average time to recovery in milliseconds (null if no cases recovered) */
+  averageTimeToRecovery: number | null
+  /** Median time to recovery in milliseconds (null if no cases recovered) */
+  medianTimeToRecovery: number | null
 }
 
 /**
@@ -51,6 +55,7 @@ export async function getRecoveryMetrics(): Promise<RecoveryMetrics> {
     subscriptionAtRiskAggregate,
     categoryBreakdown,
     priorityBreakdown,
+    completedCases,
   ] = await Promise.all([
     // Total revenue processed
     db.payment.aggregate({
@@ -107,6 +112,11 @@ export async function getRecoveryMetrics(): Promise<RecoveryMetrics> {
       where: { status: { in: [...OPEN_CASE_STATUSES] } },
       _count: true,
     }),
+    // Completed cases for time-to-recovery calculation
+    db.recoveryCase.findMany({
+      where: { status: "completed" },
+      select: { detectedAt: true, payment: { select: { updatedAt: true } } },
+    }),
   ])
 
   const totalRevenueProcessed = capturedSum._sum.amount ?? 0
@@ -134,6 +144,22 @@ export async function getRecoveryMetrics(): Promise<RecoveryMetrics> {
     byPriority[row.priority] = row._count
   }
 
+  // Time-to-recovery calculations
+  let averageTimeToRecovery: number | null = null
+  let medianTimeToRecovery: number | null = null
+  
+  const validCompletedCases = completedCases.filter((c: any) => c.payment?.updatedAt)
+  if (validCompletedCases.length > 0) {
+    const durations = validCompletedCases.map((c: any) => Math.max(0, c.payment!.updatedAt.getTime() - c.detectedAt.getTime()))
+    durations.sort((a: number, b: number) => a - b)
+
+    const sum = durations.reduce((a: number, b: number) => a + b, 0)
+    averageTimeToRecovery = sum / durations.length
+
+    const mid = Math.floor(durations.length / 2)
+    medianTimeToRecovery = durations.length % 2 !== 0 ? durations[mid] : (durations[mid - 1] + durations[mid]) / 2
+  }
+
   return {
     totalRevenueProcessed,
     totalRevenueAtRisk,
@@ -147,5 +173,7 @@ export async function getRecoveryMetrics(): Promise<RecoveryMetrics> {
     recoveryRate,
     byCategory,
     byPriority,
+    averageTimeToRecovery,
+    medianTimeToRecovery,
   }
 }

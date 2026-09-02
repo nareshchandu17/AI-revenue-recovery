@@ -23,8 +23,10 @@ import { buildRecoveryContext } from "./context"
 import { getSystemPrompt, buildUserMessage, PROMPT_VERSION } from "./prompt"
 import { validatePolicy, DEFAULT_MERCHANT_POLICY } from "./policy"
 import { deterministicFallback } from "./fallback"
+import { evaluateAllCandidates, evaluateAction } from "../../economic/evaluator"
 import { collectSignals, estimateProbabilities } from "../probability"
 import { persistAssessment } from "../probability/persistence"
+import { CURRENT_AUTONOMY_LEVEL } from "@/lib/autonomy"
 import type {
   AIDecisionOutput,
   AgentAction,
@@ -83,7 +85,7 @@ export async function analyzeCase(
     aiDecision = await callAI(augmentedContext)
   } catch (err) {
     // AI failed — use deterministic fallback
-    const fallbackResult = handleAIFailure(err, context, probabilityAssessment, policy)
+    const fallbackResult = await handleAIFailure(err, context, probabilityAssessment, policy)
 
     // Persist probability estimates even on fallback path
     if (probabilityAssessment) {
@@ -139,7 +141,14 @@ export async function analyzeCase(
   }
 
   let decisionStatus: "pending" | "approved" | "rejected"
-  if (!policyResult.allowed) {
+  let economicEvaluation = augmentedContext.economicEvaluations?.evaluations[aiDecision.action]
+  
+  if (economicEvaluation && economicEvaluation.economicDecision === "DO_NOT_ACT") {
+    decisionStatus = "rejected"
+    policyResult.allowed = false
+    policyResult.rejectionReason = `Blocked by Economic Gate: ${economicEvaluation.economicReason}`
+    policyResult.policyViolations.push("ECONOMIC_IRRATIONAL")
+  } else if (!policyResult.allowed) {
     decisionStatus = "rejected"
   } else if (REQUIRES_APPROVAL[aiDecision.action]) {
     decisionStatus = "pending" // Requires merchant sign-off
@@ -150,7 +159,7 @@ export async function analyzeCase(
   // 6. Persist AgentDecision
   const decision = await persistDecision({
     caseId,
-    context,
+    context: augmentedContext,
     aiDecision,
     finalAction,
     policyResult,
@@ -246,6 +255,7 @@ export async function analyzeCase(
     usedFallback,
     decisionId: decision.id,
     decisionStatus,
+    economicEvaluation,
   }
 }
 
@@ -505,6 +515,39 @@ function augmentContextWithProbabilities(
   context: RecoveryContext,
   assessment: ProbabilityAssessment
 ): RecoveryContext {
+  const discountPercents = { offer_discount: context.policy.maxDiscountPercent }
+  
+  const bestCandidate = evaluateAllCandidates({
+    amountAtRisk: context.case.amountAtRisk,
+    probabilityAssessment: assessment,
+    discountPercents
+  })
+
+  let economicEvaluations: RecoveryContext["economicEvaluations"] = undefined
+  if (bestCandidate) {
+    const evaluations: Record<string, any> = {}
+    const allActions = [...assessment.interventions.map(i => i.action), "no_action"] as any[]
+    
+    for (const action of allActions) {
+      const prob = action === "no_action" 
+        ? assessment.baseline.probability 
+        : assessment.interventions.find(i => i.action === action)?.probability ?? 0
+        
+      evaluations[action] = evaluateAction(
+        action, 
+        context.case.amountAtRisk, 
+        assessment.baseline.probability, 
+        prob, 
+        discountPercents[action as keyof typeof discountPercents]
+      )
+    }
+    
+    economicEvaluations = {
+      bestCandidateAction: bestCandidate.action,
+      evaluations
+    }
+  }
+
   return {
     ...context,
     case: {
@@ -515,16 +558,17 @@ function augmentContextWithProbabilities(
       baseline: {
         probability: assessment.baseline.probability,
         confidence: assessment.baseline.confidence,
-        explanation: assessment.baseline.factors.map((f) => f.detail).filter(Boolean),
+        explanation: assessment.baseline.factors.map((f) => (f as any).detail ?? (f as any).description).filter(Boolean),
       },
       interventions: assessment.interventions.map((i) => ({
         action: i.action,
         probability: i.probability,
         confidence: i.confidence,
-        explanation: i.factors.map((f) => f.detail).filter(Boolean),
+        explanation: i.factors.map((f) => (f as any).detail ?? (f as any).description).filter(Boolean),
       })),
       modelVersion: assessment.modelVersion,
     },
+    ...(economicEvaluations ? { economicEvaluations } : {})
   }
 }
 
@@ -555,6 +599,7 @@ async function persistDecision(params: PersistParams) {
 
   const reasoningJson = JSON.stringify({
     promptVersion: PROMPT_VERSION,
+    autonomyLevel: CURRENT_AUTONOMY_LEVEL,
     aiOutput: {
       action: aiDecision.action,
       confidence: aiDecision.confidence,
@@ -584,6 +629,18 @@ async function persistDecision(params: PersistParams) {
       confidence: aiDecision.confidence,
       recoveryProbability: context.case.recoveryProbability,
       status: decisionStatus,
+      // --- Economic Gating ---
+      ...(context.economicEvaluations?.evaluations[aiDecision.action] ? {
+        economicDecision: context.economicEvaluations.evaluations[aiDecision.action].economicDecision,
+        economicReason: context.economicEvaluations.evaluations[aiDecision.action].economicReason,
+        expectedRecovery: context.economicEvaluations.evaluations[aiDecision.action].expectedRecovery,
+        baselineExpectedRecovery: context.economicEvaluations.evaluations[aiDecision.action].baselineExpectedRecovery,
+        expectedIncrementalRecovery: context.economicEvaluations.evaluations[aiDecision.action].expectedIncrementalRecovery,
+        interventionCost: context.economicEvaluations.evaluations[aiDecision.action].interventionCost,
+        incentiveCost: context.economicEvaluations.evaluations[aiDecision.action].incentiveCost,
+        netExpectedValue: context.economicEvaluations.evaluations[aiDecision.action].netExpectedValue,
+        economicModelVersion: context.economicEvaluations.evaluations[aiDecision.action].economicModelVersion,
+      } : {})
     },
   })
 }
@@ -603,14 +660,18 @@ interface AuditParams {
 async function auditDecision(params: AuditParams) {
   const { caseId, decisionId, aiDecision, finalAction, policyResult, usedFallback, decisionStatus } = params
 
-  const eventType = decisionStatus === "approved"
-    ? "AGENT_DECISION_APPROVED"
-    : decisionStatus === "rejected"
-    ? "AGENT_DECISION_REJECTED"
-    : "AGENT_DECISION_PENDING_APPROVAL"
+  let eventType = "AGENT_DECISION_PENDING_APPROVAL"
+  if (decisionStatus === "approved") {
+    eventType = "AGENT_DECISION_APPROVED"
+  } else if (decisionStatus === "rejected") {
+    eventType = policyResult.policyViolations.includes("ECONOMIC_IRRATIONAL") 
+      ? "ECONOMIC_ACTION_REJECTED" 
+      : "AGENT_DECISION_REJECTED"
+  }
 
   const details = [
     `AI recommended: ${aiDecision.action} (${(aiDecision.confidence * 100).toFixed(0)}% confidence)`,
+    `Autonomy: ${CURRENT_AUTONOMY_LEVEL}`,
     `Decision: ${decisionStatus === "pending" ? "PENDING — requires merchant approval" : decisionStatus.toUpperCase()}`,
     `Policy: ${policyResult.allowed ? "PASSED" : "REJECTED"}`,
     policyResult.rejectionReason
@@ -640,6 +701,7 @@ async function auditDecision(params: AuditParams) {
       policyViolations: policyResult.policyViolations,
       usedFallback,
       decisionStatus,
+      autonomyLevel: CURRENT_AUTONOMY_LEVEL,
       promptVersion: PROMPT_VERSION,
     },
   })

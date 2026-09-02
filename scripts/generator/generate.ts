@@ -54,6 +54,7 @@ const BATCH_SIZE = 200
 // --- Config ----------------------------------------------------------------
 
 const MERCHANTS = [
+  { id: 'demo_merchant_001', name: 'Demo Store', email: 'demo@synthetic.test', industry: 'ecommerce' },
   { id: 'gen_merchant_tech', name: 'TechNova Electronics', email: 'technova@synthetic.test', industry: 'ecommerce' },
   { id: 'gen_merchant_fit', name: 'FitLife Subscriptions', email: 'fitlife@synthetic.test', industry: 'saas' },
 ]

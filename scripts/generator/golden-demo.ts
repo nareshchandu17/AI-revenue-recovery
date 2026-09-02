@@ -34,6 +34,10 @@ const SCENARIOS = [
   { id: 'demo_cust_09', email: 'duplicate@synthetic.test', name: 'Duplicate Event Customer', amount: 400000, failure: 'BANK_DECLINED', profile: 'duplicate_scenario' },
   // 10. AI recommendation blocked by policy
   { id: 'demo_cust_10', email: 'blocked@synthetic.test', name: 'Policy Blocked Customer', amount: 500000, failure: 'PAYMENT_TIMEOUT', profile: 'policy_blocked' },
+  // 11. Wow Moment: DO NOT ACT (Economic Gating Rejection)
+  { id: 'demo_wow_01', email: 'demo.wow.reject@synthetic.test', name: 'Economic Reject Demo', amount: 50000, failure: 'PAYMENT_TIMEOUT', profile: 'wow_do_not_act' },
+  // 12. Wow Moment: ACT (Economic Gating Acceptance)
+  { id: 'demo_wow_02', email: 'demo.wow.act@synthetic.test', name: 'Economic Accept Demo', amount: 1000000, failure: 'INSUFFICIENT_FUNDS', profile: 'wow_act' },
 ] as const
 
 const NOW = new Date()
@@ -172,6 +176,7 @@ async function generateGoldenDemo() {
           recommendedAction: action,
           confidence: 0.85,
           recoveryProbability: 0.7,
+          expectedIncrementalRecovery: s.amount * 0.4,
           status: 'approved',
           createdAt: daysAgo(1.5),
         },
@@ -194,7 +199,22 @@ async function generateGoldenDemo() {
           failureReason: s.profile === 'policy_blocked' ? 'DISCOUNT_CEILING_EXCEEDED: requested 15% exceeds merchant maximum 10%'
             : s.profile === 'failed_recovery' ? 'Payment declined by bank' : '',
           completedAt: daysAgo(1),
+          attemptedAt: daysAgo(1.2),
         },
+      }).catch(() => {})
+
+      // Baseline probability for incremental measurement
+      await prisma.recoveryProbabilityEstimate.create({
+        data: {
+          id: `${s.id}_baseline_est`,
+          recoveryCaseId: caseId,
+          action: "no_action",
+          probability: 0.2,
+          confidence: 0.8,
+          isBaseline: true,
+          factorsJson: "[]",
+          createdAt: daysAgo(1.6)
+        }
       }).catch(() => {})
 
       // Communication event
@@ -212,7 +232,88 @@ async function generateGoldenDemo() {
             details: `Golden demo: ${s.profile}`,
           },
         }).catch(() => {})
+
+        // New Recovery Payment & Attribution & Incremental
+        const recPaymentId = `${s.id}_rec_pay`
+        await prisma.payment.create({
+          data: {
+            id: recPaymentId,
+            merchantId: MERCHANT_ID,
+            customerId: s.id,
+            externalId: `pay_rec_${s.id}`,
+            amount: recoveredAmt,
+            status: 'captured',
+            method: 'upi',
+            createdAt: daysAgo(0.5)
+          }
+        }).catch(() => {})
+
+        await prisma.recoveryAttribution.create({
+          data: {
+            recoveryCaseId: caseId,
+            recoveryAttemptId: attemptId,
+            paymentId: recPaymentId,
+            amount: recoveredAmt,
+            status: 'attributed',
+            source: 'payment_link',
+            confidence: 0.95
+          }
+        }).catch(() => {})
+
+        await prisma.incrementalRevenue.create({
+          data: {
+            recoveryCaseId: caseId,
+            recoveryAttemptId: attemptId,
+            paymentId: recPaymentId,
+            attributionType: 'DIRECT',
+            recoveredAmount: recoveredAmt,
+            baselineExpectedAmount: Math.round(s.amount * 0.2),
+            incrementalAmount: recoveredAmt,
+            confidence: 'high'
+          }
+        }).catch(() => {})
       }
+    }
+
+    if (s.profile === 'self_recovery') {
+      // Preempted Scenario
+      const recPaymentId = paymentId // The same paymentId used for the original, it was captured
+      await prisma.recoveryProbabilityEstimate.create({
+        data: {
+          id: `${s.id}_baseline_est`,
+          recoveryCaseId: caseId,
+          action: "no_action",
+          probability: 0.4,
+          confidence: 0.8,
+          isBaseline: true,
+          factorsJson: "[]",
+          createdAt: daysAgo(2)
+        }
+      }).catch(() => {})
+
+      await prisma.recoveryAttribution.create({
+        data: {
+          recoveryCaseId: caseId,
+          paymentId: recPaymentId,
+          amount: recoveredAmt,
+          status: 'attributed',
+          source: 'manual',
+          confidence: 1.0,
+          reason: "Customer self-recovered"
+        }
+      }).catch(() => {})
+
+      await prisma.incrementalRevenue.create({
+        data: {
+          recoveryCaseId: caseId,
+          paymentId: recPaymentId,
+          attributionType: 'UNATTRIBUTED',
+          recoveredAmount: recoveredAmt,
+          baselineExpectedAmount: Math.round(s.amount * 0.4),
+          incrementalAmount: 0,
+          confidence: 'high'
+        }
+      }).catch(() => {})
     }
 
     // For duplicate scenario, create a duplicate payment with same externalId

@@ -60,6 +60,10 @@ export interface AttributePaymentInput {
   providerPaymentId: string
   /** The provider's order ID if available (e.g. Razorpay `order_xxx`). */
   providerOrderId?: string | null
+  /** The provider's reference ID if available (e.g. from payment link entity). */
+  providerReferenceId?: string | null
+  /** The provider's notes object if available. */
+  providerNotes?: Record<string, string> | null
 }
 
 /** Enhanced metrics including attribution data. */
@@ -90,7 +94,10 @@ export interface AttributionMetrics {
 export interface FullRecoveryMetrics {
   totalRevenueProcessed: number
   totalRevenueAtRisk: number
-  totalRecoveredRevenue: number
+  totalRecoveredRevenue: number // Sum of verified payments
+  directlyAttributedRecoveredRevenue: number // Actual amount from DIRECT attribution
+  expectedIncrementalRecovery: number // Expected incremental value
+  unattributedRecoveredRevenue: number // Recovered but not directly attributable
   remainingRevenueAtRisk: number
   recoveryRate: number
   activeCases: number

@@ -9,6 +9,8 @@ export interface MetricsData {
   totalRevenueProcessed: number
   totalRevenueAtRisk: number
   totalRecoveredRevenue: number
+  directlyAttributedRecoveredRevenue: number
+  expectedIncrementalRecovery: number
   remainingRevenueAtRisk: number
   recoveryRate: number
   activeCases: number
@@ -107,10 +109,11 @@ export interface CaseDetail {
     updatedAt: string
     merchant: { id: string; name: string }
     payment: { id: string; externalId: string; amount: number; status: string; method: string; failureCode: string | null; failureReason: string | null; description: string | null; createdAt: string; customer: { id: string; displayName: string; email: string } | null } | null
-    agentDecisions: { id: string; recommendedAction: string; confidence: number; status: string; diagnosis: string | null; reasoningJson: unknown; createdAt: string; reviewedBy: string | null; reviewedAt: string | null }[]
+    agentDecisions: { id: string; recommendedAction: string; confidence: number; status: string; diagnosis: string | null; reasoningJson: unknown; createdAt: string; reviewedBy: string | null; reviewedAt: string | null; economicDecision: string | null; economicReason: string | null; expectedRecovery: number | null; interventionCost: number | null; netExpectedValue: number | null; expectedIncrementalRecovery: number | null; baselineExpectedRecovery: number | null; incentiveCost: number | null }[]
     probabilityEstimates: ProbabilityEstimateItem[]
     recoveryAttempts: { id: string; action: string; status: string; attemptNumber: number; recoveredAmount: number; externalRef: string | null; simulated: boolean; failureReason: string | null; startedAt: string | null; completedAt: string | null; attemptedAt: string | null }[]
     recoveryAttributions: { id: string; amount: number; status: string; source: string; confidence: number; reason: string | null; createdAt: string; payment: { id: string; externalId: string; amount: number; status: string; method: string; createdAt: string } }[]
+    incrementalRevenues: { id: string; attributionType: string; recoveredAmount: number; baselineExpectedAmount: number; incrementalAmount: number; confidence: string; methodologyVersion: string; evaluatedAt: string; status: string }[]
     auditEvents: { id: string; eventType: string; action: string; details: string | null; actorType: string; createdAt: string }[]
   }
   customerValue: CustomerValueData | null

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Activity, Brain, Shield, Globe } from "lucide-react"
 import { formatActorType, formatEventType, formatRelativeTime, formatCurrency, truncate } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import type { AppView } from "@/components/app-shell/app-sidebar"
 
 const ACTOR_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -41,16 +42,16 @@ export function AuditView({ onNavigateCase }: AuditViewProps) {
 
   return (
     <div className="space-y-4">
-      {/* Actor filters */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      {/* Actor tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-2 border-b">
         {ACTOR_FILTERS.map((f) => (
           <button
             key={f.key}
             onClick={() => { setActorFilter(f.key); setPage(1) }}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all cursor-pointer ${
               actorFilter === f.key
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground"
             }`}
           >
             {f.label}
@@ -78,28 +79,45 @@ export function AuditView({ onNavigateCase }: AuditViewProps) {
                   return (
                     <div
                       key={evt.id}
-                      className="flex gap-3 p-4 hover:bg-muted/30 transition-colors cursor-pointer"
+                      className="flex gap-4 p-5 hover:bg-muted/30 transition-colors cursor-pointer"
                       {...(evt.caseId ? { role: "button", tabIndex: 0, onClick: () => onNavigateCase(evt.caseId!), onKeyDown: (e) => { if (e.key === "Enter") onNavigateCase(evt.caseId!) } } : {})}
                     >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted shrink-0">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/80 shrink-0 border border-border/50 shadow-sm">
+                        <Icon className="h-5 w-5 text-muted-foreground" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-xs font-medium">{formatActorType(evt.actorType)}</span>
-                          <span className="text-xs text-muted-foreground">{evt.action}</span>
-                          {evt.recoveryCase && (
-                            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-mono">
-                              {evt.recoveryCase.id}
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-foreground">
+                              {formatEventType(evt.eventType) || evt.action}
                             </span>
-                          )}
+                            {evt.recoveryCase && (
+                              <span className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                                Case: {evt.recoveryCase.id}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                            {formatRelativeTime(evt.createdAt)}
+                          </span>
                         </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-[10px] uppercase font-bold tracking-wider",
+                            evt.actorType === "ai_agent" ? "text-violet-600 dark:text-violet-400" :
+                            evt.actorType === "webhook" ? "text-blue-600 dark:text-blue-400" :
+                            evt.actorType === "merchant" ? "text-amber-600 dark:text-amber-400" :
+                            "text-emerald-600 dark:text-emerald-400"
+                          )}>
+                            {formatActorType(evt.actorType)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted/50 border border-muted">
+                            {evt.action}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed mt-1">
                           {evt.details ? truncate(evt.details, 150) : formatEventType(evt.eventType)}
                         </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[10px] text-muted-foreground whitespace-nowrap">{formatRelativeTime(evt.createdAt)}</p>
                       </div>
                     </div>
                   )

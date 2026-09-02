@@ -186,13 +186,20 @@ export class QueueUnavailableError extends ExecutionError {
 /** Why execution was stopped/blocked. */
 export const STOP_REASONS = {
   CASE_ALREADY_RECOVERED: "Case already recovered",
-  RETRY_LIMIT_REACHED: "Retry limit reached",
-  POLICY_FORBIDS_ACTION: "Policy forbids this action",
-  DECISION_EXPIRED: "Decision expired or invalid",
-  INVALID_AMOUNT: "Invalid amount for recovery",
-  MERCHANT_STOPPED: "Merchant stopped this case",
-  CASE_STATE_INVALID: "Case is in a state that does not permit execution",
+  CUSTOMER_PAID: "Customer already paid",
+  RECOVERY_TARGET_REACHED: "Recovery target reached",
+  MAX_ATTEMPTS_REACHED: "Max recovery attempts reached",
   COOLDOWN_ACTIVE: "Retry cooldown is still active",
+  CUSTOMER_DND: "Customer has global Do-Not-Disturb enabled",
+  CUSTOMER_OPTED_OUT: "Customer opted out of this channel",
+  CONTACT_LIMIT_REACHED: "Contact frequency limit reached",
+  DECISION_EXPIRED: "Decision expired or invalid",
+  MERCHANT_STOPPED: "Merchant manually stopped this case",
+  POLICY_BLOCKED: "Policy forbids this action",
+  ACTION_NO_LONGER_ELIGIBLE: "Action is no longer eligible",
+  PAYMENT_STATE_CHANGED: "Payment state changed",
+  INVALID_AMOUNT: "Invalid amount for recovery",
+  CASE_STATE_INVALID: "Case is in a state that does not permit execution",
   DUPLICATE_ATTEMPT: "Duplicate execution attempt detected",
 } as const
 export type StopReason = (typeof STOP_REASONS)[keyof typeof STOP_REASONS]

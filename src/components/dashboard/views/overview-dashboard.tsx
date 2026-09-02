@@ -12,6 +12,8 @@ import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/comp
 import { cn } from "@/lib/utils"
 import { ArrowRight, TrendingDown, TrendingUp, AlertCircle, Activity, IndianRupee, BarChart3, Zap, ShieldCheck, UserCheck, Clock } from "lucide-react"
 import { formatCurrency, formatPercent, formatCategory, formatAction, truncate } from "@/lib/format"
+import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
+import { useSettingsStore } from "@/store/settings"
 import type { AppView } from "@/components/app-shell/app-sidebar"
 
 interface OverviewDashboardProps {
@@ -20,6 +22,7 @@ interface OverviewDashboardProps {
 }
 
 export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashboardProps) {
+  const { autonomyLevel } = useSettingsStore()
   const { data: metrics, isLoading: metricsLoading, error: metricsError, refetch: refetchMetrics } = useMetrics()
   const { data: casesData, isLoading: casesLoading } = useCases({
     status: "open",
@@ -50,21 +53,35 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
       <div className="rounded-lg border bg-gradient-to-r from-emerald-950/40 via-card to-card px-5 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <Badge variant="secondary" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50">
+                <ShieldCheck className="h-3 w-3 mr-1 text-amber-600" />
+                Autonomy: {AUTONOMY_CONFIGS[autonomyLevel].badgeLabel}
+              </Badge>
+            </div>
             <h2 className="text-lg sm:text-xl font-bold tracking-tight">
-              Recover Revenue That Would Otherwise Be Lost
+              AI Revenue Recovery
             </h2>
-            <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-              AI detects, recommends, and executes recovery actions on failed payments — with full merchant control and verified attribution.
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Intelligent agent protecting your bottom line.
             </p>
           </div>
-          <Button size="sm" className="shrink-0" onClick={() => onNavigate("cases")}>
-            View Recovery Cases <ArrowRight className="ml-1 h-3.5 w-3.5" />
-          </Button>
+          <div className="flex flex-col sm:items-end gap-1.5 mt-2 sm:mt-0">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Demo Scenarios</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => onNavigateCase("demo_wow_01_case")} className="h-7 text-xs border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-900/60">
+                <ShieldCheck className="h-3 w-3 mr-1" /> Run Demo: Do Not Act
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => onNavigateCase("demo_wow_02_case")} className="h-7 text-xs border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60">
+                <Zap className="h-3 w-3 mr-1" /> Run Demo: Act
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard
           label="Revenue At Risk"
           value={formatCurrency(metrics?.totalRevenueAtRisk)}
@@ -74,12 +91,27 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
           variant="risk"
         />
         <KpiCard
-          label="Revenue Recovered"
+          label="Verified Total Recovered"
           value={formatCurrency(metrics?.totalRecoveredRevenue)}
-          description="Recovered through verified payment attribution"
+          description="Total verified payments"
           icon={TrendingUp}
           loading={metricsLoading}
           variant="success"
+        />
+        <KpiCard
+          label="Directly Attributed"
+          value={formatCurrency(metrics?.directlyAttributedRecoveredRevenue)}
+          description="Incrementally caused by AI"
+          icon={Zap}
+          loading={metricsLoading}
+          variant="success"
+        />
+        <KpiCard
+          label="Expected Incremental"
+          value={formatCurrency(metrics?.expectedIncrementalRecovery)}
+          description="Estimated baseline lift"
+          icon={Activity}
+          loading={metricsLoading}
         />
         <KpiCard
           label="Recovery Rate"

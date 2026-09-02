@@ -131,10 +131,11 @@ export class RazorpayServiceImpl implements RazorpayService {
 
   async capturePayment(
     paymentId: string,
-    amount: number
+    amount: number,
+    currency: string = "INR"
   ): Promise<RazorpayPayment> {
     try {
-      const raw = await this.client.payments.capture(paymentId, amount)
+      const raw = await this.client.payments.capture(paymentId, amount, currency)
       return mapPaymentEntity(raw as unknown as Record<string, unknown>)
     } catch (err) {
       throw new UpstreamError(

@@ -18,7 +18,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarFooter,
 } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 
@@ -121,12 +120,6 @@ export function AppSidebar({ currentView, onNavigate, highPriorityCount }: AppSi
           </SidebarGroup>
         ))}
       </SidebarContent>
-
-      <SidebarFooter className="p-4">
-        <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-          Razorpay Buildathon — Track 03
-        </p>
-      </SidebarFooter>
     </Sidebar>
   )
 }

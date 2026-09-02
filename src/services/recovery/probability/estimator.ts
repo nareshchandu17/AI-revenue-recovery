@@ -52,6 +52,7 @@ export function estimateProbabilities(
 ): ProbabilityAssessment {
   const factors = computeSignalAdjustments(signals)
 
+
   const baseline = estimateActionProbability("no_action", signals, factors)
   const interventions: InterventionProbability[] = []
 

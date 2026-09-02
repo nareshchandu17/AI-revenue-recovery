@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner"
 import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle, TrendingUp, Users, Percent, Info } from "lucide-react"
 import { formatCurrency, formatCurrencyFull, formatPercent, formatCategory, formatAction, formatPriority, formatDateTime, formatRelativeTime, formatActorType } from "@/lib/format"
+import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
+import { useSettingsStore } from "@/store/settings"
 import { cn } from "@/lib/utils"
 
 interface CaseDetailProps {
@@ -97,6 +99,7 @@ function ValueTierBadge({ tier }: { tier: string }) {
 // ── Main Component ──
 
 export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
+  const { autonomyLevel } = useSettingsStore()
   const { data, isLoading, error, refetch } = useCaseDetail(caseId)
   const approveMutation = useApproveDecision()
   const rejectMutation = useRejectDecision()
@@ -233,6 +236,13 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const aiStep = hasDecision ? "done" as const : "pending" as const
   const policyStep = hasDecision && policyResult ? (policyPassed ? "done" as const : "active" as const) : (hasDecision ? "active" as const : "pending" as const)
   const merchantStep = decision?.status === "approved" ? "done" as const : decision?.status === "rejected" ? "active" as const : (isAwaitingApproval ? "active" as const : "pending" as const)
+  const executionStep = c.recoveryAttempts.some(a => a.status === "succeeded")
+    ? "done" as const
+    : c.recoveryAttempts.some(a => a.status === "running" || a.status === "queued" || a.status === "pending")
+    ? "active" as const
+    : "pending" as const
+
+  const autonomy = AUTONOMY_CONFIGS[autonomyLevel]
 
   return (
     <div className="space-y-6">
@@ -597,19 +607,74 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
             </div>
           </CardHeader>
           <CardContent className="space-y-5">
-            {/* 3-Layer Trust Model Flow */}
-            <div className="rounded-lg border bg-muted/30 px-4 py-4">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3 text-center">3-Layer Trust Model</p>
-              <div className="flex items-start gap-2 sm:gap-4">
-                <TrustStep icon={Zap} label="AI Recommended" status={aiStep} />
+            {/* Autonomy & Governance: 4-Step Recovery Lifecycle */}
+            <div className="rounded-lg border bg-muted/30 px-4 py-4 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b pb-2.5">
+                <div>
+                  <p className="text-xs font-semibold">Governance &amp; Autonomy Model</p>
+                  <p className="text-[11px] text-muted-foreground">Deterministic policy guardrails &amp; merchant authorization govern every action</p>
+                </div>
+                <Badge variant="secondary" className="w-fit text-[10px] bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50">
+                  <ShieldCheck className="h-3 w-3 mr-1 text-amber-600" />
+                  {autonomy.label}
+                </Badge>
+              </div>
+
+              {/* 4-Step Governance Flow */}
+              <div className="flex items-start gap-1 sm:gap-3">
+                <TrustStep icon={Zap} label="AI Recommendation" status={aiStep} />
                 <div className="flex items-center pt-3">
-                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 </div>
                 <TrustStep icon={ShieldCheck} label="Policy Gate" status={policyStep} />
                 <div className="flex items-center pt-3">
-                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 </div>
                 <TrustStep icon={UserCheck} label="Merchant Approval" status={merchantStep} />
+                <div className="flex items-center pt-3">
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </div>
+                <TrustStep icon={SquarePlay} label="Execution" status={executionStep} />
+              </div>
+
+              {/* Concise Governance Responsibilities */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
+                <div className="rounded-md border p-2.5 bg-card space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>AI</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {autonomy.responsibilities.ai}
+                  </p>
+                </div>
+                <div className="rounded-md border p-2.5 bg-card space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>Policy</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {autonomy.responsibilities.policy}
+                  </p>
+                </div>
+                <div className="rounded-md border p-2.5 bg-card space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                    <UserCheck className="h-3.5 w-3.5" />
+                    <span>Merchant</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {autonomy.responsibilities.merchant}
+                  </p>
+                </div>
+                <div className="rounded-md border p-2.5 bg-card space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                    <SquarePlay className="h-3.5 w-3.5" />
+                    <span>Executor</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {autonomy.responsibilities.executor}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -707,6 +772,78 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                 <p className="text-sm leading-relaxed">{diagnosisText}</p>
               </div>
             )}
+
+            {/* Economic Gate Result */}
+            {decision.economicDecision && decision.economicDecision === "DO_NOT_ACT" ? (
+              <div className="rounded-xl border-2 border-red-500/50 bg-red-50 dark:bg-red-950/20 shadow-sm overflow-hidden mt-4">
+                <div className="bg-red-500 text-white p-4 text-center">
+                  <h3 className="text-xl font-black tracking-widest uppercase flex items-center justify-center gap-2">
+                    <Ban className="h-5 w-5" />
+                    Do Not Act
+                  </h3>
+                  <p className="text-red-50 text-sm mt-1 font-medium">Intervention is economically unjustified</p>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div className="text-center pb-2 border-b border-red-200/50 dark:border-red-900/30">
+                    <p className="text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-wider mb-2">Why?</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Expected Baseline</p>
+                        <p className="font-semibold text-sm">{formatCurrencyFull(decision.baselineExpectedRecovery ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Expected Incremental</p>
+                        <p className="font-semibold text-sm text-emerald-600">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Est. Cost</p>
+                        <p className="font-semibold text-sm text-amber-600">-{formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase">Expected Net Value</p>
+                        <p className="font-bold text-base text-red-600">{formatCurrencyFull(decision.netExpectedValue ?? 0)}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-red-900 dark:text-red-200">{decision.economicReason}</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      <span className="font-bold">Result:</span> No intervention executed. Customer was not contacted.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : decision.economicDecision === "ACT" ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-4 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <TrendingUp className="h-5 w-5 text-emerald-600" />
+                  <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Economic Value Gate: ACT</p>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expected Baseline</p>
+                    <p className="font-semibold">{formatCurrencyFull(decision.baselineExpectedRecovery ?? 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expected Incremental</p>
+                    <p className="font-semibold text-emerald-600">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Cost</p>
+                    <p className="font-semibold text-amber-600">-{formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Net Expected Value</p>
+                    <p className="font-bold text-emerald-600">+{formatCurrencyFull(decision.netExpectedValue ?? 0)}</p>
+                  </div>
+                </div>
+
+                {decision.economicReason && (
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-3 font-medium">{decision.economicReason}</p>
+                )}
+              </div>
+            ) : null}
 
             {/* Policy Gate Result */}
             {policyResult && (
@@ -859,6 +996,39 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                     {attr.payment && <> · <span className="font-mono">{attr.payment.externalId}</span></>}
                   </p>
                   {attr.reason && <p className="text-[10px] text-muted-foreground mt-0.5">{attr.reason}</p>}
+                </div>
+              </div>
+            ))}
+
+            {/* Incremental Revenues */}
+            {c.incrementalRevenues?.map((inc) => (
+              <div key={inc.id} className="flex gap-3 pb-2 mt-2 ml-4">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/30 shrink-0">
+                    <Zap className="h-3 w-3 text-indigo-600" />
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] font-medium text-indigo-700 dark:text-indigo-400">Incremental Measurement</p>
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">{inc.attributionType}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Recovered</p>
+                      <p className="text-xs font-medium">{formatCurrencyFull(inc.recoveredAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Baseline Expected</p>
+                      <p className="text-xs font-medium">{formatCurrencyFull(inc.baselineExpectedAmount)}</p>
+                    </div>
+                    <div className="col-span-2 pt-1">
+                      <p className="text-[10px] text-muted-foreground">Incrementally Attributed</p>
+                      <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                        {formatCurrencyFull(inc.incrementalAmount)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
