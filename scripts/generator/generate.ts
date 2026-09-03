@@ -223,7 +223,7 @@ async function generate() {
               id: paymentId,
               merchantId: cp.merchantId,
               customerId: cp.customerId,
-              externalId: isSuccess ? `pay_synthetic_${paymentId}` : '',
+              externalId: isSuccess ? `pay_synthetic_${paymentId}` : `fail_synthetic_${paymentId}`,
               amount,
               status,
               method: isFailed || isSuccess ? method : null,

@@ -22,7 +22,7 @@
  * Uses a mock AI provider — no real LLM calls.
  */
 
-import { describe, it, expect } from "bun:test"
+import { describe, it, expect } from "vitest"
 import { validateAIDecision, aiDecisionSchema } from "../schemas"
 import { validatePolicy, DEFAULT_MERCHANT_POLICY } from "../policy"
 import { deterministicFallback } from "../fallback"
