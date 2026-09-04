@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: false,
   experimental: {
-    turbopack: {
+    turbo: {
       root: './'
     }
   }
