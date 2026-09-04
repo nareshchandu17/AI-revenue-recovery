@@ -7,10 +7,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  experimental: {
-    turbo: {
-      root: './'
-    }
+  turbopack: {
+    root: './'
   }
 };
 
