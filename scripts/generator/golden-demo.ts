@@ -137,7 +137,7 @@ async function generateGoldenDemo() {
         status: caseStatus,
         recoveryProbability: s.profile === 'low_value_no_action' ? 0.15 : s.profile === 'failed_recovery' ? 0.3 : 0.7,
         recoveredAmount: recoveredAmt,
-        detectedAt: daysAgo(2),
+        detectedAt: caseId.includes('wow') ? new Date() : daysAgo(2),
         resolvedAt: isCompleted ? daysAgo(1) : null,
       },
     })
