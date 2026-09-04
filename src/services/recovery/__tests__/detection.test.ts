@@ -5,7 +5,7 @@
  * Uses fixed test fixtures — no randomness.
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect } from "bun:test"
 import { classifyFailure } from "../detection/classifier"
 import { checkEligibility, isPaymentEligible, isCheckoutEligible, isSubscriptionEligible } from "../detection/eligibility"
 import { computeRecoveryScore } from "../detection/scoring"

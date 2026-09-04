@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { Suspense, useState, useCallback, useMemo, useEffect } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SidebarProvider } from "@/components/ui/sidebar"
@@ -28,7 +28,7 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 })
 
-export default function HomePage() {
+function HomeContent() {
   const searchParams = useSearchParams()
   const viewParam = searchParams.get("view") as AppView | null
   const validViews = Object.keys(VIEW_TITLES)
@@ -95,5 +95,13 @@ export default function HomePage() {
         </div>
       </SidebarProvider>
     </QueryClientProvider>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <HomeContent />
+    </Suspense>
   )
 }

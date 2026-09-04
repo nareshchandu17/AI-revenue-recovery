@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect } from "bun:test"
 import { evaluateAction, evaluateAllCandidates } from "./evaluator"
 import type { ProbabilityAssessment } from "../recovery/probability/types"
 import type { AgentAction } from "../recovery/agent/types"

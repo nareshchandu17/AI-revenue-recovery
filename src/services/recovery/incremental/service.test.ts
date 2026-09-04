@@ -1,33 +1,33 @@
 // @ts-nocheck
-import { expect, test, describe, vi, beforeEach } from 'vitest'
+import { expect, test, describe, mock, beforeEach } from 'bun:test'
 import { evaluateAttribution } from './service'
 import { db } from '@/lib/db'
 
-vi.mock('@/lib/db', () => ({
+mock.module('@/lib/db', () => ({
   db: {
     recoveryAttribution: {
-      findUnique: vi.fn(),
+      findUnique: mock(),
     },
     incrementalRevenue: {
-      findFirst: vi.fn(),
-      create: vi.fn(),
+      findFirst: mock(),
+      create: mock(),
     }
   }
 }))
 
-vi.mock('@/lib/logger', () => ({
+mock.module('@/lib/logger', () => ({
   logger: {
-    child: vi.fn().mockReturnValue({
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn()
+    child: mock().mockReturnValue({
+      info: mock(),
+      error: mock(),
+      warn: mock()
     })
   }
 }))
 
 describe('Incremental Revenue Service', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mock.restore()
   })
 
   test('DIRECT attribution when payment occurs after intervention and source is payment_link', async () => {
@@ -36,12 +36,12 @@ describe('Incremental Revenue Service', () => {
     const attemptedAt = new Date(now.getTime() - 1000 * 60 * 60) // 1 hour ago
     const paymentCreatedAt = new Date(now.getTime() - 1000 * 60 * 30) // 30 mins ago
 
-    vi.mocked(db.incrementalRevenue.findFirst).mockResolvedValue(null)
-    vi.mocked(db.incrementalRevenue.create).mockImplementation(async (args: any) => {
+    ;(db.incrementalRevenue.findFirst as any).mockResolvedValue(null)
+    ;(db.incrementalRevenue.create as any).mockImplementation(async (args: any) => {
       return { id: 'inc_123', ...args.data } as any
     })
 
-    vi.mocked(db.recoveryAttribution.findUnique).mockResolvedValue({
+    ;(db.recoveryAttribution.findUnique as any).mockResolvedValue({
       id: mockAttributionId,
       amount: 10000,
       source: 'payment_link',
@@ -75,12 +75,12 @@ describe('Incremental Revenue Service', () => {
     const attemptedAt = new Date(now.getTime() - 1000 * 60 * 30) // 30 mins ago
     const paymentCreatedAt = new Date(now.getTime() - 1000 * 60 * 60) // 1 hour ago (PREEMPTED)
 
-    vi.mocked(db.incrementalRevenue.findFirst).mockResolvedValue(null)
-    vi.mocked(db.incrementalRevenue.create).mockImplementation(async (args: any) => {
+    ;(db.incrementalRevenue.findFirst as any).mockResolvedValue(null)
+    ;(db.incrementalRevenue.create as any).mockImplementation(async (args: any) => {
       return { id: 'inc_124', ...args.data } as any
     })
 
-    vi.mocked(db.recoveryAttribution.findUnique).mockResolvedValue({
+    ;(db.recoveryAttribution.findUnique as any).mockResolvedValue({
       id: mockAttributionId,
       amount: 10000,
       source: 'manual', // irrelevant, temporal preempts it

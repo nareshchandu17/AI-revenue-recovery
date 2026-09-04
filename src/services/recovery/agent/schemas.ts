@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod/v4"
-import { ALLOWED_ACTIONS, AIOutputValidationError } from "./types"
+import { ALLOWED_ACTIONS, AIOutputValidationError, AIDecisionOutput } from "./types"
 
 /** The strict schema the AI output must match. */
 export const aiDecisionSchema = z.object({
@@ -19,7 +19,7 @@ export const aiDecisionSchema = z.object({
   recommendedDelayMinutes: z.number().int().min(0).max(10080).nullable(), // max 7 days
   stopReason: z.string().max(500).nullable(),
   /** Discount percentage — only valid when action = 'offer_discount' */
-  discountPercent: z.number().min(0).max(100).nullable(),
+  discountPercent: z.number().min(0).max(100).nullable().optional(),
 })
 
 /** Type inferred from the schema. */
@@ -32,7 +32,7 @@ export type AIDecisionSchemaOutput = z.infer<typeof aiDecisionSchema>
  * Post-validation: if action is 'offer_discount', discountPercent is required.
  * If action is NOT 'offer_discount', discountPercent must be null.
  */
-export function validateAIDecision(raw: unknown): AIDecisionSchemaOutput {
+export function validateAIDecision(raw: unknown): AIDecisionOutput {
   const result = aiDecisionSchema.safeParse(raw)
 
   if (!result.success) {
@@ -62,11 +62,12 @@ export function validateAIDecision(raw: unknown): AIDecisionSchemaOutput {
       )
     }
   } else {
-    if (data.discountPercent !== null && data.discountPercent !== undefined) {
-      // Non-discount action with a discount — strip it to prevent misuse
-      data.discountPercent = null
-    }
+    // Non-discount action with a discount — strip it to prevent misuse
+    data.discountPercent = null
   }
 
-  return data
+  return {
+    ...data,
+    discountPercent: data.discountPercent ?? null,
+  }
 }

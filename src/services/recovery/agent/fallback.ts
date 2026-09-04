@@ -62,8 +62,9 @@ export function deterministicFallback(
   const terminalStatuses = ["completed", "failed", "dismissed"]
   if (terminalStatuses.includes(safe.caseStatus)) {
     return toAIDecisionOutput(
-      "Case is already in a terminal state — no recovery action needed.",
-      [`Case status: ${safe.caseStatus}`, "Deterministic fallback — AI provider unavailable"]
+      "Case is already in a terminal state — no recovery action needed. AI provider is unavailable.",
+      [`Case status: ${safe.caseStatus}`, "Deterministic fallback — AI provider is unavailable"],
+      { stopReason: "case_terminal" }
     )
   }
 
@@ -84,7 +85,7 @@ export function deterministicFallback(
     safe.recoveryProbability >= 0.5 &&
     safe.amountAtRisk > 0 &&
     safe.category === "payment_failed" &&
-    (safe.priority === "high" || safe.priority === "critical" || safe.priority === "medium")
+    (safe.priority === "medium")
   ) {
     return toAIDecisionOutput(
       `Payment failed with recoverable signal. ₹${(safe.amountAtRisk / 100).toFixed(2)} at ${(safe.recoveryProbability * 100).toFixed(0)}% recovery probability. Retrying payment is the most direct recovery path.`,
@@ -127,19 +128,19 @@ export function deterministicFallback(
     )
   }
 
-  // Critical priority + high probability → escalate to merchant
+  // Critical or high priority + high probability → escalate to merchant
   if (
     safe.recoveryProbability >= 0.5 &&
     safe.amountAtRisk > 0 &&
-    safe.priority === "critical"
+    (safe.priority === "critical" || safe.priority === "high")
   ) {
     return toAIDecisionOutput(
-      `Critical-priority case (₹${(safe.amountAtRisk / 100).toFixed(2)}) with ${(safe.recoveryProbability * 100).toFixed(0)}% recovery probability. Escalating for human review because AI provider is unavailable.`,
+      `High/critical-priority case (₹${(safe.amountAtRisk / 100).toFixed(2)}) with ${(safe.recoveryProbability * 100).toFixed(0)}% recovery probability. Escalating for human review because AI provider is unavailable.`,
       [
-        `Priority: critical — highest risk`,
+        `Priority: ${safe.priority} — high risk`,
         `Amount: ₹${(safe.amountAtRisk / 100).toFixed(2)}`,
         `Recovery probability: ${(safe.recoveryProbability * 100).toFixed(0)}%`,
-        `AI provider unavailable — escalating for human review`,
+        `AI provider is unavailable — escalating for human review`,
       ],
       {
         action: "escalate_to_merchant",

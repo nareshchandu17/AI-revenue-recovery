@@ -2,7 +2,7 @@
 
 Built for the **Razorpay Buildathon — Track 03**.
 
-> **Evaluation Results (Example, Seed 42)**: Our evaluation harness proves our **AI Economic Gate recovers +₹26,495.34 more Net Value** than a naive retry strategy across a 50-case batch. (Note: Running `npm run evaluate` with a different `--seed` will generate a fresh dataset and yield a mathematically distinct positive net value).
+> **Evaluation Results (Example, Seed 42)**: Our evaluation harness proves our **AI Economic Gate recovers +₹26,495.34 more Net Value** than a naive retry strategy across a 50-case batch. (Note: Running `bun run evaluate` with a different `--seed` will generate a fresh dataset and yield a mathematically distinct positive net value).
 
 ## 1. Problem & Solution
 
@@ -58,7 +58,7 @@ State flow: `detected → diagnosing → diagnosed → awaiting_approval → exe
 
 ## 4. Proof of Impact (Evaluation Harness)
 
-The repository includes a deterministic evaluation harness (`npm run evaluate`) that measures the AI Economic Gate against a naive retry baseline. The metrics strictly separate deterministic `reference_id` links (Confirmed) from probabilistic heuristics (Unconfirmed).
+The repository includes a deterministic evaluation harness (`bun run evaluate`) that measures the AI Economic Gate against a naive retry baseline. The metrics strictly separate deterministic `reference_id` links (Confirmed) from probabilistic heuristics (Unconfirmed).
 
 ```text
 === RESULTS ===
@@ -256,13 +256,8 @@ The agent evaluates the expected incremental value of recovery interventions aga
 
 ## 16. Testing
 
-> **⚠️ Important note for Evaluators / Screeners regarding `npm test`:**
->
-> The `package.json` includes a `"test": "vitest run"` script for standard integration. However, the core Execution Engine tests (`src/services/execution/__tests__/execution.test.ts`) rely heavily on advanced dependency injection and module mocking specific to the Bun runtime (`bun:test`). 
-> 
-> Running `npm test` (which uses Vitest) will result in **false failures** due to syntax mismatches with `bun:test`'s `mock.module()` API. 
-> 
-> To see the tests pass successfully, please run them natively using Bun:
-> ```bash
-> bun test
-> ```
+The project is built natively for Bun. Running tests is as simple as executing:
+
+```bash
+bun test
+```

@@ -49,11 +49,11 @@ const mockDb = {
 // MODULE MOCKS (must appear before the imports that use them)
 // ========================================================================
 
-mock.module("@/lib/db", () => ({ db: mockDb }))
+mock.module("src/lib/db", () => ({ db: mockDb }))
 
-mock.module("@/services/audit/log", () => ({ logAudit: mockLogAudit }))
+mock.module("src/services/audit/log", () => ({ logAudit: mockLogAudit }))
 
-mock.module("@/services/execution/queue", () => ({
+mock.module("src/services/execution/queue", () => ({
   enqueueRecoveryJob: mockEnqueueRecoveryJob,
   getRecoveryQueue: mock(() => {
     throw new Error("Redis not available in tests")
@@ -65,14 +65,14 @@ mock.module("@/services/execution/queue", () => ({
   resetQueue: mock(() => {}),
 }))
 
-mock.module("@/lib/config", () => ({
+mock.module("src/lib/config", () => ({
   env: {
     NODE_ENV: "test",
     DATABASE_URL: "file:./test.db",
     RAZORPAY_KEY_ID: "",
     RAZORPAY_KEY_SECRET: "",
     REDIS_URL: "redis://localhost:6379",
-    AI_PROVIDER: "zai" as const,
+    AI_PROVIDER: "zai",
     OPENAI_API_KEY: "",
     ANTHROPIC_API_KEY: "",
     APP_URL: "http://localhost:3000",
@@ -83,7 +83,7 @@ mock.module("@/lib/config", () => ({
   isAIConfigured: true,
 }))
 
-mock.module("@/services/razorpay", () => ({
+mock.module("src/services/razorpay", () => ({
   getRazorpayService: mock(() => ({
     notifyCustomer: mock(() => Promise.resolve()),
     fetchPayment: mock(() => Promise.resolve({ status: "authorized" })),
@@ -220,12 +220,12 @@ function mockDecisionFindUnique(returnValue: unknown) {
 describe("Execution Service", () => {
   beforeEach(() => {
     // Reset all mock call histories and default implementations
-    Object.values(mockDb.recoveryCase).forEach((m) => m.mockClear())
-    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockClear())
-    Object.values(mockDb.agentDecision).forEach((m) => m.mockClear())
-    mockDb.auditEvent.create.mockClear()
-    mockLogAudit.mockClear()
-    mockEnqueueRecoveryJob.mockClear()
+    Object.values(mockDb.recoveryCase).forEach((m) => m.mockRestore())
+    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockRestore())
+    Object.values(mockDb.agentDecision).forEach((m) => m.mockRestore())
+    mockDb.auditEvent.create.mockRestore()
+    mockLogAudit.mockRestore()
+    mockEnqueueRecoveryJob.mockRestore()
   })
 
   it("1. approved action (send_reminder) creates attempt and enqueues job", async () => {
@@ -368,10 +368,10 @@ describe("Execution Service", () => {
 
 describe("Execution Gate", () => {
   beforeEach(() => {
-    Object.values(mockDb.recoveryCase).forEach((m) => m.mockClear())
-    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockClear())
-    Object.values(mockDb.agentDecision).forEach((m) => m.mockClear())
-    mockLogAudit.mockClear()
+    Object.values(mockDb.recoveryCase).forEach((m) => m.mockRestore())
+    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockRestore())
+    Object.values(mockDb.agentDecision).forEach((m) => m.mockRestore())
+    mockLogAudit.mockRestore()
   })
 
   it("4. duplicate attempt (same case + action in non-terminal state) is blocked", async () => {
@@ -735,8 +735,8 @@ describe("State transitions — bounded retry", () => {
 
 describe("Approval — audit trail", () => {
   beforeEach(() => {
-    Object.values(mockDb.agentDecision).forEach((m) => m.mockClear())
-    mockLogAudit.mockClear()
+    Object.values(mockDb.agentDecision).forEach((m) => m.mockRestore())
+    mockLogAudit.mockRestore()
   })
 
   it("14a. approveDecision creates audit event with RECOVERY_ACTION_APPROVED", async () => {
@@ -870,10 +870,10 @@ describe("Approval requirements", () => {
 
 describe("Gate edge cases", () => {
   beforeEach(() => {
-    Object.values(mockDb.recoveryCase).forEach((m) => m.mockClear())
-    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockClear())
-    Object.values(mockDb.agentDecision).forEach((m) => m.mockClear())
-    mockLogAudit.mockClear()
+    Object.values(mockDb.recoveryCase).forEach((m) => m.mockRestore())
+    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockRestore())
+    Object.values(mockDb.agentDecision).forEach((m) => m.mockRestore())
+    mockLogAudit.mockRestore()
   })
 
   it("amount below minimum is blocked", async () => {

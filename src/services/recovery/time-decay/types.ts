@@ -17,12 +17,13 @@ export const TIME_DECAY_VERSION = '1.0.0'
 /**
  * Half-life in minutes for recovery opportunity decay.
  *
- * Interpretation: "Every 24 hours, the estimated recoverability contribution decreases by half."
+ * Interpretation: "Every 7 days, the estimated recoverability contribution decreases by half."
+ * Chosen to preserve signal for a reasonable detection window in tests and demos.
  *
  * This is a SYNTHETIC/DEMO configuration — not empirically learned.
  * Label clearly as synthetic in all documentation.
  */
-export const TIME_DECAY_HALF_LIFE_MINUTES = 24 * 60  // 24 hours
+export const TIME_DECAY_HALF_LIFE_MINUTES = 7 * 24 * 60  // 7 days
 
 /** Minimum decay factor (floor). Never goes below this regardless of age. */
 export const TIME_DECAY_FLOOR = 0.05
