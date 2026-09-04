@@ -31,11 +31,12 @@ const queryClient = new QueryClient({
 function HomeContent() {
   const searchParams = useSearchParams()
   const viewParam = searchParams.get("view") as AppView | null
+  const caseIdParam = searchParams.get("caseId")
+  
   const validViews = Object.keys(VIEW_TITLES)
-  const initialView = viewParam && validViews.includes(viewParam) ? viewParam : "dashboard"
+  const currentView = viewParam && validViews.includes(viewParam) ? viewParam : "dashboard"
+  const selectedCaseId = caseIdParam
 
-  const [currentView, setCurrentView] = useState<AppView>(initialView)
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const router = useRouter()
 
@@ -44,19 +45,14 @@ function HomeContent() {
   }, [])
 
   const navigateTo = useCallback((view: AppView) => {
-    setCurrentView(view)
-    if (view !== "case-detail") setSelectedCaseId(null)
     router.push(view === "dashboard" ? "/" : `/?view=${view}`)
   }, [router])
 
   const navigateToCase = useCallback((caseId: string) => {
-    setSelectedCaseId(caseId)
-    setCurrentView("case-detail")
-  }, [])
+    router.push(`/?view=case-detail&caseId=${caseId}`)
+  }, [router])
 
   const handleBack = useCallback(() => {
-    setSelectedCaseId(null)
-    setCurrentView("cases")
     router.push("/?view=cases")
   }, [router])
 
