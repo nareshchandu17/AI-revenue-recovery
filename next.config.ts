@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: false,
   turbopack: {
-    root: './'
+    root: process.cwd()
   }
 };
 
