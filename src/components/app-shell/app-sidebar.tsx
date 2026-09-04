@@ -77,10 +77,10 @@ export function AppSidebar({ currentView, onNavigate, highPriorityCount }: AppSi
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold shrink-0">
-            RR
+            R
           </div>
           <div className="group-data-[collapsible=icon]:hidden">
-            <p className="text-sm font-semibold leading-tight">Revenue Recovery</p>
+            <p className="text-sm font-semibold leading-tight">Recovr</p>
             <p className="text-xs text-muted-foreground">AI-Powered</p>
           </div>
         </div>

@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "AI Revenue Recovery",
+  title: "Recovr",
   description: "Detect, diagnose, and recover lost revenue with AI-assisted workflows. Built for Razorpay Buildathon Track 03.",
-  icons: { icon: "/logo.svg" },
+  icons: { icon: "/favicon.jpg" },
 }
 
 export default function RootLayout({

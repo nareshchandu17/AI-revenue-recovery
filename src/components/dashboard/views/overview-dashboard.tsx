@@ -60,7 +60,7 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
               </Badge>
             </div>
             <h2 className="text-lg sm:text-xl font-bold tracking-tight">
-              AI Revenue Recovery
+              Recovr
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               Intelligent agent protecting your bottom line.
