@@ -65,6 +65,10 @@ function HomeContent() {
     ? `Case ${selectedCaseId}`
     : VIEW_TITLES[currentView]
 
+  useEffect(() => {
+    document.title = title ? `Recovr | ${title}` : "Recovr"
+  }, [title])
+
   if (!mounted) return null
 
   return (
