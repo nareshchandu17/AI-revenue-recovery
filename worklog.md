@@ -109,7 +109,7 @@ Work Log:
 - Created scripts/generator/generate.ts: Full generator with batching, realistic distributions, temporal data
 - Created scripts/generator/golden-demo.ts: 10 carefully constructed test scenarios
 - Created scripts/generator/validate.ts: 12-check data quality validator
-- Added npm scripts: generate:data, generate:demo, validate:data
+- Added bun scripts: generate:data, generate:demo, validate:data
 - Updated seed.ts: Added 2 DND test customers, communication event cleanup
 
 Stage Summary:
