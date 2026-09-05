@@ -50,30 +50,35 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
   return (
     <div className="space-y-6">
       {/* ── Value Proposition Hero ── */}
-      <div className="rounded-lg border bg-gradient-to-r from-emerald-950/40 via-card to-card px-5 py-4 sm:px-6 sm:py-5">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      <div className="relative overflow-hidden rounded-xl border border-emerald-900/10 bg-gradient-to-br from-card via-card to-emerald-50/30 dark:border-emerald-800/20 dark:from-card dark:to-emerald-950/20 px-6 py-6 sm:px-8 sm:py-8 shadow-sm">
+        {/* Abstract Background Elements */}
+        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
+        
+        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <Badge variant="secondary" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50">
-                <ShieldCheck className="h-3 w-3 mr-1 text-amber-600" />
-                Autonomy: {AUTONOMY_CONFIGS[autonomyLevel].badgeLabel}
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400 backdrop-blur-sm relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-100/30 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+                <ShieldCheck className="h-3 w-3 mr-1.5 text-amber-600 dark:text-amber-500" />
+                <span className="relative z-10 font-semibold tracking-wide">Autonomy: {AUTONOMY_CONFIGS[autonomyLevel].badgeLabel}</span>
               </Badge>
             </div>
-            <h2 className="text-lg sm:text-xl font-bold tracking-tight">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-700 to-teal-900 dark:from-emerald-400 dark:to-teal-200">
               Recovr
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Intelligent agent protecting your bottom line.
+            <p className="text-sm font-medium text-muted-foreground mt-1 max-w-md leading-relaxed">
+              Autonomous AI agent protecting your bottom line with deterministic financial guardrails.
             </p>
           </div>
-          <div className="flex flex-col sm:items-end gap-1.5 mt-2 sm:mt-0">
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Demo Scenarios</p>
+          <div className="flex flex-col sm:items-end gap-2 mt-2 sm:mt-0">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Interactive Scenarios</p>
             <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={() => onNavigateCase("demo_wow_01_case")} className="h-7 text-xs border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-900/60">
-                <ShieldCheck className="h-3 w-3 mr-1" /> Run Demo: Do Not Act
+              <Button size="sm" variant="outline" onClick={() => onNavigateCase("demo_wow_01_case")} className="h-8 text-xs font-semibold shadow-sm border-amber-200/50 bg-white/50 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900/50 dark:bg-black/20 dark:text-amber-400 dark:hover:bg-amber-950/40 backdrop-blur-sm transition-all hover:-translate-y-0.5">
+                <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Do Not Act (Blocked)
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => onNavigateCase("demo_wow_02_case")} className="h-7 text-xs border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60">
-                <Zap className="h-3 w-3 mr-1" /> Run Demo: Act
+              <Button size="sm" onClick={() => onNavigateCase("demo_wow_02_case")} className="h-8 text-xs font-semibold shadow-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
+                <Zap className="h-3.5 w-3.5 mr-1.5" /> Execute AI Recovery
               </Button>
             </div>
           </div>
@@ -178,40 +183,41 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
         <CardContent>
           <div className="flex flex-col sm:flex-row items-stretch gap-3 sm:gap-0">
             {/* Revenue At Risk */}
-            <div className="flex-1 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-center">
+            <div className="flex-1 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-4 text-center relative overflow-hidden group hover:bg-destructive/10 transition-colors">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Revenue At Risk</p>
-              <p className="text-xl font-bold text-destructive mt-1">{formatCurrency(metrics?.totalRevenueAtRisk)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Total identified</p>
+              <p className="text-2xl font-bold text-destructive mt-1.5 group-hover:scale-105 transition-transform">{formatCurrency(metrics?.totalRevenueAtRisk)}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Total identified</p>
             </div>
 
             {/* Arrow */}
             <div className="hidden sm:flex items-center px-1">
-              <ArrowRight className="h-5 w-5 text-muted-foreground" />
+              <ArrowRight className="h-5 w-5 text-muted-foreground/40" />
             </div>
-            <div className="flex sm:hidden items-center justify-center py-0.5">
-              <ArrowRight className="h-4 w-4 text-muted-foreground rotate-90" />
+            <div className="flex sm:hidden items-center justify-center py-1">
+              <ArrowRight className="h-4 w-4 text-muted-foreground/40 rotate-90" />
             </div>
 
             {/* Recovered */}
-            <div className="flex-1 rounded-lg border border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3 text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recovered</p>
-              <p className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(metrics?.totalRecoveredRevenue)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Verified attributed</p>
+            <div className="flex-1 rounded-xl border border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-4 text-center relative overflow-hidden group hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors">
+              <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 to-transparent pointer-events-none" />
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider relative z-10">Recovered</p>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1.5 group-hover:scale-105 transition-transform relative z-10">{formatCurrency(metrics?.totalRecoveredRevenue)}</p>
+              <p className="text-[10px] text-muted-foreground mt-1 relative z-10">Verified attributed</p>
             </div>
 
             {/* Arrow */}
             <div className="hidden sm:flex items-center px-1">
-              <ArrowRight className="h-5 w-5 text-muted-foreground" />
+              <ArrowRight className="h-5 w-5 text-muted-foreground/40" />
             </div>
-            <div className="flex sm:hidden items-center justify-center py-0.5">
-              <ArrowRight className="h-4 w-4 text-muted-foreground rotate-90" />
+            <div className="flex sm:hidden items-center justify-center py-1">
+              <ArrowRight className="h-4 w-4 text-muted-foreground/40 rotate-90" />
             </div>
 
             {/* Remaining At Risk */}
-            <div className="flex-1 rounded-lg border border-amber-500/20 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-center">
+            <div className="flex-1 rounded-xl border border-amber-500/20 bg-amber-50 dark:bg-amber-950/20 px-4 py-4 text-center relative overflow-hidden group hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Remaining At Risk</p>
-              <p className="text-xl font-bold text-amber-600 mt-1">{formatCurrency(metrics?.remainingRevenueAtRisk)}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Still to recover</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-500 mt-1.5 group-hover:scale-105 transition-transform">{formatCurrency(metrics?.remainingRevenueAtRisk)}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Still to recover</p>
             </div>
           </div>
         </CardContent>
@@ -242,10 +248,10 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                   const decision = c.agentDecisions[0]
                   const recovered = c.recoveredAmount > 0
                   return (
-                    <button key={c.id} onClick={() => onNavigateCase(c.id)} className="w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors cursor-pointer">
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={c.priority === "critical" ? "text-destructive font-semibold text-xs uppercase" : c.priority === "high" ? "text-amber-600 font-semibold text-xs uppercase" : "text-xs font-medium text-muted-foreground uppercase"}>
+                    <button key={c.id} onClick={() => onNavigateCase(c.id)} className="w-full text-left rounded-xl border border-transparent hover:border-violet-200 dark:hover:border-violet-900/50 p-4 hover:bg-violet-50/30 dark:hover:bg-violet-950/10 transition-all duration-300 cursor-pointer group hover:shadow-sm">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2 min-w-0 transition-transform duration-300 group-hover:translate-x-1">
+                          <span className={c.priority === "critical" ? "text-destructive font-semibold text-[10px] uppercase tracking-wider" : c.priority === "high" ? "text-amber-600 font-semibold text-[10px] uppercase tracking-wider" : "text-[10px] font-medium text-muted-foreground uppercase tracking-wider"}>
                             {c.priority} Priority
                           </span>
                           <StatusBadge status={c.status} />
@@ -276,12 +282,15 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                             )
                           })()}
                         </div>
-                        <span className="text-sm font-bold shrink-0">
-                          {formatCurrency(c.amountAtRisk)}
-                          {recovered && <span className="text-emerald-600 ml-1 font-normal text-xs">recovered {formatCurrency(c.recoveredAmount)}</span>}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold shrink-0">
+                            {formatCurrency(c.amountAtRisk)}
+                            {recovered && <span className="text-emerald-600 ml-1 font-normal text-[10px] uppercase tracking-wide bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">Recovered {formatCurrency(c.recoveredAmount)}</span>}
+                          </span>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-all -translate-x-2 group-hover:translate-x-0" />
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
+                      <p className="text-xs text-muted-foreground truncate transition-transform duration-300 group-hover:translate-x-1">
                         {c.customer?.displayName ?? "Unknown Customer"}
                         {c.customer?.email ? ` · ${c.customer.email}` : ""}
                         {" · "}{formatCategory(c.category)}
@@ -326,23 +335,23 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                     const pct = total > 0 ? (data.amountAtRisk / total) * 100 : 0
                     const recoveredPct = data.amountAtRisk > 0 ? (data.recovered / data.amountAtRisk) * 100 : 0
                     return (
-                      <button key={category} onClick={() => onNavigate("cases")} className="w-full text-left group cursor-pointer">
-                        <div className="flex items-center justify-between text-xs mb-1.5">
-                          <span className="font-medium group-hover:underline">{formatCategory(category)}</span>
-                          <span className="text-muted-foreground">{data.count} case{data.count !== 1 ? "s" : ""} · {formatCurrency(data.amountAtRisk)}</span>
+                      <button key={category} onClick={() => onNavigate("cases")} className="w-full text-left group cursor-pointer p-3 rounded-xl hover:bg-muted/50 transition-colors border border-transparent hover:border-border">
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="font-semibold group-hover:text-primary transition-colors">{formatCategory(category)}</span>
+                          <span className="text-muted-foreground font-medium">{data.count} case{data.count !== 1 ? "s" : ""} · {formatCurrency(data.amountAtRisk)}</span>
                         </div>
-                        <div className="flex h-2 rounded-full bg-muted overflow-hidden">
+                        <div className="flex h-2.5 rounded-full bg-muted overflow-hidden">
                           <div
-                            className="bg-emerald-500 rounded-full transition-all"
+                            className="bg-emerald-500 rounded-full transition-all group-hover:bg-emerald-400"
                             style={{ width: `${pct * recoveredPct / 100}%` }}
                           />
                           <div
-                            className="bg-amber-500 rounded-full transition-all"
+                            className="bg-amber-500 rounded-full transition-all group-hover:bg-amber-400"
                             style={{ width: `${pct * (1 - recoveredPct / 100)}%` }}
                           />
                         </div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                          <span className="text-emerald-600 font-medium">{formatCurrency(data.recovered)} recovered</span>
+                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5 font-medium">
+                          <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(data.recovered)} recovered</span>
                           <span>{pct.toFixed(1)}% of total risk</span>
                         </div>
                       </button>
@@ -361,31 +370,31 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
         <CardContent className="pt-6">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">How It Works</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30 shrink-0">
-                <Zap className="h-4 w-4 text-violet-600" />
+            <div className="flex items-start gap-3 group">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/30 shrink-0 transition-all duration-300 group-hover:bg-violet-200 dark:group-hover:bg-violet-800/50 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.2)]">
+                <Zap className="h-5 w-5 text-violet-600 transition-transform duration-300 group-hover:scale-110" />
               </div>
               <div>
-                <p className="text-sm font-semibold">AI Detection &amp; Diagnosis</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Failed payments are detected, categorized, and analyzed with confidence scores.</p>
+                <p className="text-sm font-semibold transition-colors group-hover:text-violet-700 dark:group-hover:text-violet-400">AI Detection &amp; Diagnosis</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Failed payments are detected, categorized, and analyzed with confidence scores.</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30 shrink-0">
-                <ShieldCheck className="h-4 w-4 text-amber-600" />
+            <div className="flex items-start gap-3 group">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30 shrink-0 transition-all duration-300 group-hover:bg-amber-200 dark:group-hover:bg-amber-800/50 group-hover:shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                <ShieldCheck className="h-5 w-5 text-amber-600 transition-transform duration-300 group-hover:scale-110" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Policy Gate + Merchant Approval</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Every recovery action passes through a policy check and requires merchant sign-off.</p>
+                <p className="text-sm font-semibold transition-colors group-hover:text-amber-700 dark:group-hover:text-amber-400">Policy Gate + Merchant Approval</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Every recovery action passes through a policy check and requires merchant sign-off.</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
-                <UserCheck className="h-4 w-4 text-emerald-600" />
+            <div className="flex items-start gap-3 group">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/30 shrink-0 transition-all duration-300 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/50 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                <UserCheck className="h-5 w-5 text-emerald-600 transition-transform duration-300 group-hover:scale-110" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Execute &amp; Verify Attribution</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Actions execute with webhook-verified payment events proving real revenue recovery.</p>
+                <p className="text-sm font-semibold transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">Execute &amp; Verify Attribution</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Actions execute with webhook-verified payment events proving real revenue recovery.</p>
               </div>
             </div>
           </div>
