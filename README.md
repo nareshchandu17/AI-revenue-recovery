@@ -64,16 +64,19 @@ The repository includes a deterministic evaluation harness (`bun run evaluate`) 
 === RESULTS ===
 
 ┌──────────────────┬───────┬─────────┬───────────┬─────────────────────────┬───────────────────────────┬─────────┬─────────────────────────┬───────────────┬─────────────────────┐
-│ (index)          │ Cases │ Actions │ No Action │ Recovered ₹ (Confirmed) │ Recovered ₹ (Unconfirmed) │ Costs ₹ │ Net Value ₹ (Confirmed) │ Recovery Rate │ Unnecessary Actions │
+│                  │ Cases │ Actions │ No Action │ Recovered ₹ (Confirmed) │ Recovered ₹ (Unconfirmed) │ Costs ₹ │ Net Value ₹ (Confirmed) │ Recovery Rate │ Unnecessary Actions │
 ├──────────────────┼───────┼─────────┼───────────┼─────────────────────────┼───────────────────────────┼─────────┼─────────────────────────┼───────────────┼─────────────────────┤
-│ NO_ACTION        │ 13    │ 0       │ 13        │ '0.00'                  │ '21985.96'                │ '0.00'  │ '0.00'                  │ '38.5%'       │ 0                   │
-│ NAIVE            │ 13    │ 13      │ 0         │ '8892.11'               │ '41.85'                   │ '21.00' │ '8871.11'               │ '30.8%'       │ 5                   │
-│ AI_ECONOMIC_GATE │ 13    │ 13      │ 0         │ '35387.45'              │ '0.00'                    │ '21.00' │ '35366.45'              │ '38.5%'       │ 5                   │
+│        NO_ACTION │ 100   │ 0       │ 100       │ 0.00                    │ 29796.18                  │ 0.00    │ 0.00                    │ 13.0%         │ 0                   │
+│            NAIVE │ 100   │ 100     │ 0         │ 8205.08                 │ 8662.27                   │ 176.50  │ 8028.58                 │ 38.0%         │ 13                  │
+│ AI_ECONOMIC_GATE │ 100   │ 97      │ 3         │ 3474.41                 │ 9978.49                   │ 149.00  │ 3325.41                 │ 37.0%         │ 13                  │
 └──────────────────┴───────┴─────────┴───────────┴─────────────────────────┴───────────────────────────┴─────────┴─────────────────────────┴───────────────┴─────────────────────┘
 
 === KEY FINDINGS ===
-Actions avoided by AI Economic Gate: 0
-WINNER BY NET VALUE: AI_ECONOMIC_GATE (+₹26495.34 over NAIVE)
+Actions avoided by AI Economic Gate: 3
+WINNER BY NET VALUE: NAIVE (+₹4703.17 over AI_ECONOMIC_GATE)
+
+Note: The evaluation harness measures simulated strategy performance on controlled datasets.
+It does not by itself establish causal real-world incremental revenue.
 ```
 
 ## 5. Tech Stack

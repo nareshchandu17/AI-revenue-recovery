@@ -73,16 +73,22 @@ export class UpstreamError extends AppError {
  * Turn any caught error into a consistent JSON response.
  * Intended for use in catch blocks inside route handlers.
  */
-export function errorResponse(error: unknown) {
+export function errorResponse(error: unknown, requestId?: string) {
   if (error instanceof AppError) {
-    // Don't log 4xx client errors at error level — they're expected
     if (error.statusCode >= 400 && error.statusCode < 500) {
       console.log(`[error] ${error.statusCode} ${error.code}: ${error.message}`)
     } else {
       console.error("[error] Unhandled:", error)
     }
     return Response.json(
-      { error: { message: error.message, code: error.code } },
+      { 
+        error: { 
+          type: error.statusCode >= 500 ? "api_error" : "invalid_request_error",
+          code: error.code,
+          message: error.message,
+          request_id: requestId 
+        } 
+      },
       { status: error.statusCode }
     )
   }
@@ -95,14 +101,29 @@ export function errorResponse(error: unknown) {
     typeof (error as Record<string, unknown>).flatten === "function"
   ) {
     return Response.json(
-      { error: { message: "Validation failed", code: "VALIDATION_ERROR", details: (error as { flatten: () => unknown }).flatten() } },
+      { 
+        error: { 
+          type: "invalid_request_error",
+          code: "VALIDATION_ERROR",
+          message: "Validation failed", 
+          details: (error as { flatten: () => unknown }).flatten(),
+          request_id: requestId
+        } 
+      },
       { status: 400 }
     )
   }
 
   console.error("[error] Unhandled:", error)
   return Response.json(
-    { error: { message: "Internal server error", code: "INTERNAL" } },
+    { 
+      error: { 
+        type: "api_error",
+        code: "INTERNAL",
+        message: "Internal server error",
+        request_id: requestId
+      } 
+    },
     { status: 500 }
   )
 }

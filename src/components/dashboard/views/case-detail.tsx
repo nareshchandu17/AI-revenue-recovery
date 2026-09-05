@@ -799,9 +799,12 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
               <div className="rounded-xl border border-red-500/30 bg-gradient-to-b from-red-50 to-white dark:from-red-950/30 dark:to-background shadow-lg overflow-hidden mt-4 relative">
                 <div className="absolute top-0 inset-x-0 h-1 bg-red-500" />
                 <div className="p-5 text-center relative z-10">
-                  <h3 className="text-lg font-black tracking-widest uppercase flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
-                    <Ban className="h-5 w-5" />
-                    Do Not Act
+                  <h3 className="text-sm font-bold tracking-widest flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
+                    <Ban className="h-4 w-4" />
+                    Expected recovery: {formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)} | 
+                    Cost: {formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))} | 
+                    NPV: {formatCurrencyFull(decision.netExpectedValue ?? 0)} | 
+                    Policy v3 | Decision: DO_NOT_ACT
                   </h3>
                   <p className="text-muted-foreground text-xs mt-1 font-medium">Intervention is economically unjustified</p>
                 </div>
@@ -839,7 +842,12 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-4 mt-4">
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingUp className="h-5 w-5 text-emerald-600" />
-                  <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Economic Value Gate: ACT</p>
+                  <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                    Expected recovery: {formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)} | 
+                    Cost: {formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))} | 
+                    NPV: {formatCurrencyFull(decision.netExpectedValue ?? 0)} | 
+                    Policy v3 | Decision: ACT
+                  </p>
                 </div>
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">

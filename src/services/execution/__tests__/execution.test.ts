@@ -43,17 +43,31 @@ const mockDb = {
   auditEvent: {
     create: mock(() => Promise.resolve({})),
   },
+  customer: {
+    findUnique: mock(() => Promise.resolve(null)),
+  },
 }
 
 // ========================================================================
-// MODULE MOCKS (must appear before the imports that use them)
-// ========================================================================
+mock.module("@/lib/db", () => ({ db: mockDb }))
 
-mock.module("src/lib/db", () => ({ db: mockDb }))
+mock.module("@/services/audit/log", () => ({ logAudit: mockLogAudit }))
 
-mock.module("src/services/audit/log", () => ({ logAudit: mockLogAudit }))
+mock.module("@/services/consent", () => ({
+  getConsentStatus: mock(() => Promise.resolve("EXPLICIT_OPT_IN")),
+}))
 
-mock.module("src/services/execution/queue", () => ({
+mock.module("@/services/dnd", () => ({
+  checkDNDEligibility: mock(() => Promise.resolve({ allowed: true })),
+}))
+
+mock.module("@/services/contact-policy", () => ({
+  checkContactEligibility: mock(() => Promise.resolve({ allowed: true })),
+  CUSTOMER_FACING_ACTIONS: new Set(["send_reminder", "retry_payment", "payment_link", "offer_discount", "escalate_to_merchant"]),
+  ACTION_DEFAULT_CHANNEL: { send_reminder: "email", retry_payment: "email", payment_link: "email", offer_discount: "email" },
+}))
+
+mock.module("@/services/execution/queue", () => ({
   enqueueRecoveryJob: mockEnqueueRecoveryJob,
   getRecoveryQueue: mock(() => {
     throw new Error("Redis not available in tests")
@@ -65,7 +79,7 @@ mock.module("src/services/execution/queue", () => ({
   resetQueue: mock(() => {}),
 }))
 
-mock.module("src/lib/config", () => ({
+mock.module("@/lib/config", () => ({
   env: {
     NODE_ENV: "test",
     DATABASE_URL: "file:./test.db",
@@ -83,7 +97,7 @@ mock.module("src/lib/config", () => ({
   isAIConfigured: true,
 }))
 
-mock.module("src/services/razorpay", () => ({
+mock.module("@/services/razorpay", () => ({
   getRazorpayService: mock(() => ({
     notifyCustomer: mock(() => Promise.resolve()),
     fetchPayment: mock(() => Promise.resolve({ status: "authorized" })),
@@ -220,12 +234,13 @@ function mockDecisionFindUnique(returnValue: unknown) {
 describe("Execution Service", () => {
   beforeEach(() => {
     // Reset all mock call histories and default implementations
-    Object.values(mockDb.recoveryCase).forEach((m) => m.mockRestore())
-    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockRestore())
-    Object.values(mockDb.agentDecision).forEach((m) => m.mockRestore())
-    mockDb.auditEvent.create.mockRestore()
-    mockLogAudit.mockRestore()
-    mockEnqueueRecoveryJob.mockRestore()
+    Object.values(mockDb.recoveryCase).forEach((m) => m.mockClear())
+    Object.values(mockDb.recoveryAttempt).forEach((m) => m.mockClear())
+    Object.values(mockDb.agentDecision).forEach((m) => m.mockClear())
+    Object.values(mockDb.customer).forEach((m) => m.mockClear())
+    mockDb.auditEvent.create.mockClear()
+    mockLogAudit.mockClear()
+    mockEnqueueRecoveryJob.mockClear()
   })
 
   it("1. approved action (send_reminder) creates attempt and enqueues job", async () => {
@@ -384,14 +399,21 @@ describe("Execution Gate", () => {
     mockDb.recoveryAttempt.count.mockImplementation(() =>
       Promise.resolve(0)
     )
-    mockDb.recoveryAttempt.findFirst.mockImplementation(() =>
-      Promise.resolve({
+    mockDb.recoveryAttempt.findFirst.mockImplementation((args: any) => {
+      if (args?.orderBy?.attemptedAt === "desc") {
+        return Promise.resolve({
+          id: "recent-attempt",
+          attemptedAt: new Date(Date.now() - 5 * 60_000), // 5 mins ago
+        })
+      }
+      return Promise.resolve({
         id: "existing-attempt",
         recoveryCaseId: "case-1",
         action: "send_reminder",
         status: "running",
+        attemptedAt: new Date(),
       })
-    )
+    })
 
     const result = await checkExecutionGate(GATE_BASE)
 

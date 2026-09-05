@@ -17,6 +17,7 @@ export interface LogAuditParams {
   action: string
   details?: string
   metadata?: Record<string, unknown>
+  requestId?: string
 }
 
 /**
@@ -41,6 +42,11 @@ export async function logAudit(params: LogAuditParams) {
         ? (params.actor as { source: string }).source
         : ""
 
+  const finalMetadata = { ...params.metadata }
+  if (params.requestId) {
+    finalMetadata.request_id = params.requestId
+  }
+
   return db.auditEvent.create({
     data: {
       caseId: params.caseId ?? null,
@@ -51,7 +57,7 @@ export async function logAudit(params: LogAuditParams) {
       entityId: params.entityId ?? "",
       action: params.action,
       details: params.details ?? "",
-      metadataJson: params.metadata ? JSON.stringify(params.metadata) : "{}",
+      metadataJson: Object.keys(finalMetadata).length > 0 ? JSON.stringify(finalMetadata) : "{}",
     },
   })
 }
