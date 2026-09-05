@@ -24,7 +24,7 @@ export const ATTEMPT_STATUSES = [
 /** Valid state transitions for a RecoveryAttempt. */
 export const VALID_TRANSITIONS: Record<RecoveryAttemptStatus, RecoveryAttemptStatus[]> = {
   pending: ["queued", "cancelled"],
-  queued: ["running", "cancelled"],
+  queued: ["running", "cancelled", "blocked"],
   running: ["succeeded", "failed", "blocked"],
   succeeded: [],
   failed: [],

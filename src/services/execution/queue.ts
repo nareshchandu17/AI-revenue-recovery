@@ -56,6 +56,25 @@ export async function enqueueRecoveryJob(
   data: RecoveryJobData,
   jobId?: string
 ): Promise<string> {
+  const isRedis = isRedisAvailable()
+  
+  if (!isRedis) {
+    console.log(`[queue] Redis unavailable. Executing job locally in background: attemptId=${data.recoveryAttemptId}, caseId=${data.recoveryCaseId}`)
+    const generatedJobId = jobId || crypto.randomUUID()
+    
+    // Run asynchronously without blocking the API
+    setTimeout(async () => {
+      try {
+        const { processJob } = await import("./worker")
+        await processJob({ id: generatedJobId, data })
+      } catch (err) {
+        console.error("[queue] Local execution failed:", err)
+      }
+    }, 100)
+    
+    return generatedJobId
+  }
+
   const queue = getRecoveryQueue()
 
   const job = await queue.add("execute-recovery", data, {

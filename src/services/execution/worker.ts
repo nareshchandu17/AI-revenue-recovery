@@ -103,8 +103,8 @@ export function resetWorker(): void {
 
 // --- Job Processor ----------------------------------------------------------
 
-async function processJob(
-  job: Job
+export async function processJob(
+  job: { id?: string; data: any }
 ): Promise<RecoveryJobResult> {
   const { recoveryAttemptId, recoveryCaseId, agentDecisionId, action } = job.data
 

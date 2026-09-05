@@ -1,0 +1,238 @@
+- generic [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - generic [ref=f2e5]:
+      - generic [ref=f2e7]:
+        - generic [ref=f2e8]: R
+        - generic [ref=f2e9]:
+          - paragraph [ref=f2e10]: Recovr
+          - paragraph [ref=f2e11]: AI-Powered
+      - generic [ref=f2e12]:
+        - generic [ref=f2e13]:
+          - generic [ref=f2e14]: Overview
+          - list [ref=f2e16]:
+            - listitem [ref=f2e17]:
+              - button "Dashboard" [ref=f2e18] [cursor=pointer]
+        - generic [ref=f2e25]:
+          - generic [ref=f2e26]: Recovery
+          - list [ref=f2e28]:
+            - listitem [ref=f2e29]:
+              - button "Cases" [active] [ref=f2e30] [cursor=pointer]
+            - listitem [ref=f2e34]:
+              - button "Revenue Recovered" [ref=f2e35] [cursor=pointer]
+            - listitem [ref=f2e40]:
+              - button "Revenue At Risk" [ref=f2e41] [cursor=pointer]
+        - generic [ref=f2e46]:
+          - generic [ref=f2e47]: System
+          - list [ref=f2e49]:
+            - listitem [ref=f2e50]:
+              - button "Activity" [ref=f2e51] [cursor=pointer]
+            - listitem [ref=f2e55]:
+              - button "Settings" [ref=f2e56] [cursor=pointer]
+    - generic [ref=f2e61]:
+      - banner [ref=f2e62]:
+        - button "Toggle Sidebar" [ref=f2e63] [cursor=pointer]
+        - heading "Recovery Cases" [level=1] [ref=f2e66]
+        - generic [ref=f2e67]: "Autonomy: Merchant Approval Required"
+        - generic [ref=f2e68]: Test Mode
+      - main [ref=f2e69]:
+        - generic [ref=f2e70]:
+          - textbox "Search cases by customer, ID, or description..." [ref=f2e76]
+          - generic [ref=f2e77]:
+            - button "All 1636" [ref=f2e78] [cursor=pointer]:
+              - text: All
+              - generic [ref=f2e79]: "1636"
+            - button "Open" [ref=f2e80] [cursor=pointer]
+            - button "Recovered 407" [ref=f2e81] [cursor=pointer]:
+              - text: Recovered
+              - generic [ref=f2e82]: "407"
+            - button "Failed 88" [ref=f2e83] [cursor=pointer]:
+              - text: Failed
+              - generic [ref=f2e84]: "88"
+            - button "Dismissed 83" [ref=f2e85] [cursor=pointer]:
+              - text: Dismissed
+              - generic [ref=f2e86]: "83"
+          - table [ref=f2e90]:
+            - rowgroup [ref=f2e91]:
+              - row [ref=f2e92]:
+                - columnheader "Case" [ref=f2e93]
+                - columnheader "Customer" [ref=f2e94]
+                - columnheader "Category" [ref=f2e95]
+                - columnheader "Priority" [ref=f2e96] [cursor=pointer]
+                - columnheader "At Risk" [ref=f2e97] [cursor=pointer]
+                - columnheader "Recovered" [ref=f2e98]
+                - columnheader "Status" [ref=f2e99]
+                - columnheader "Detected ↓" [ref=f2e100] [cursor=pointer]
+            - rowgroup [ref=f2e101]:
+              - row [ref=f2e102] [cursor=pointer]:
+                - cell "gen_case_294_1" [ref=f2e103]
+                - cell [ref=f2e104]:
+                  - paragraph [ref=f2e105]: Iota User 294
+                  - paragraph [ref=f2e106]: customer_0_294@example.dev
+                - cell "Payment Failed" [ref=f2e107]
+                - cell "low" [ref=f2e108]
+                - cell "₹12.97" [ref=f2e109]
+                - cell "₹10.51" [ref=f2e110]
+                - cell "Completed" [ref=f2e111]
+                - cell "03 Sept 2026" [ref=f2e114]
+              - row [ref=f2e115] [cursor=pointer]:
+                - cell "gen_case_711_4" [ref=f2e116]
+                - cell [ref=f2e117]:
+                  - paragraph [ref=f2e118]: Epsilon User 711
+                  - paragraph [ref=f2e119]: customer_1_711@synthetic.test
+                - cell "Payment Expired" [ref=f2e120]
+                - cell "low" [ref=f2e121]
+                - cell "₹6.24" [ref=f2e122]
+                - cell "--" [ref=f2e123]
+                - cell "Failed" [ref=f2e124]
+                - cell "03 Sept 2026" [ref=f2e127]
+              - row [ref=f2e128] [cursor=pointer]:
+                - cell "gen_case_653_0" [ref=f2e129]
+                - cell [ref=f2e130]:
+                  - paragraph [ref=f2e131]: Iota User 653
+                  - paragraph [ref=f2e132]: customer_1_653@example.dev
+                - cell "Payment Failed" [ref=f2e133]
+                - cell "medium" [ref=f2e134]
+                - cell "₹8.42" [ref=f2e135]
+                - cell "₹8.42" [ref=f2e136]
+                - cell "Completed" [ref=f2e137]
+                - cell "03 Sept 2026" [ref=f2e140]
+              - row [ref=f2e141] [cursor=pointer]:
+                - cell "gen_case_827_0" [ref=f2e142]
+                - cell [ref=f2e143]:
+                  - paragraph [ref=f2e144]: Gamma User 827
+                  - paragraph [ref=f2e145]: customer_1_827@demo.local
+                - cell "Subscription Lapsed" [ref=f2e146]
+                - cell "low" [ref=f2e147]
+                - cell "₹6.52" [ref=f2e148]
+                - cell "--" [ref=f2e149]
+                - cell "Completed" [ref=f2e150]
+                - cell "03 Sept 2026" [ref=f2e153]
+              - row [ref=f2e154] [cursor=pointer]:
+                - cell "gen_case_971_1" [ref=f2e155]
+                - cell [ref=f2e156]:
+                  - paragraph [ref=f2e157]: Zeta User 971
+                  - paragraph [ref=f2e158]: customer_1_971@example.dev
+                - cell "Payment Failed" [ref=f2e159]
+                - cell "medium" [ref=f2e160]
+                - cell "₹5.9" [ref=f2e161]
+                - cell "--" [ref=f2e162]
+                - cell "Awaiting Approval" [ref=f2e163]
+                - cell "03 Sept 2026" [ref=f2e166]
+              - row [ref=f2e167] [cursor=pointer]:
+                - cell "gen_case_36_34" [ref=f2e168]
+                - cell [ref=f2e169]:
+                  - paragraph [ref=f2e170]: Delta User 36
+                  - paragraph [ref=f2e171]: customer_0_36@demo.local
+                - cell "Payment Failed" [ref=f2e172]
+                - cell "high" [ref=f2e173]
+                - cell "₹234.53" [ref=f2e174]
+                - cell "₹178.92" [ref=f2e175]
+                - cell "Completed" [ref=f2e176]
+                - cell "03 Sept 2026" [ref=f2e179]
+              - row [ref=f2e180] [cursor=pointer]:
+                - cell "gen_case_603_0" [ref=f2e181]
+                - cell [ref=f2e182]:
+                  - paragraph [ref=f2e183]: Eta User 603
+                  - paragraph [ref=f2e184]: customer_0_603@demo.local
+                - cell "Payment Failed" [ref=f2e185]
+                - cell "high" [ref=f2e186]
+                - cell "₹75.56" [ref=f2e187]
+                - cell "--" [ref=f2e188]
+                - cell "Completed" [ref=f2e189]
+                - cell "03 Sept 2026" [ref=f2e192]
+              - row [ref=f2e193] [cursor=pointer]:
+                - cell "gen_case_606_0" [ref=f2e194]
+                - cell [ref=f2e195]:
+                  - paragraph [ref=f2e196]: Gamma User 606
+                  - paragraph [ref=f2e197]: customer_0_606@synthetic.test
+                - cell "Payment Failed" [ref=f2e198]
+                - cell "medium" [ref=f2e199]
+                - cell "₹25.63" [ref=f2e200]
+                - cell "--" [ref=f2e201]
+                - cell "Completed" [ref=f2e202]
+                - cell "03 Sept 2026" [ref=f2e205]
+              - row [ref=f2e206] [cursor=pointer]:
+                - cell "gen_case_658_0" [ref=f2e207]
+                - cell [ref=f2e208]:
+                  - paragraph [ref=f2e209]: Kappa User 658
+                  - paragraph [ref=f2e210]: customer_1_658@test.invalid
+                - cell "Payment Expired" [ref=f2e211]
+                - cell "critical" [ref=f2e212]
+                - cell "₹246.61" [ref=f2e213]
+                - cell "--" [ref=f2e214]
+                - cell "Detected" [ref=f2e215]
+                - cell "03 Sept 2026" [ref=f2e218]
+              - row [ref=f2e219] [cursor=pointer]:
+                - cell "gen_case_298_5" [ref=f2e220]
+                - cell [ref=f2e221]:
+                  - paragraph [ref=f2e222]: Eta User 298
+                  - paragraph [ref=f2e223]: customer_0_298@synthetic.test
+                - cell "Payment Expired" [ref=f2e224]
+                - cell "medium" [ref=f2e225]
+                - cell "₹29.4" [ref=f2e226]
+                - cell "--" [ref=f2e227]
+                - cell "Diagnosed" [ref=f2e228]
+                - cell "03 Sept 2026" [ref=f2e231]
+              - row [ref=f2e232] [cursor=pointer]:
+                - cell "gen_case_776_1" [ref=f2e233]
+                - cell [ref=f2e234]:
+                  - paragraph [ref=f2e235]: Zeta User 776
+                  - paragraph [ref=f2e236]: customer_1_776@test.invalid
+                - cell "Checkout Abandoned" [ref=f2e237]
+                - cell "medium" [ref=f2e238]
+                - cell "₹6.53" [ref=f2e239]
+                - cell "--" [ref=f2e240]
+                - cell "Executing" [ref=f2e241]
+                - cell "03 Sept 2026" [ref=f2e244]
+              - row [ref=f2e245] [cursor=pointer]:
+                - cell "gen_case_249_0" [ref=f2e246]
+                - cell [ref=f2e247]:
+                  - paragraph [ref=f2e248]: Gamma User 249
+                  - paragraph [ref=f2e249]: customer_0_249@synthetic.test
+                - cell "Payment Expired" [ref=f2e250]
+                - cell "low" [ref=f2e251]
+                - cell "₹17.17" [ref=f2e252]
+                - cell "--" [ref=f2e253]
+                - cell "Completed" [ref=f2e254]
+                - cell "03 Sept 2026" [ref=f2e257]
+              - row [ref=f2e258] [cursor=pointer]:
+                - cell "gen_case_362_21" [ref=f2e259]
+                - cell [ref=f2e260]:
+                  - paragraph [ref=f2e261]: Eta User 362
+                  - paragraph [ref=f2e262]: customer_0_362@example.dev
+                - cell "Payment Failed" [ref=f2e263]
+                - cell "medium" [ref=f2e264]
+                - cell "₹9.34" [ref=f2e265]
+                - cell "--" [ref=f2e266]
+                - cell "Completed" [ref=f2e267]
+                - cell "03 Sept 2026" [ref=f2e270]
+              - row [ref=f2e271] [cursor=pointer]:
+                - cell "gen_case_679_0" [ref=f2e272]
+                - cell [ref=f2e273]:
+                  - paragraph [ref=f2e274]: Kappa User 679
+                  - paragraph [ref=f2e275]: customer_1_679@test.invalid
+                - cell "Payment Failed" [ref=f2e276]
+                - cell "low" [ref=f2e277]
+                - cell "₹9.16" [ref=f2e278]
+                - cell "--" [ref=f2e279]
+                - cell "Awaiting Approval" [ref=f2e280]
+                - cell "03 Sept 2026" [ref=f2e283]
+              - row [ref=f2e284] [cursor=pointer]:
+                - cell "gen_case_466_0" [ref=f2e285]
+                - cell [ref=f2e286]:
+                  - paragraph [ref=f2e287]: Kappa User 466
+                  - paragraph [ref=f2e288]: customer_0_466@demo.local
+                - cell "Checkout Abandoned" [ref=f2e289]
+                - cell "low" [ref=f2e290]
+                - cell "₹9.97" [ref=f2e291]
+                - cell "--" [ref=f2e292]
+                - cell "Dismissed" [ref=f2e293]
+                - cell "03 Sept 2026" [ref=f2e296]
+          - generic [ref=f2e297]:
+            - paragraph [ref=f2e298]: Page 1 of 110 (1636 cases)
+            - generic [ref=f2e299]:
+              - button "Previous" [disabled]
+              - button "Next" [ref=f2e300] [cursor=pointer]
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f2e306] [cursor=pointer]
+  - alert [ref=f2e310]: Recovr | Recovery Cases

@@ -276,8 +276,15 @@ The app functions without Razorpay keys (dev mode simulates payments) and withou
 3. **Analyze** a case (`POST /api/recovery/cases/[id]/analyze`) — the AI agent recommends an action; policy guardrails validate it.
 4. **Review** the decision on the dashboard — approve or reject. Financial actions (`retry_payment`, `payment_link`, `offer_discount`) require explicit merchant approval.
 5. **Execute** the approved action (`POST /api/recovery/cases/[id]/execute`) — queued via BullMQ or run synchronously.
+
+![Executing Recovery](public/assets/docs/case-executing.png)
+*After clicking Execute Recovery, the backend validates deterministic gate rules, queues the recovery attempt, and exposes a Simulate Customer Payment button for testing.*
+
 6. **Simulate a payment webhook** (`POST /api/webhooks/simulate`) — a `payment.captured` event triggers attribution.
 7. **Verify** on the dashboard — recovered revenue appears only after attribution from the verified webhook event.
+
+![Recovered Case](public/assets/docs/case-completed.png)
+*The webhook simulator triggers the backend attribution engine, successfully matching the payment, completing the case, and recording the recovered ₹5.90 to the dashboard metrics.*
 
 ## 13. Demo: Economic Decisioning
 
