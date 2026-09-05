@@ -107,9 +107,9 @@ graph TD
     
     %% API Layer
     subgraph API [API Layer / Controllers]
-        AnalyzeAPI[/api/recovery/.../analyze]
-        ExecuteAPI[/api/recovery/.../execute]
-        WebhookAPI[/api/webhooks/razorpay]
+        AnalyzeAPI["/api/recovery/.../analyze"]
+        ExecuteAPI["/api/recovery/.../execute"]
+        WebhookAPI["/api/webhooks/razorpay"]
     end
     
     %% Services Layer
