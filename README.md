@@ -89,31 +89,95 @@ WINNER BY NET VALUE: AI_ECONOMIC_GATE (+₹26495.34 over NAIVE)
 | State | TanStack Query, Zustand |
 | Runtime | Bun |
 
-## 6. Architecture
+## 6. Architecture & Data Flow
+
+Recovr implements an event-driven, microservices-inspired architecture designed to safely bridge probabilistic AI and deterministic financial ledgers.
+
+```mermaid
+graph TD
+    %% Actors
+    Merchant([👨‍💼 Merchant])
+    Customer([👤 Customer])
+    
+    %% UI Layer
+    subgraph Frontend [Next.js Client]
+        Dashboard[Overview Dashboard]
+        Cases[Recovery Cases View]
+    end
+    
+    %% API Layer
+    subgraph API [API Layer / Controllers]
+        AnalyzeAPI[/api/recovery/.../analyze]
+        ExecuteAPI[/api/recovery/.../execute]
+        WebhookAPI[/api/webhooks/razorpay]
+    end
+    
+    %% Services Layer
+    subgraph Services [Core Business Logic]
+        Detection[Detection Engine]
+        AIAgent[AI Agent via Z-AI SDK]
+        PolicyGate[Policy & DND Engine]
+        EconomicGate[NPV Economic Gate]
+        Attribution[Revenue Attribution]
+    end
+    
+    %% Execution Layer
+    subgraph Execution [Async Execution Layer]
+        BullMQ[BullMQ / Redis]
+        Worker[Recovery Worker]
+    end
+    
+    %% External Systems
+    subgraph External [External Integrations]
+        LLM[LLM Provider]
+        Razorpay[Razorpay API]
+    end
+    
+    %% Database
+    Database[(Prisma + SQLite)]
+
+    %% Connections
+    Merchant -->|Review & Approve| Cases
+    Cases -->|1. Trigger Analysis| AnalyzeAPI
+    Cases -->|4. Approve Action| ExecuteAPI
+    
+    AnalyzeAPI -->|2. Build Context| AIAgent
+    AIAgent <-->|Structured JSON| LLM
+    AIAgent -->|Calculate Probability| EconomicGate
+    
+    ExecuteAPI -->|5. Pre-flight Check| PolicyGate
+    PolicyGate --> EconomicGate
+    EconomicGate -->|If Positive ROI| BullMQ
+    
+    BullMQ -->|Consume Job| Worker
+    Worker -->|6. Dispatch Action| Razorpay
+    Razorpay -->|Send Payment Link| Customer
+    
+    Customer -->|Completes Payment| Razorpay
+    Razorpay -->|7. Webhook Event| WebhookAPI
+    WebhookAPI -->|8. Verify reference_id| Attribution
+    
+    Detection --> Database
+    Attribution -->|Record ROI| Database
+    Services --> Database
+    Worker --> Database
+```
+
+### Codebase Structure
 
 ```
 src/
-├── app/api/              # Next.js API routes
-│   ├── recovery/         # Cases, decisions, detection, metrics, attribution
-│   ├── webhooks/         # Razorpay webhook ingest & simulation
-│   └── audit/            # Audit trail queries
+├── app/api/              # Next.js API routes (Controllers)
 ├── services/
-│   ├── recovery/
-│   │   ├── detection/    # Eligibility, scoring, classification, priority
-│   │   ├── agent/        # LLM analysis, prompt, policy guardrails, fallback
-│   │   └── attribution/  # Verified payment-to-case linking
-│   ├── execution/        # Approval gate, executors, BullMQ worker, queue
-│   ├── audit/            # Structured audit logging
-│   ├── webhook/          # Razorpay event ingestion & validation
-│   ├── ai/               # AI provider abstraction (z-ai-web-dev-sdk)
-│   └── razorpay/         # Payment service (live & dev modes)
+│   ├── recovery/         # Detection, Agent Logic, and Attribution
+│   ├── execution/        # Approval gate, BullMQ workers, and executors
+│   ├── webhook/          # Razorpay event ingestion & normalization
+│   └── ai/               # z-ai-web-dev-sdk wrapper for strict schemas
 ├── lib/
-│   ├── state-machine.ts  # Single source of truth for all state transitions
-│   ├── money.ts          # Paise arithmetic (Int64, no floats)
-│   ├── config.ts         # Zod-validated env vars
-│   ├── rate-limit.ts     # In-memory rate limiter
-│   └── db.ts             # Prisma client singleton
-└── worker/index.ts       # Standalone BullMQ worker process
+│   ├── db.ts             # Prisma client singleton
+│   ├── money.ts          # Safe currency math (Int64, no floats)
+│   └── state-machine.ts  # Centralized case status transitions
+└── worker/               # Standalone BullMQ background process
 ```
 
 ## 7. AI Safety Model
