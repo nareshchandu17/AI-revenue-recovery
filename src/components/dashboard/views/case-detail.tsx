@@ -1,6 +1,6 @@
 "use client"
 
-import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase } from "@/lib/hooks/use-queries"
+import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase, useSimulatePayment } from "@/lib/hooks/use-queries"
 import type { ProbabilityEstimateItem, CustomerValueData } from "@/lib/hooks/use-queries"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { ErrorState } from "@/components/dashboard/error-state"
@@ -106,6 +106,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const executeMutation = useExecuteRecovery()
   const stopMutation = useStopRecovery()
   const analyzeMutation = useAnalyzeCase()
+  const simulatePaymentMutation = useSimulatePayment()
 
   if (error) {
     return <ErrorState message="Failed to load case details. The case may not exist." onRetry={() => refetch()} />
@@ -231,6 +232,19 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
     })
   }
 
+  const handleSimulatePayment = () => {
+    if (!c.payment?.externalId) return
+    simulatePaymentMutation.mutate({
+      paymentId: c.payment.externalId,
+      amount: c.amountAtRisk, // Pay the full amount
+      method: "upi",
+      email: c.payment.customer?.email ?? "simulated@example.com"
+    }, {
+      onSuccess: () => toast.success("Simulated customer payment successfully!"),
+      onError: (e) => toast.error(e.message),
+    })
+  }
+
   // Determine trust flow states
   const hasDecision = !!decision
   const aiStep = hasDecision ? "done" as const : "pending" as const
@@ -287,6 +301,12 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
             <Button size="sm" variant="secondary" onClick={handleAnalyze} disabled={analyzeMutation.isPending}>
               {analyzeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Brain className="h-3.5 w-3.5 mr-1" />}
               Analyze Again
+            </Button>
+          )}
+          {c.status === "executing" && (
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSimulatePayment} disabled={simulatePaymentMutation.isPending}>
+              {simulatePaymentMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1" />}
+              Simulate Customer Payment
             </Button>
           )}
         </div>

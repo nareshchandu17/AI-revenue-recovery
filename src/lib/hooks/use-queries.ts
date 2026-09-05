@@ -305,6 +305,36 @@ export function useAnalyzeCase() {
   })
 }
 
+export function useSimulatePayment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: { paymentId: string; amount: number; method: string; email: string }) => {
+      const res = await fetch("/api/webhooks/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: "payment.captured",
+          payment: {
+            id: data.paymentId,
+            amount: data.amount,
+            method: data.method,
+            email: data.email,
+          }
+        }),
+      })
+      if (!res.ok) {
+        throw new Error(await getErrorMessage(res, "Failed to simulate payment webhook."))
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["case"] })
+      qc.invalidateQueries({ queryKey: ["cases"] })
+      qc.invalidateQueries({ queryKey: ["metrics"] })
+    },
+  })
+}
+
 // --- Feature 13: Anomaly Hooks ---
 
 export interface AnomalyItem {
