@@ -125,7 +125,7 @@ export async function evaluateStoppingRules(
     if (!decision) return { shouldStop: true, reason: STOP_REASONS.DECISION_EXPIRED, rule: "Decision not found" }
     // Cross-case binding check — decision must belong to this case
     if (decision.recoveryCaseId !== caseId) {
-      return { shouldStop: true, reason: "Decision does not belong to this case", rule: "Decision case mismatch" }
+      return { shouldStop: true, reason: STOP_REASONS.DECISION_EXPIRED, rule: "Decision case mismatch" }
     }
     if (decision.status === "rejected") return { shouldStop: true, reason: STOP_REASONS.POLICY_BLOCKED, rule: "Decision rejected" }
     if (decision.status === "expired") return { shouldStop: true, reason: STOP_REASONS.DECISION_EXPIRED, rule: "Decision expired" }

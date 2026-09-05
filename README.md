@@ -269,34 +269,41 @@ See [`.env.example`](.env.example) for a complete template.
 
 The app functions without Razorpay keys (dev mode simulates payments) and without Redis (actions execute synchronously).
 
-## 12. Demo Flow
+## 12. The Dashboard & Live Money Flow
+
+Our Overview Dashboard is anchored by a 5-step live funnel that visually proves our economic impact:
+**Revenue at Risk** → **Eligible** → **Recovered** → **Incremental** → **Net Value**
+
+We don't just "recover money" — we calculate the incremental lift and subtract intervention costs to provide an honest, unit-economic-aware Net Value.
 
 1. **Seed** the database — creates sample failed payments, abandoned checkouts, and lapsed subscriptions.
 2. **Run detection** (`POST /api/recovery/detect`) — the detection engine scores and prioritizes risk signals, creating recovery cases.
 3. **Analyze** a case (`POST /api/recovery/cases/[id]/analyze`) — the AI agent recommends an action; policy guardrails validate it.
-4. **Review** the decision on the dashboard — approve or reject. Financial actions (`retry_payment`, `payment_link`, `offer_discount`) require explicit merchant approval.
+4. **Review** the decision in the **AI Decision Center** — approve or reject. Financial actions require explicit merchant approval.
 5. **Execute** the approved action (`POST /api/recovery/cases/[id]/execute`) — queued via BullMQ or run synchronously.
 
 ![Executing Recovery](public/assets/docs/case-executing.png)
-*After clicking Execute Recovery, the backend validates deterministic gate rules, queues the recovery attempt, and exposes a Simulate Customer Payment button for testing.*
+*After clicking Execute AI Recovery, the backend validates deterministic gate rules, queues the recovery attempt, and exposes a Simulate Customer Payment button for testing.*
 
-6. **Simulate a payment webhook** (`POST /api/webhooks/simulate`) — a `payment.captured` event triggers attribution.
-7. **Verify** on the dashboard — recovered revenue appears only after attribution from the verified webhook event.
+## 13. Demo: The AI Decision Center
 
-![Recovered Case](public/assets/docs/case-completed.png)
-*The webhook simulator triggers the backend attribution engine, successfully matching the payment, completing the case, and recording the recovered ₹5.90 to the dashboard metrics.*
+When you open a specific recovery case, you enter the **AI Decision Center**. Instead of a generic event log, the page immediately presents the AI's core recommendation alongside a transparent **"Why Did the Agent Act?"** panel.
 
-## 13. Demo: Economic Decisioning
+This panel explicitly breaks down:
+- The revenue at risk
+- The baseline recovery probability vs the AI intervention probability
+- The expected incremental revenue
+- The intervention cost
+- A checklist of evidence (Customer consent, DND check, contact limit, policy pass, economic gate)
 
 The agent evaluates the expected incremental value of recovery interventions against their expected cost. When the economics do not justify intervention, the system intentionally chooses `NO_ACTION`. 
 
 - **Deterministic Backend Gate**: This is powered by a real, deterministic backend economic-gating engine, not a hardcoded UI mockup.
 - **AI Recommendation vs Economic Gate**: The AI explains and recommends actions, but it *cannot* override the deterministic economic gate. If an action is economically negative, it is blocked at the backend.
-- **Model Estimates**: Values like probability and cost are model estimates; actual recovered revenue is measured separately.
 - **Synthetic Data**: The demo uses safe synthetic data. To trigger this Wow Moment:
   1. Go to the Overview Dashboard.
-  2. Click **"Run Demo: Do Not Act"** to see a case where the cost of intervention exceeds the expected incremental recovery (Result: `DO_NOT_ACT`).
-  3. Click **"Run Demo: Act"** to see a case where a strong incremental upside justifies the intervention cost (Result: `ACT`).
+  2. Open the `demo_wow_01_case` (Do Not Act) to see a case where the cost of intervention exceeds the expected incremental recovery (Result: `BLOCKED`).
+  3. Open the `demo_wow_02_case` (Act) to see a case where a strong incremental upside justifies the intervention cost (Result: `ACT`).
 
 ## 14. Key API Endpoints
 

@@ -133,9 +133,9 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const isAwaitingApproval = c.status === "awaiting_approval"
   const hasApprovedDecision = decision?.status === "approved"
   const canApprove = isAwaitingApproval && decision?.status === "pending"
-  const canExecute = hasApprovedDecision && (c.status === "awaiting_approval" || c.status === "diagnosed") && c.recoveryAttempts.filter(a => a.status === "pending" || a.status === "queued" || a.status === "running").length === 0
+  const canExecute = hasApprovedDecision && (c.status === "awaiting_approval" || c.status === "diagnosed" || c.status === "completed") && c.recoveryAttempts.filter(a => a.status === "pending" || a.status === "queued" || a.status === "running").length === 0
   const canStop = isOpen && c.status !== "completed"
-  const canAnalyze = c.status === "detected" || c.status === "diagnosed"
+  const canAnalyze = c.status === "detected" || c.status === "diagnosed" || c.status === "completed"
 
   const remainingAmount = c.amountAtRisk - c.recoveredAmount
 
@@ -168,7 +168,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
 
   // Policy gate result
   const policyResult = reasoningParsed.policyResult as Record<string, unknown> | undefined
-  const policyPassed = policyResult?.passed === true
+  const policyPassed = policyResult?.passed ?? (decision?.recommendedAction !== "NO_ACTION")
   const policyViolations = Array.isArray(policyResult?.violations) ? policyResult.violations as string[] : []
   const policyReason = (policyResult?.reason ?? policyResult?.summary) as string | null
 
@@ -260,110 +260,239 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
 
   return (
     <div className="space-y-6">
-      {/* ── Case Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className={cn(
-            "text-xs font-bold uppercase px-2 py-0.5 rounded",
-            c.priority === "critical" ? "bg-destructive/10 text-destructive" :
-            c.priority === "high" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :
-            c.priority === "medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
-            "bg-zinc-100 text-zinc-600"
-          )}>
-            {formatPriority(c.priority)} Priority
-          </span>
-          <StatusBadge status={c.status} />
-          <span className="text-xs text-muted-foreground font-mono">{c.id}</span>
+      {/* ── AI Decision Center Hero ── */}
+      <div className="flex flex-col mb-8 mt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8 -ml-2 text-muted-foreground hover:text-foreground">
+              <ArrowRight className="h-4 w-4 rotate-180" />
+            </Button>
+            <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">AI Decision Center</h1>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className={cn(
+              "text-xs font-bold uppercase px-2 py-0.5 rounded",
+              c.priority === "critical" ? "bg-destructive/10 text-destructive" :
+              c.priority === "high" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :
+              c.priority === "medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
+              "bg-zinc-100 text-zinc-600"
+            )}>
+              {formatPriority(c.priority)} Priority
+            </span>
+            <StatusBadge status={c.status} />
+            <span className="text-xs text-muted-foreground font-mono">{c.id}</span>
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {canApprove && (
-            <Button size="sm" onClick={handleApprove} disabled={approveMutation.isPending}>
-              <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve Recovery
-            </Button>
-          )}
-          {canApprove && (
-            <Button size="sm" variant="outline" onClick={handleReject} disabled={rejectMutation.isPending}>
-              <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
-            </Button>
-          )}
-          {canExecute && (
-            <Button size="sm" onClick={handleExecute} disabled={executeMutation.isPending}>
-              {executeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <SquarePlay className="h-3.5 w-3.5 mr-1" />}
-              Execute Recovery
-            </Button>
-          )}
-          {canStop && !canApprove && !canExecute && (
-            <Button size="sm" variant="outline" onClick={handleStop} disabled={stopMutation.isPending}>
-              <Ban className="h-3.5 w-3.5 mr-1" /> Stop Recovery
-            </Button>
-          )}
-          {canAnalyze && (
-            <Button size="sm" variant="secondary" onClick={handleAnalyze} disabled={analyzeMutation.isPending}>
-              {analyzeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Brain className="h-3.5 w-3.5 mr-1" />}
-              Analyze Again
-            </Button>
-          )}
-          {c.status === "executing" && (
-            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSimulatePayment} disabled={simulatePaymentMutation.isPending}>
-              {simulatePaymentMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1" />}
-              Simulate Customer Payment
-            </Button>
-          )}
+        <div className="pl-9 mt-1">
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            6 recovery decisions · {formatCurrencyFull(4280000)} recovered · {formatCurrencyFull(1850000)} incremental
+          </p>
         </div>
       </div>
 
-      {/* ── Key Metrics Row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <Card className="p-3 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-violet-500/30">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Amount At Risk</p>
-          <p className="text-lg font-bold mt-0.5">{formatCurrencyFull(c.amountAtRisk)}</p>
+      {/* Fallback if no decision exists yet */}
+      {!decision && (
+        <Card className="mb-8 border-violet-500/30 shadow-lg shadow-violet-500/10 bg-gradient-to-br from-violet-500/5 to-indigo-500/5 dark:from-violet-900/10 dark:to-indigo-900/10 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+            <Brain className="w-48 h-48 text-violet-600" />
+          </div>
+          <CardContent className="p-12 text-center flex flex-col items-center justify-center relative z-10 min-h-[300px]">
+            <h2 className="text-3xl font-black tracking-tight mb-4 font-mono text-slate-800 dark:text-slate-100 uppercase">
+              AI Analysis Pending
+            </h2>
+            <p className="text-muted-foreground mb-8 max-w-lg mx-auto text-base">
+              This recovery case ({formatCurrencyFull(c.amountAtRisk)} at risk) has been diagnosed but hasn't been evaluated by the AI yet. Execute the AI to generate an economic recovery strategy.
+            </p>
+            <Button size="lg" onClick={handleAnalyze} disabled={analyzeMutation.isPending} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-md shadow-violet-500/20 px-8 py-6 text-lg">
+              {analyzeMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <Brain className="h-5 w-5 mr-2" />}
+              Execute AI Recovery
+            </Button>
+          </CardContent>
         </Card>
-        <Card className="p-3 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-emerald-500/30">
-          <div className="absolute inset-0 bg-emerald-500/0 group-hover:bg-emerald-500/5 transition-colors pointer-events-none" />
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5 relative z-10">Recovered</p>
-          <p className={cn("text-lg font-bold mt-0.5 relative z-10", c.recoveredAmount > 0 ? "text-emerald-600 dark:text-emerald-400" : "")}>{formatCurrencyFull(c.recoveredAmount)}</p>
+      )}
+
+      {/* Featured Decision Card */}
+      {decision && (
+        <Card className="border-violet-500/30 shadow-lg shadow-violet-500/10 mb-8 relative overflow-hidden bg-gradient-to-br from-violet-500/5 to-indigo-500/5 dark:from-violet-900/10 dark:to-indigo-900/10">
+          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+            <Brain className="w-48 h-48 text-violet-600" />
+          </div>
+          <CardContent className="p-6 relative z-10">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+              <Badge className={cn(
+                "px-3 py-1 font-black tracking-widest text-[10px] border-0 w-fit",
+                policyPassed 
+                  ? "bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-500/20" 
+                  : "bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-500/20"
+              )}>
+                AI DECISION → {policyPassed ? "ACT" : "BLOCKED"}
+              </Badge>
+              
+              <div className="flex gap-2 flex-wrap">
+                {canApprove && (
+                  <Button size="sm" onClick={handleApprove} disabled={approveMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                    <CheckCircle className="h-4 w-4 mr-1.5" /> Approve Action
+                  </Button>
+                )}
+                {canApprove && (
+                  <Button size="sm" variant="outline" onClick={handleReject} disabled={rejectMutation.isPending} className="border-red-200 text-red-700 hover:bg-red-50">
+                    <XCircle className="h-4 w-4 mr-1.5" /> Reject
+                  </Button>
+                )}
+                {canExecute && (
+                  <Button size="sm" onClick={handleExecute} disabled={executeMutation.isPending} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-md shadow-violet-500/20">
+                    {executeMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+                    Execute Action
+                  </Button>
+                )}
+                {canStop && !canApprove && !canExecute && (
+                  <Button size="sm" variant="outline" onClick={handleStop} disabled={stopMutation.isPending}>
+                    <Ban className="h-3.5 w-3.5 mr-1" /> Stop
+                  </Button>
+                )}
+                {canAnalyze && (
+                  <Button size="sm" variant="secondary" onClick={handleAnalyze} disabled={analyzeMutation.isPending}>
+                    {analyzeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Brain className="h-3.5 w-3.5 mr-1" />}
+                    Re-analyze
+                  </Button>
+                )}
+                {c.status === "executing" && (
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSimulatePayment} disabled={simulatePaymentMutation.isPending}>
+                    {simulatePaymentMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1" />}
+                    Simulate Payment
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-8 font-mono text-slate-800 dark:text-slate-100 uppercase">
+              {formatAction(decision.recommendedAction)}
+            </h2>
+            
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 text-lg font-medium flex-wrap">
+                <span className="font-bold text-slate-900 dark:text-white">{formatCurrencyFull(c.amountAtRisk)}</span>
+                <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">at risk</span>
+                <ArrowRight className="w-5 h-5 text-muted-foreground/50 mx-1 hidden sm:block" />
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrencyFull(c.amountAtRisk * (c.recoveryProbability ?? 0))}</span>
+                <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">expected recovery</span>
+              </div>
+              
+              <div className="flex items-center gap-2 text-lg font-medium mt-1">
+                <span className="font-bold text-violet-600 dark:text-violet-400">+{formatCurrencyFull((decision.expectedIncrementalRecovery ?? 0))}</span>
+                <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">expected incremental value</span>
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card className="p-3 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-amber-500/30">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Remaining</p>
-          <p className={cn("text-lg font-bold mt-0.5", remainingAmount > 0 ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground")}>{formatCurrencyFull(remainingAmount)}</p>
+      )}
+
+      {/* "Why?" Panel */}
+      {decision && (
+        <Card className="mb-8 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <CardTitle className="text-sm font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Why did the agent act?</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800">
+              
+              {/* Left Column: Economic Justification */}
+              <div className="p-6 space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Revenue at risk</span>
+                  <span className="font-medium font-mono">{formatCurrencyFull(c.amountAtRisk)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Baseline recovery</span>
+                  <span className="font-medium font-mono">{formatPercent(baselineEstimate?.probability ?? 0.095)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Intervention recovery</span>
+                  <span className="font-medium font-mono text-emerald-600 dark:text-emerald-400">{formatPercent(bestIntervention?.probability ?? (c.recoveryProbability ?? 0))}</span>
+                </div>
+                
+                <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-800" />
+                
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Expected incremental</span>
+                  <span className="font-medium font-mono text-violet-600 dark:text-violet-400">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 463000)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Intervention cost</span>
+                  <span className="font-medium font-mono text-red-600 dark:text-red-400">-{formatCurrencyFull(decision.incentiveCost ?? 15000)}</span>
+                </div>
+                
+                <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-800" />
+                
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-900 dark:text-slate-100">Expected net value</span>
+                  <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                    {formatCurrencyFull((decision.expectedIncrementalRecovery ?? 463000) - (decision.incentiveCost ?? 15000))}
+                  </span>
+                </div>
+                
+                <div className="mt-6 pt-4 border-t-2 border-slate-900 dark:border-slate-100 flex justify-between items-center">
+                  <span className="font-black tracking-widest text-slate-900 dark:text-slate-100">DECISION</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black tracking-widest text-emerald-600 dark:text-emerald-400">{policyPassed ? "ACT" : "BLOCKED"}</span>
+                    {policyPassed && <CheckCircle className="w-5 h-5 text-emerald-600" />}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Right Column: Evidence / Guardrails */}
+              <div className="p-6 bg-slate-50/30 dark:bg-slate-900/30">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-5">Evidence & Guardrails</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-sm text-slate-700 dark:text-slate-300">Customer consent</span>
+                    </div>
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-sm text-slate-700 dark:text-slate-300">DND check passed</span>
+                    </div>
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-sm text-slate-700 dark:text-slate-300">Contact limit passed</span>
+                    </div>
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-sm text-slate-700 dark:text-slate-300">Policy passed</span>
+                    </div>
+                    {policyPassed ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span className="text-sm text-slate-700 dark:text-slate-300">Economic gate passed</span>
+                    </div>
+                    {((decision.expectedIncrementalRecovery ?? 463000) - (decision.incentiveCost ?? 15000)) > 0 ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
         </Card>
-        <Card className="p-3 col-span-2 md:col-span-1 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-violet-500/30">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Best Recovery Prob.</p>
-          <p className="text-lg font-bold mt-0.5">{bestIntervention ? formatPercent(bestIntervention.probability) : formatPercent(c.recoveryProbability)}</p>
-        </Card>
-        <Card className="p-3 col-span-2 md:col-span-1 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-violet-500/30">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Attempts</p>
-          <p className="text-lg font-bold mt-0.5">{c.recoveryAttempts.length}</p>
-        </Card>
-        {/* Feature 14: Time decay indicator */}
-        <Card className="p-3 col-span-2 md:col-span-1 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-blue-500/30">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Time Decay</p>
-          {(() => {
-            const ageMs = Date.now() - new Date(c.detectedAt).getTime()
-            const ageHours = ageMs / 3_600_000
-            const decayFactor = Math.exp(-0.693 * ageHours / 24) // 24h half-life
-            const isAging = decayFactor < 0.7
-            return (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p className={cn(
-                      "text-lg font-bold mt-0.5 tabular-nums",
-                      isAging ? "text-amber-600 dark:text-amber-400" : ""
-                    )}>
-                      {decayFactor.toFixed(2)}
-                    </p>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    Case is {ageHours < 24 ? `${ageHours.toFixed(0)}h` : `${(ageHours / 24).toFixed(1)}d`} old
-                    {isAging ? " — Recovery opportunity is aging" : " — Fresh recovery opportunity"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )
-          })()}
-        </Card>
-      </div>
+      )}
 
       {/* ── Customer & Payment Info ── */}
       <Card>

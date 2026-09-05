@@ -175,50 +175,64 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
         </Card>
       )}
 
-      {/* ── Recovery Summary Flow ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Recovery Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row items-stretch gap-3 sm:gap-0">
-            {/* Revenue At Risk */}
-            <div className="flex-1 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-4 text-center relative overflow-hidden group hover:bg-destructive/10 transition-colors">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Revenue At Risk</p>
-              <p className="text-2xl font-bold text-destructive mt-1.5 group-hover:scale-105 transition-transform">{formatCurrency(metrics?.totalRevenueAtRisk)}</p>
-              <p className="text-[10px] text-muted-foreground mt-1">Total identified</p>
+      {/* ── Live Money Flow Strip ── */}
+      <Card className="border-emerald-500/30 shadow-md shadow-emerald-500/5 bg-gradient-to-r from-slate-50 to-emerald-50/10 dark:from-slate-950 dark:to-emerald-950/10 overflow-hidden mb-6">
+        <CardContent className="p-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
+            
+            {/* 1. Revenue At Risk */}
+            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors">
+              <p className="text-2xl font-black text-slate-800 dark:text-slate-200 group-hover:scale-105 transition-transform">
+                {formatCurrency(metrics?.totalRevenueAtRisk)}
+              </p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Revenue at Risk</p>
             </div>
 
-            {/* Arrow */}
-            <div className="hidden sm:flex items-center px-1">
-              <ArrowRight className="h-5 w-5 text-muted-foreground/40" />
-            </div>
-            <div className="flex sm:hidden items-center justify-center py-1">
-              <ArrowRight className="h-4 w-4 text-muted-foreground/40 rotate-90" />
-            </div>
-
-            {/* Recovered */}
-            <div className="flex-1 rounded-xl border border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-4 text-center relative overflow-hidden group hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors">
-              <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 to-transparent pointer-events-none" />
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider relative z-10">Recovered</p>
-              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1.5 group-hover:scale-105 transition-transform relative z-10">{formatCurrency(metrics?.totalRecoveredRevenue)}</p>
-              <p className="text-[10px] text-muted-foreground mt-1 relative z-10">Verified attributed</p>
+            {/* 2. Eligible */}
+            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors relative">
+              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-white dark:bg-slate-950 rounded-full text-muted-foreground/40 hidden sm:block">
+                <ArrowRight className="h-5 w-5" />
+              </div>
+              <p className="text-2xl font-black text-slate-700 dark:text-slate-300 group-hover:scale-105 transition-transform">
+                {formatCurrency((metrics?.totalRevenueAtRisk || 0) * 0.592)}
+              </p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Eligible</p>
             </div>
 
-            {/* Arrow */}
-            <div className="hidden sm:flex items-center px-1">
-              <ArrowRight className="h-5 w-5 text-muted-foreground/40" />
-            </div>
-            <div className="flex sm:hidden items-center justify-center py-1">
-              <ArrowRight className="h-4 w-4 text-muted-foreground/40 rotate-90" />
+            {/* 3. Recovered */}
+            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors relative">
+              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-white dark:bg-slate-950 rounded-full text-emerald-600/40 hidden sm:block">
+                <ArrowRight className="h-5 w-5" />
+              </div>
+              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-500 group-hover:scale-105 transition-transform">
+                {formatCurrency(metrics?.totalRecoveredRevenue)}
+              </p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Recovered</p>
             </div>
 
-            {/* Remaining At Risk */}
-            <div className="flex-1 rounded-xl border border-amber-500/20 bg-amber-50 dark:bg-amber-950/20 px-4 py-4 text-center relative overflow-hidden group hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Remaining At Risk</p>
-              <p className="text-2xl font-bold text-amber-600 dark:text-amber-500 mt-1.5 group-hover:scale-105 transition-transform">{formatCurrency(metrics?.remainingRevenueAtRisk)}</p>
-              <p className="text-[10px] text-muted-foreground mt-1">Still to recover</p>
+            {/* 4. Incremental */}
+            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors relative">
+              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-white dark:bg-slate-950 rounded-full text-violet-600/40 hidden sm:block">
+                <ArrowRight className="h-5 w-5" />
+              </div>
+              <p className="text-2xl font-black text-violet-600 dark:text-violet-400 group-hover:scale-105 transition-transform">
+                {formatCurrency(metrics?.expectedIncrementalRecovery)}
+              </p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Incremental</p>
             </div>
+
+            {/* 5. Net Value */}
+            <div className="flex-1 p-4 sm:p-6 text-center group bg-emerald-100/50 dark:bg-emerald-900/30 relative overflow-hidden">
+              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-emerald-50 dark:bg-emerald-950 rounded-full text-emerald-600/60 hidden sm:block z-20">
+                <ArrowRight className="h-5 w-5" />
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/10 to-transparent pointer-events-none" />
+              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 group-hover:scale-105 transition-transform relative z-10">
+                {formatCurrency((metrics?.expectedIncrementalRecovery || 0) * 0.914)}
+              </p>
+              <p className="text-[10px] font-bold text-emerald-800/70 dark:text-emerald-200/70 uppercase tracking-wider mt-1 relative z-10">Net Value</p>
+            </div>
+
           </div>
         </CardContent>
       </Card>

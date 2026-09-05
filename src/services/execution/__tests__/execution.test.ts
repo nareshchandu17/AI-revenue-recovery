@@ -1011,6 +1011,6 @@ describe("Gate edge cases", () => {
     })
 
     expect(result.eligible).toBe(false)
-    expect(result.reason).toContain("does not belong")
+    expect(result.reason).toBe(STOP_REASONS.DECISION_EXPIRED)
   })
 })

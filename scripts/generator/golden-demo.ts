@@ -54,6 +54,18 @@ function hoursAgo(h: number): Date {
 async function generateGoldenDemo() {
   console.log('=== Generating Golden Demo Dataset ===')
 
+  // Reset existing golden demo data by deleting records directly
+  await prisma.agentDecision.deleteMany({ where: { recoveryCase: { merchantId: MERCHANT_ID } } }).catch(() => {})
+  await prisma.recoveryAttempt.deleteMany({ where: { recoveryCase: { merchantId: MERCHANT_ID } } }).catch(() => {})
+  await prisma.recoveryAttribution.deleteMany({ where: { payment: { merchantId: MERCHANT_ID } } }).catch(() => {})
+  await prisma.incrementalRevenue.deleteMany({ where: { payment: { merchantId: MERCHANT_ID } } }).catch(() => {})
+  await prisma.recoveryProbabilityEstimate.deleteMany({ where: { recoveryCase: { merchantId: MERCHANT_ID } } }).catch(() => {})
+  await prisma.communicationEvent.deleteMany({ where: { merchantId: MERCHANT_ID } }).catch(() => {})
+  await prisma.recoveryCase.deleteMany({ where: { merchantId: MERCHANT_ID } }).catch(() => {})
+  await prisma.payment.deleteMany({ where: { merchantId: MERCHANT_ID } }).catch(() => {})
+  await prisma.customer.deleteMany({ where: { merchantId: MERCHANT_ID } }).catch(() => {})
+  await prisma.merchant.delete({ where: { email: MERCHANT_EMAIL } }).catch(() => {})
+
   // Create merchant
   await prisma.merchant.upsert({
     where: { email: MERCHANT_EMAIL },
