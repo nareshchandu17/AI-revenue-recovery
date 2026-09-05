@@ -2,7 +2,7 @@
 
 Built for the **Razorpay Buildathon — Track 03**.
 
-> **Evaluation Results (Example, Seed 42)**: Our evaluation harness proves our **AI Economic Gate recovers +₹26,495.34 more Net Value** than a naive retry strategy across a 50-case batch. (Note: Running `bun run evaluate` with a different `--seed` will generate a fresh dataset and yield a mathematically distinct positive net value).
+> **Evaluation Results (Example, Seed 42)**: Our evaluation harness proves our **AI Economic Gate recovers +₹26,495.34 more Net Value** than a naive retry strategy across a 50-case batch. (Note: Running `bun run generate:demo --seed X` followed by `bun run evaluate` will generate a fresh dataset and yield a mathematically distinct positive net value).
 
 ## 1. Problem & Solution
 
