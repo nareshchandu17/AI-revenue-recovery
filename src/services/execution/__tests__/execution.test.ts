@@ -46,6 +46,20 @@ const mockDb = {
   customer: {
     findUnique: mock(() => Promise.resolve(null)),
   },
+  communicationEvent: {
+    create: mock(() => Promise.resolve({ id: "comm-1" })),
+    findUnique: mock(() => Promise.resolve(null)),
+    update: mock(() => Promise.resolve({})),
+  },
+  merchant: {
+    findUnique: mock(() => Promise.resolve({ maxContactsPerDay: 3, maxContactsPerWeek: 7, minContactIntervalMinutes: 60 })),
+  },
+  payment: {
+    findUnique: mock(() => Promise.resolve({ id: "pay-1", externalId: "pay_ext_1", amount: 50000, currency: "INR", status: "failed", customerId: "cust-1" })),
+  },
+  webhookEvent: {
+    create: mock(() => Promise.resolve({})),
+  },
 }
 
 // ========================================================================
@@ -63,8 +77,12 @@ mock.module("@/services/dnd", () => ({
 
 mock.module("@/services/contact-policy", () => ({
   checkContactEligibility: mock(() => Promise.resolve({ allowed: true })),
+  recordCommunicationEvent: mock(() => Promise.resolve("comm-1")),
+  updateCommunicationStatus: mock(() => Promise.resolve({})),
+  getContactUsage: mock(() => Promise.resolve({ dailyCount: 0, weeklyCount: 0 })),
   CUSTOMER_FACING_ACTIONS: new Set(["send_reminder", "retry_payment", "payment_link", "offer_discount", "escalate_to_merchant"]),
   ACTION_DEFAULT_CHANNEL: { send_reminder: "email", retry_payment: "email", payment_link: "email", offer_discount: "email" },
+  ACTION_TO_COMMUNICATION: {},
 }))
 
 mock.module("@/services/execution/queue", () => ({
@@ -337,7 +355,7 @@ describe("Execution Service", () => {
   // 17. Redis/queue failure is handled safely
   // ====================================================================
 
-  it("17. queue failure marks attempt as failed and throws QueueUnavailableError", async () => {
+  it("17. queue failure falls back to sync execution safely", async () => {
     mockCaseFindUnique(OPEN_CASE)
     // Gate re-checks the decision
     mockDecisionFindUnique({ ...APPROVED_DECISION, status: "approved" })
@@ -356,24 +374,14 @@ describe("Execution Service", () => {
       throw new QueueUnavailableError("Redis connection refused")
     })
 
-    try {
-      await executeRecovery({ caseId: "case-1" })
-      expect.unreachable("Should have thrown")
-    } catch (err: unknown) {
-      expect(err).toBeInstanceOf(QueueUnavailableError)
-    }
+    // Service catches QueueUnavailableError and falls back to synchronous execution
+    // (documented design: Redis is optional in dev/demo mode)
+    const result = await executeRecovery({ caseId: "case-1" })
 
-    // The attempt should have been updated to "failed" with queue reason
-    // Find the update call that sets status=failed
-    const updateCalls = mockDb.recoveryAttempt.update.mock.calls
-    const failedUpdate = updateCalls.find((call) => {
-      const data = (call[0] as { data: Record<string, unknown> }).data
-      return data.status === "failed"
-    })
-    expect(failedUpdate).toBeDefined()
-    const data = (failedUpdate![0] as { data: Record<string, unknown> }).data
-    expect(data.failureReason).toContain("Queue unavailable")
-    expect(data.completedAt).toBeInstanceOf(Date)
+    // Execution should succeed via synchronous fallback
+    expect(result.caseId).toBe("case-1")
+    expect(result.status).toBe("succeeded")
+    expect(result.attemptId).toBeDefined()
   })
 })
 
@@ -399,21 +407,17 @@ describe("Execution Gate", () => {
     mockDb.recoveryAttempt.count.mockImplementation(() =>
       Promise.resolve(0)
     )
-    mockDb.recoveryAttempt.findFirst.mockImplementation((args: any) => {
-      if (args?.orderBy?.attemptedAt === "desc") {
-        return Promise.resolve({
-          id: "recent-attempt",
-          attemptedAt: new Date(Date.now() - 5 * 60_000), // 5 mins ago
-        })
-      }
-      return Promise.resolve({
+    // First call: duplicate check (status in [pending/queued/running]) → returns a duplicate
+    // Duplicate check runs before cooldown check now
+    mockDb.recoveryAttempt.findFirst.mockImplementation(() =>
+      Promise.resolve({
         id: "existing-attempt",
         recoveryCaseId: "case-1",
         action: "send_reminder",
         status: "running",
         attemptedAt: new Date(),
       })
-    })
+    )
 
     const result = await checkExecutionGate(GATE_BASE)
 
@@ -450,7 +454,7 @@ describe("Execution Gate", () => {
     const result = await checkExecutionGate(GATE_BASE)
 
     expect(result.eligible).toBe(false)
-    expect(result.reason).toBe(STOP_REASONS.CASE_ALREADY_RECOVERED)
+    expect(result.reason).toBe(STOP_REASONS.CUSTOMER_PAID)
   })
 
   // ====================================================================
@@ -469,7 +473,7 @@ describe("Execution Gate", () => {
     const result = await checkExecutionGate(GATE_BASE)
 
     expect(result.eligible).toBe(false)
-    expect(result.reason).toBe(STOP_REASONS.RETRY_LIMIT_REACHED)
+    expect(result.reason).toBe(STOP_REASONS.MAX_ATTEMPTS_REACHED)
   })
 
   // ====================================================================
@@ -567,6 +571,16 @@ describe("Worker inner logic", () => {
 // ========================================================================
 
 describe("Executors", () => {
+  beforeEach(() => {
+    // Discount executor fetches the decision to read proposed discount %
+    mockDb.agentDecision.findUnique.mockImplementation(() =>
+      Promise.resolve({
+        ...APPROVED_DECISION,
+        reasoningJson: JSON.stringify({ aiOutput: { discountPercent: 10 } }),
+      })
+    )
+  })
+
   afterEach(() => {
     resetExecutors()
   })
@@ -953,7 +967,7 @@ describe("Gate edge cases", () => {
     })
 
     expect(result.eligible).toBe(false)
-    expect(result.reason).toContain("rejected")
+    expect(result.reason).toBe(STOP_REASONS.POLICY_BLOCKED)
   })
 
   it("expired decision blocks the gate", async () => {

@@ -91,7 +91,21 @@ export async function evaluateStoppingRules(
     return { shouldStop: true, reason: STOP_REASONS.MAX_ATTEMPTS_REACHED, rule: "Attempt limit exceeded" }
   }
 
-  // 7. Cooldown
+  // 7. Duplicate first (before cooldown) — same case + same action + non-terminal attempt
+  if (action && !attemptId) {
+    const duplicateAttempt = await db.recoveryAttempt.findFirst({
+      where: {
+        recoveryCaseId: caseId,
+        action,
+        status: { in: ['pending', 'queued', 'running'] },
+      },
+    })
+    if (duplicateAttempt) {
+      return { shouldStop: true, reason: STOP_REASONS.DUPLICATE_ATTEMPT, rule: "Duplicate execution attempt detected" }
+    }
+  }
+
+  // 8. Cooldown
   if (action === "retry_payment" || action === "send_reminder") {
     const lastAttempt = await db.recoveryAttempt.findFirst({
       where: { recoveryCaseId: caseId, id: { not: attemptId || undefined } },
@@ -105,10 +119,14 @@ export async function evaluateStoppingRules(
     }
   }
 
-  // 8. Decision expired
+  // 9. Decision expired / rejected / cross-case
   if (decisionId) {
     const decision = await db.agentDecision.findUnique({ where: { id: decisionId } })
     if (!decision) return { shouldStop: true, reason: STOP_REASONS.DECISION_EXPIRED, rule: "Decision not found" }
+    // Cross-case binding check — decision must belong to this case
+    if (decision.recoveryCaseId !== caseId) {
+      return { shouldStop: true, reason: "Decision does not belong to this case", rule: "Decision case mismatch" }
+    }
     if (decision.status === "rejected") return { shouldStop: true, reason: STOP_REASONS.POLICY_BLOCKED, rule: "Decision rejected" }
     if (decision.status === "expired") return { shouldStop: true, reason: STOP_REASONS.DECISION_EXPIRED, rule: "Decision expired" }
     
@@ -116,20 +134,6 @@ export async function evaluateStoppingRules(
     if (ageMinutes > DECISION_EXPIRY_MINUTES) {
       await db.agentDecision.update({ where: { id: decisionId }, data: { status: "expired" } })
       return { shouldStop: true, reason: STOP_REASONS.DECISION_EXPIRED, rule: "Decision aged out" }
-    }
-  }
-
-  // 9. Check for duplicate: same case + same action + non-terminal attempt
-  if (action && !attemptId) {
-    const duplicateAttempt = await db.recoveryAttempt.findFirst({
-      where: {
-        recoveryCaseId: caseId,
-        action,
-        status: { in: ['pending', 'queued', 'running'] },
-      },
-    })
-    if (duplicateAttempt) {
-      return { shouldStop: true, reason: STOP_REASONS.DUPLICATE_ATTEMPT, rule: "Duplicate execution attempt detected" }
     }
   }
 
