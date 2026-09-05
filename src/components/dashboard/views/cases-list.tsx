@@ -127,30 +127,30 @@ export function CasesList({ onNavigateCase }: CasesListProps) {
                     {data.cases.map((c) => (
                       <tr
                         key={c.id}
-                        className="hover:bg-muted/30 cursor-pointer transition-colors"
+                        className="hover:bg-violet-50/50 dark:hover:bg-violet-950/20 cursor-pointer transition-colors group relative"
                         onClick={() => onNavigateCase(c.id)}
                       >
-                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.id}</td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-xs">{c.customer?.displayName ?? "--"}</p>
-                          <p className="text-xs text-muted-foreground">{c.customer?.email ?? ""}</p>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground transition-colors group-hover:text-violet-600 dark:group-hover:text-violet-400">{c.id}</td>
+                        <td className="px-4 py-3 transition-transform group-hover:translate-x-1">
+                          <p className="font-semibold text-xs transition-colors group-hover:text-primary">{c.customer?.displayName ?? "--"}</p>
+                          <p className="text-[10px] text-muted-foreground font-medium">{c.customer?.email ?? ""}</p>
                         </td>
                         <td className="px-4 py-3 text-xs">{formatCategory(c.category)}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs font-semibold uppercase ${c.priority === "critical" ? "text-destructive" : c.priority === "high" ? "text-amber-600" : c.priority === "medium" ? "text-blue-600" : "text-muted-foreground"}`}>
+                        <td className="px-4 py-3 transition-transform group-hover:translate-x-1">
+                          <span className={`text-[10px] tracking-wider font-bold uppercase ${c.priority === "critical" ? "text-destructive" : c.priority === "high" ? "text-amber-600" : c.priority === "medium" ? "text-blue-600" : "text-muted-foreground"}`}>
                             {c.priority}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-xs">{formatCurrency(c.amountAtRisk)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-xs">{formatCurrency(c.amountAtRisk)}</td>
                         <td className="px-4 py-3 text-right text-xs">
                           {c.recoveredAmount > 0 ? (
-                            <span className="text-emerald-600 font-medium">{formatCurrency(c.recoveredAmount)}</span>
+                            <span className="text-emerald-600 font-semibold bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">{formatCurrency(c.recoveredAmount)}</span>
                           ) : (
-                            <span className="text-muted-foreground">--</span>
+                            <span className="text-muted-foreground/40">--</span>
                           )}
                         </td>
-                        <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{formatDate(c.detectedAt)}</td>
+                        <td className="px-4 py-3 transition-transform group-hover:scale-105"><StatusBadge status={c.status} /></td>
+                        <td className="px-4 py-3 text-[10px] text-muted-foreground whitespace-nowrap font-medium">{formatDate(c.detectedAt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -163,18 +163,18 @@ export function CasesList({ onNavigateCase }: CasesListProps) {
                   <button
                     key={c.id}
                     onClick={() => onNavigateCase(c.id)}
-                    className="w-full text-left p-3 hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="w-full text-left p-4 hover:bg-violet-50/50 dark:hover:bg-violet-950/20 transition-all duration-300 cursor-pointer group"
                   >
-                    <div className="flex items-start justify-between mb-1.5">
+                    <div className="flex items-start justify-between mb-2 transition-transform duration-300 group-hover:translate-x-1">
                       <div className="flex items-center gap-2">
-                        <span className={`text-xs font-semibold uppercase ${c.priority === "critical" ? "text-destructive" : c.priority === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{c.priority}</span>
+                        <span className={`text-[10px] tracking-wider font-bold uppercase ${c.priority === "critical" ? "text-destructive" : c.priority === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{c.priority}</span>
                         <StatusBadge status={c.status} />
                       </div>
-                      <span className="text-xs font-bold">{formatCurrency(c.amountAtRisk)}</span>
+                      <span className="text-sm font-bold">{formatCurrency(c.amountAtRisk)}</span>
                     </div>
-                    <p className="text-xs font-medium">{c.customer?.displayName ?? "--"}</p>
-                    <p className="text-xs text-muted-foreground">{formatCategory(c.category)}{c.payment?.description ? ` · ${truncate(c.payment.description, 30)}` : ""}</p>
-                    <p className="text-[10px] text-muted-foreground mt-1">{formatDate(c.detectedAt)}</p>
+                    <p className="text-xs font-semibold transition-transform duration-300 group-hover:translate-x-1">{c.customer?.displayName ?? "--"}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium transition-transform duration-300 group-hover:translate-x-1">{formatCategory(c.category)}{c.payment?.description ? ` · ${truncate(c.payment.description, 30)}` : ""}</p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-2 font-medium">{formatDate(c.detectedAt)}</p>
                   </button>
                 ))}
               </div>

@@ -314,29 +314,30 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
 
       {/* ── Key Metrics Row ── */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <Card className="p-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Amount At Risk</p>
+        <Card className="p-3 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-violet-500/30">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Amount At Risk</p>
           <p className="text-lg font-bold mt-0.5">{formatCurrencyFull(c.amountAtRisk)}</p>
         </Card>
-        <Card className="p-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Recovered</p>
-          <p className={cn("text-lg font-bold mt-0.5", c.recoveredAmount > 0 ? "text-emerald-600" : "")}>{formatCurrencyFull(c.recoveredAmount)}</p>
+        <Card className="p-3 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-emerald-500/30">
+          <div className="absolute inset-0 bg-emerald-500/0 group-hover:bg-emerald-500/5 transition-colors pointer-events-none" />
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5 relative z-10">Recovered</p>
+          <p className={cn("text-lg font-bold mt-0.5 relative z-10", c.recoveredAmount > 0 ? "text-emerald-600 dark:text-emerald-400" : "")}>{formatCurrencyFull(c.recoveredAmount)}</p>
         </Card>
-        <Card className="p-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Remaining</p>
-          <p className={cn("text-lg font-bold mt-0.5", remainingAmount > 0 ? "text-amber-600" : "text-muted-foreground")}>{formatCurrencyFull(remainingAmount)}</p>
+        <Card className="p-3 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-amber-500/30">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Remaining</p>
+          <p className={cn("text-lg font-bold mt-0.5", remainingAmount > 0 ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground")}>{formatCurrencyFull(remainingAmount)}</p>
         </Card>
-        <Card className="p-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Best Recovery Prob.</p>
+        <Card className="p-3 col-span-2 md:col-span-1 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-violet-500/30">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Best Recovery Prob.</p>
           <p className="text-lg font-bold mt-0.5">{bestIntervention ? formatPercent(bestIntervention.probability) : formatPercent(c.recoveryProbability)}</p>
         </Card>
-        <Card className="p-3 col-span-2 md:col-span-1">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Attempts</p>
+        <Card className="p-3 col-span-2 md:col-span-1 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-violet-500/30">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Attempts</p>
           <p className="text-lg font-bold mt-0.5">{c.recoveryAttempts.length}</p>
         </Card>
         {/* Feature 14: Time decay indicator */}
-        <Card className="p-3 col-span-2 md:col-span-1">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Time Decay</p>
+        <Card className="p-3 col-span-2 md:col-span-1 relative overflow-hidden group hover:-translate-y-1 hover:shadow-md transition-all duration-300 border-border hover:border-blue-500/30">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider transition-transform duration-300 group-hover:translate-x-0.5">Time Decay</p>
           {(() => {
             const ageMs = Date.now() - new Date(c.detectedAt).getTime()
             const ageHours = ageMs / 3_600_000
@@ -631,11 +632,11 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
             <div className="rounded-lg border bg-muted/30 px-4 py-4 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b pb-2.5">
                 <div>
-                  <p className="text-xs font-semibold">Governance &amp; Autonomy Model</p>
-                  <p className="text-[11px] text-muted-foreground">Deterministic policy guardrails &amp; merchant authorization govern every action</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider">Governance &amp; Autonomy Model</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Deterministic policy guardrails &amp; merchant authorization govern every action</p>
                 </div>
-                <Badge variant="secondary" className="w-fit text-[10px] bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50">
-                  <ShieldCheck className="h-3 w-3 mr-1 text-amber-600" />
+                <Badge variant="secondary" className="w-fit text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400">
+                  <ShieldCheck className="h-3 w-3 mr-1" />
                   {autonomy.label}
                 </Badge>
               </div>
@@ -795,29 +796,30 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
 
             {/* Economic Gate Result */}
             {decision.economicDecision && decision.economicDecision === "DO_NOT_ACT" ? (
-              <div className="rounded-xl border-2 border-red-500/50 bg-red-50 dark:bg-red-950/20 shadow-sm overflow-hidden mt-4">
-                <div className="bg-red-500 text-white p-4 text-center">
-                  <h3 className="text-xl font-black tracking-widest uppercase flex items-center justify-center gap-2">
+              <div className="rounded-xl border border-red-500/30 bg-gradient-to-b from-red-50 to-white dark:from-red-950/30 dark:to-background shadow-lg overflow-hidden mt-4 relative">
+                <div className="absolute top-0 inset-x-0 h-1 bg-red-500" />
+                <div className="p-5 text-center relative z-10">
+                  <h3 className="text-lg font-black tracking-widest uppercase flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
                     <Ban className="h-5 w-5" />
                     Do Not Act
                   </h3>
-                  <p className="text-red-50 text-sm mt-1 font-medium">Intervention is economically unjustified</p>
+                  <p className="text-muted-foreground text-xs mt-1 font-medium">Intervention is economically unjustified</p>
                 </div>
-                <div className="p-4 space-y-4">
-                  <div className="text-center pb-2 border-b border-red-200/50 dark:border-red-900/30">
-                    <p className="text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-wider mb-2">Why?</p>
+                <div className="px-5 pb-5 space-y-4">
+                  <div className="text-center pb-3 border-b border-red-200/50 dark:border-red-900/30">
+                    <p className="text-[10px] font-bold text-red-800 dark:text-red-300 uppercase tracking-widest mb-3">Economic Analysis</p>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase">Expected Baseline</p>
-                        <p className="font-semibold text-sm">{formatCurrencyFull(decision.baselineExpectedRecovery ?? 0)}</p>
+                      <div className="group">
+                        <p className="text-[10px] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Expected Baseline</p>
+                        <p className="font-semibold text-sm transition-transform group-hover:translate-x-0.5">{formatCurrencyFull(decision.baselineExpectedRecovery ?? 0)}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase">Expected Incremental</p>
-                        <p className="font-semibold text-sm text-emerald-600">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)}</p>
+                      <div className="group">
+                        <p className="text-[10px] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Expected Incremental</p>
+                        <p className="font-semibold text-sm text-emerald-600 dark:text-emerald-400 transition-transform group-hover:translate-x-0.5">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase">Est. Cost</p>
-                        <p className="font-semibold text-sm text-amber-600">-{formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))}</p>
+                      <div className="group">
+                        <p className="text-[10px] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Est. Cost</p>
+                        <p className="font-semibold text-sm text-amber-600 dark:text-amber-500 transition-transform group-hover:translate-x-0.5">-{formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-muted-foreground uppercase">Expected Net Value</p>
