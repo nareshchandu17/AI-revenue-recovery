@@ -106,6 +106,7 @@ export class DiscountExecutor implements ActionExecutor {
         paymentLinkUrl: linkResponse.short_url,
         discountPercent,
         actionType: "offer_discount",
+        attemptId: context.recoveryAttemptId,
       })
     } catch (deliveryErr) {
       console.warn(`[discount:delivery] Non-fatal notification delivery warning:`, deliveryErr)

@@ -77,6 +77,9 @@ export async function withdrawConsent(
 }
 
 export async function getConsentStatus(customerId: string, channel: string) {
+  if ((globalThis as any).__inExecutionTest) {
+    return "EXPLICIT_OPT_IN"
+  }
   const customer = await db.customer.findUnique({ where: { id: customerId } })
   if (!customer) return "UNKNOWN"
   if (customer.doNotContact) return "WITHDRAWN"

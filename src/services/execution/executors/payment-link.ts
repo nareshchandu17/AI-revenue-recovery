@@ -118,6 +118,7 @@ export class PaymentLinkExecutor implements ActionExecutor {
         currency: context.currency,
         paymentLinkUrl: linkResponse.short_url,
         actionType: "payment_link",
+        attemptId: context.recoveryAttemptId,
       })
     } catch (deliveryErr) {
       console.warn(`[payment-link:delivery] Non-fatal notification delivery warning:`, deliveryErr)

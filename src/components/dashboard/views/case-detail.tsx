@@ -1,6 +1,6 @@
 "use client"
 
-import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase, useSimulatePayment } from "@/lib/hooks/use-queries"
+import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase, useSimulatePayment, useSimulateDeliveryStatus } from "@/lib/hooks/use-queries"
 import type { ProbabilityEstimateItem, CustomerValueData } from "@/lib/hooks/use-queries"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { ErrorState } from "@/components/dashboard/error-state"
@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
-import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle, TrendingUp, Users, Percent, Info } from "lucide-react"
+import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle, TrendingUp, Users, Percent, Info, Mail } from "lucide-react"
 import { formatCurrency, formatCurrencyFull, formatPercent, formatCategory, formatAction, formatPriority, formatDateTime, formatRelativeTime, formatActorType } from "@/lib/format"
 import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
 import { useSettingsStore } from "@/store/settings"
@@ -184,6 +184,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const stopMutation = useStopRecovery()
   const analyzeMutation = useAnalyzeCase()
   const simulatePaymentMutation = useSimulatePayment()
+  const simulateDeliveryMutation = useSimulateDeliveryStatus()
 
   if (error) {
     return <ErrorState message="Failed to load case details. The case may not exist." onRetry={() => refetch()} />
@@ -1309,6 +1310,97 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                     <p className="text-[10px] text-amber-600 mt-0.5">
                       Next reconciliation check scheduled for {formatDateTime(att.nextReconciliationAt)}
                     </p>
+                  )}
+
+                  {/* Real Communication Delivery Outcome */}
+                  {(att.communicationEvent || att.externalRef) && (
+                    <div className="mt-2 p-2 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="h-3.5 w-3.5 text-slate-500" />
+                          <span className="text-[11px] font-semibold">
+                            {att.communicationEvent?.channel ? att.communicationEvent.channel.toUpperCase() : "EMAIL"} Dispatch
+                          </span>
+                        </div>
+                        {att.communicationEvent?.status ? (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[9px] px-1.5 py-0 font-bold uppercase tracking-wider",
+                              att.communicationEvent.status === "delivered" && "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
+                              att.communicationEvent.status === "failed" && "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800",
+                              att.communicationEvent.status === "sent" && "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800",
+                              att.communicationEvent.status === "queued" && "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800",
+                              att.communicationEvent.status === "blocked" && "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700"
+                            )}
+                          >
+                            {att.communicationEvent.status}
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+                        {att.externalRef && (
+                          <span>
+                            Provider Msg ID: <span className="font-mono font-medium text-foreground">{att.externalRef}</span>
+                          </span>
+                        )}
+                        {att.communicationEvent?.template && (
+                          <span>Template: <span className="font-mono">{att.communicationEvent.template}</span></span>
+                        )}
+                      </div>
+
+                      {att.communicationEvent?.status === "failed" && att.failureReason && (
+                        <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-medium mt-1">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          Delivery outcome: {att.failureReason}
+                        </p>
+                      )}
+
+                      {/* Interactive delivery callback simulation buttons for dev/test verification */}
+                      {att.externalRef && (
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+                          <span className="text-[9px] text-muted-foreground">Test Webhook:</span>
+                          <button
+                            type="button"
+                            disabled={simulateDeliveryMutation.isPending}
+                            onClick={() => {
+                              simulateDeliveryMutation.mutate(
+                                {
+                                  messageId: att.externalRef!,
+                                  eventType: "failed",
+                                  reason: "Simulated bounce: Mailbox unreachable or rejected by recipient server",
+                                },
+                                {
+                                  onSuccess: () => toast.error("Delivery failure webhook received and applied"),
+                                }
+                              )
+                            }}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-950/50 dark:hover:bg-red-900/50 dark:text-red-300 font-medium transition-colors"
+                          >
+                            Simulate Failure
+                          </button>
+                          <button
+                            type="button"
+                            disabled={simulateDeliveryMutation.isPending}
+                            onClick={() => {
+                              simulateDeliveryMutation.mutate(
+                                {
+                                  messageId: att.externalRef!,
+                                  eventType: "delivered",
+                                },
+                                {
+                                  onSuccess: () => toast.success("Delivered webhook received and confirmed"),
+                                }
+                              )
+                            }}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 dark:text-emerald-300 font-medium transition-colors"
+                          >
+                            Simulate Delivered
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

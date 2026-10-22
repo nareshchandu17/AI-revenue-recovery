@@ -65,6 +65,7 @@ export class AlternativePaymentExecutor implements ActionExecutor {
         currency: context.currency,
         paymentLinkUrl: linkResponse.short_url,
         actionType: "update_payment_method",
+        attemptId: context.recoveryAttemptId,
       })
     } catch (deliveryErr) {
       console.warn(`[alt-payment:delivery] Non-fatal notification delivery warning:`, deliveryErr)

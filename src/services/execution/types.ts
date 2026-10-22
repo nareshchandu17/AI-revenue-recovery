@@ -88,6 +88,7 @@ export interface ExecutorResult {
 /** Context provided to every executor. */
 export interface ExecutorContext {
   recoveryCaseId: string
+  recoveryAttemptId?: string
   agentDecisionId: string | null
   action: RecoveryAction
   amountAtRisk: number

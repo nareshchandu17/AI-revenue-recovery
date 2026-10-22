@@ -76,6 +76,7 @@ export class ReminderExecutor implements ActionExecutor {
     // 2. Deliver genuine notification via delivery provider with send-moment checks
     const delivery = await deliverCustomerNotification({
       caseId: context.recoveryCaseId,
+      attemptId: context.recoveryAttemptId,
       customerId: context.customerId,
       merchantId: context.merchantId,
       amount: context.amountAtRisk,
@@ -87,9 +88,7 @@ export class ReminderExecutor implements ActionExecutor {
     if (!delivery.success) {
       return {
         success: false,
-        externalRef: isRazorpayConfigured
-          ? delivery.messageId
-          : `simulated_reminder_${context.recoveryCaseId}_${context.attemptNumber}`,
+        externalRef: delivery.messageId,
         summary: delivery.summary,
         simulated: !isRazorpayConfigured,
         details: {
@@ -104,9 +103,7 @@ export class ReminderExecutor implements ActionExecutor {
     }
 
     const isSimulated = !isRazorpayConfigured
-    const externalRef = isSimulated
-      ? `simulated_reminder_${context.recoveryCaseId}_${context.attemptNumber}`
-      : delivery.messageId
+    const externalRef = isSimulated ? `simulated_reminder_${delivery.messageId}` : delivery.messageId
 
     return {
       success: true,

@@ -115,7 +115,33 @@ export interface CaseDetail {
     payment: { id: string; externalId: string; amount: number; status: string; method: string; failureCode: string | null; failureReason: string | null; description: string | null; createdAt: string; customer: { id: string; displayName: string; email: string } | null } | null
     agentDecisions: { id: string; recommendedAction: string; confidence: number; recoveryProbability?: number | null; status: string; diagnosis: string | null; reasoningJson: unknown; createdAt: string; reviewedBy: string | null; reviewedAt: string | null; economicDecision: string | null; economicReason: string | null; expectedRecovery: number | null; interventionCost: number | null; netExpectedValue: number | null; expectedIncrementalRecovery: number | null; baselineExpectedRecovery: number | null; incentiveCost: number | null; economicModelVersion?: string | null }[]
     probabilityEstimates: ProbabilityEstimateItem[]
-    recoveryAttempts: { id: string; action: string; status: string; attemptNumber: number; recoveredAmount: number; externalRef: string | null; providerUrl: string | null; simulated: boolean; failureReason: string | null; startedAt: string | null; completedAt: string | null; attemptedAt: string | null; reconciliationAttempts?: number; lastReconciledAt?: string | null; nextReconciliationAt?: string | null; finalReconciliationStatus?: string | null }[]
+    recoveryAttempts: {
+      id: string
+      action: string
+      status: string
+      attemptNumber: number
+      recoveredAmount: number
+      externalRef: string | null
+      providerUrl: string | null
+      simulated: boolean
+      failureReason: string | null
+      startedAt: string | null
+      completedAt: string | null
+      attemptedAt: string | null
+      reconciliationAttempts?: number
+      lastReconciledAt?: string | null
+      nextReconciliationAt?: string | null
+      finalReconciliationStatus?: string | null
+      communicationEvent?: {
+        id: string
+        status: string
+        channel: string
+        template?: string
+        details: string | null
+        createdAt: string
+        updatedAt: string
+      } | null
+    }[]
     recoveryAttributions: { id: string; amount: number; status: string; source: string; confidence: number; reason: string | null; createdAt: string; payment: { id: string; externalId: string; amount: number; status: string; method: string; createdAt: string } }[]
     incrementalRevenues: { id: string; attributionType: string; recoveredAmount: number; baselineExpectedAmount: number; incrementalAmount: number; confidence: string; methodologyVersion: string; evaluatedAt: string; status: string }[]
     auditEvents: { id: string; eventType: string; action: string; details: string | null; actorType: string; createdAt: string }[]
@@ -495,3 +521,31 @@ export function useTriggerReconciliation() {
     },
   })
 }
+
+export function useSimulateDeliveryStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      messageId,
+      eventType,
+      reason,
+    }: {
+      messageId: string
+      eventType: "delivered" | "failed" | "bounced"
+      reason?: string
+    }) => {
+      const res = await fetch("/api/webhooks/delivery/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, eventType, reason }),
+      })
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to simulate delivery status"))
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["case"] })
+      qc.invalidateQueries({ queryKey: ["cases"] })
+    },
+  })
+}
+

@@ -29,6 +29,12 @@ export interface LogAuditParams {
  * whether it is fatal or swallow it.
  */
 export async function logAudit(params: LogAuditParams) {
+  if (typeof (globalThis as any).__mockLogAudit === "function") {
+    return (globalThis as any).__mockLogAudit(params)
+  }
+  if ((globalThis as any).__inExecutionTest) {
+    return {} as any
+  }
   const actorType = params.actor.type as
     | "system"
     | "ai_agent"

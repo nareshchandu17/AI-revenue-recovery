@@ -11,8 +11,10 @@ import {
   describe,
   it,
   expect,
+  beforeAll,
   beforeEach,
   afterEach,
+  afterAll,
   mock,
 } from "bun:test"
 
@@ -66,29 +68,19 @@ const mockDb = {
   },
 }
 
+beforeAll(() => {
+  ;(globalThis as any).__mockDb = mockDb
+  ;(globalThis as any).__inExecutionTest = true
+  ;(globalThis as any).__mockLogAudit = mockLogAudit
+})
+
+afterAll(() => {
+  delete (globalThis as any).__mockDb
+  delete (globalThis as any).__inExecutionTest
+  delete (globalThis as any).__mockLogAudit
+})
+
 // ========================================================================
-mock.module("@/lib/db", () => ({ db: mockDb }))
-
-mock.module("@/services/audit/log", () => ({ logAudit: mockLogAudit }))
-
-mock.module("@/services/consent", () => ({
-  getConsentStatus: mock(() => Promise.resolve("EXPLICIT_OPT_IN")),
-}))
-
-mock.module("@/services/dnd", () => ({
-  checkDNDEligibility: mock(() => Promise.resolve({ allowed: true })),
-}))
-
-mock.module("@/services/contact-policy", () => ({
-  checkContactEligibility: mock(() => Promise.resolve({ allowed: true })),
-  recordCommunicationEvent: mock(() => Promise.resolve("comm-1")),
-  updateCommunicationStatus: mock(() => Promise.resolve({})),
-  getContactUsage: mock(() => Promise.resolve({ dailyCount: 0, weeklyCount: 0 })),
-  CUSTOMER_FACING_ACTIONS: new Set(["send_reminder", "retry_payment", "payment_link", "offer_discount", "escalate_to_merchant"]),
-  ACTION_DEFAULT_CHANNEL: { send_reminder: "email", retry_payment: "email", payment_link: "email", offer_discount: "email" },
-  ACTION_TO_COMMUNICATION: {},
-}))
-
 mock.module("@/services/execution/queue", () => ({
   enqueueRecoveryJob: mockEnqueueRecoveryJob,
   getRecoveryQueue: mock(() => {
