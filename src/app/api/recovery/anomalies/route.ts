@@ -1,30 +1,21 @@
 /**
- * GET /api/recovery/anomalies?merchantId=xxx&status=active
+ * GET /api/recovery/anomalies?status=active
  *
- * Returns anomaly records for a merchant. If no merchantId is provided,
- * falls back to the first merchant in the database.
+ * Returns anomaly records for the authenticated merchant.
+ * Requires authentication.
  */
 
-import { db } from '@/lib/db'
-import { errorResponse, ValidationError } from '@/lib/errors'
+import { errorResponse } from '@/lib/errors'
 import { getMerchantAnomalies } from '@/services/anomaly'
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(request: Request) {
   try {
+    const sessionUser = await requireAuth()
     const { searchParams } = new URL(request.url)
-    const merchantId = searchParams.get('merchantId')
     const status = searchParams.get('status') ?? undefined
 
-    let resolvedMerchantId = merchantId
-    if (!resolvedMerchantId) {
-      const firstMerchant = await db.merchant.findFirst({ select: { id: true } })
-      if (!firstMerchant) {
-        throw new ValidationError('No merchants found in the database')
-      }
-      resolvedMerchantId = firstMerchant.id
-    }
-
-    const anomalies = await getMerchantAnomalies(resolvedMerchantId, status)
+    const anomalies = await getMerchantAnomalies(sessionUser.merchantId, status)
 
     return Response.json({ success: true, anomalies })
   } catch (err) {

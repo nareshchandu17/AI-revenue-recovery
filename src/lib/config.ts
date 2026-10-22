@@ -15,6 +15,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_URL: z.string().url().default("http://localhost:3000"),
 
+  // Session — must be at least 32 chars for iron-session
+  SESSION_SECRET: z.string().min(32).default("recovr-dev-session-secret-32chars-min!!"),
+
   // Razorpay — all optional so the app boots without real keys
   RAZORPAY_KEY_ID: z.string().default(""),
   RAZORPAY_KEY_SECRET: z.string().default(""),

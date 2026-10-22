@@ -1,19 +1,13 @@
 /**
  * GET /api/admin/integrity
  *
- * Development/admin endpoint for detecting data anomalies.
- * Not exposed as a merchant feature.
- *
- * Checks:
- * - RecoveryCase says completed/failed but no attribution exists when expected
- * - amountRecovered > amountAtRisk
- * - RecoveryAttempt says succeeded but no result
- * - Duplicate provider event IDs (externalId on Payment)
- * - Invalid state transitions (stale data)
- * - Missing audit events for critical transitions
+ * Admin endpoint for detecting data anomalies.
+ * Requires authentication with owner role.
+ * Not exposed as a public merchant feature.
  */
 import { db } from "@/lib/db"
-import { errorResponse } from "@/lib/errors"
+import { errorResponse, ForbiddenError } from "@/lib/errors"
+import { requireAuth } from "@/lib/auth"
 
 interface IntegrityIssue {
   severity: "critical" | "warning" | "info"
@@ -38,21 +32,28 @@ interface IntegrityReport {
 
 export async function GET() {
   try {
+    // Require authentication — owner role only
+    const sessionUser = await requireAuth()
+    if (sessionUser.role !== "owner") {
+      throw new ForbiddenError("Admin access requires owner role")
+    }
+    const merchantId = sessionUser.merchantId
+
     const issues: IntegrityIssue[] = []
 
-    // Stats
+    // Stats — scoped to authenticated merchant
     const [totalCases, totalPayments, totalAttributions, totalAttempts, totalAuditEvents] =
       await Promise.all([
-        db.recoveryCase.count(),
-        db.payment.count(),
-        db.recoveryAttribution.count(),
-        db.recoveryAttempt.count(),
-        db.auditEvent.count(),
+        db.recoveryCase.count({ where: { merchantId } }),
+        db.payment.count({ where: { merchantId } }),
+        db.recoveryAttribution.count({ where: { recoveryCase: { merchantId } } }),
+        db.recoveryAttempt.count({ where: { recoveryCase: { merchantId } } }),
+        db.auditEvent.count({ where: { recoveryCase: { merchantId } } }),
       ])
 
     // 1. Completed cases with recoveredAmount > 0 but no attribution
     const completedWithRecovery = await db.recoveryCase.findMany({
-      where: { status: "completed", recoveredAmount: { gt: 0 } },
+      where: { merchantId, status: "completed", recoveredAmount: { gt: 0 } },
       include: { recoveryAttributions: { select: { id: true } } },
     })
     for (const c of completedWithRecovery) {
@@ -70,7 +71,7 @@ export async function GET() {
 
     // 2. amountRecovered > amountAtRisk
     const overRecovered = await db.recoveryCase.findMany({
-      where: { recoveredAmount: { gt: 0 } },
+      where: { merchantId, recoveredAmount: { gt: 0 } },
     })
     for (const c of overRecovered) {
       if (c.recoveredAmount > c.amountAtRisk) {

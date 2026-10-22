@@ -27,11 +27,12 @@ import type { InterventionEffectivenessMetrics, ActionEffectiveness } from './ty
  * 2. Classify unevaluated attempts in-memory (non-persisted, for real-time view)
  * 3. Compute aggregates
  */
-export async function getInterventionEffectivenessMetrics(): Promise<InterventionEffectivenessMetrics> {
-  // Get all terminal attempts
+export async function getInterventionEffectivenessMetrics(merchantId?: string): Promise<InterventionEffectivenessMetrics> {
+  // Get all terminal attempts — scoped to merchant when provided
   const attempts = await db.recoveryAttempt.findMany({
     where: {
       completedAt: { not: null },
+      ...(merchantId ? { recoveryCase: { merchantId } } : {}),
     },
     include: {
       interventionEvaluation: { select: { outcome: true } },

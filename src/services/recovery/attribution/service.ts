@@ -176,7 +176,35 @@ async function tryDeterministicAttribution(
   amount: number,
   log: ReturnType<typeof logger.child>
 ): Promise<AttributionResult | null> {
-  const caseId = providerReferenceId ?? providerNotes?.recovery_case_id;
+  // Primary: notes.recovery_case_id is always the raw case ID
+  // Secondary: reference_id may be "rcv_{caseId}_{attempt}" — extract case ID
+  let caseId = providerNotes?.recovery_case_id ?? null
+
+  if (!caseId && providerReferenceId) {
+    // Try raw match first (old format or direct case ID)
+    const raw = providerReferenceId
+    // Parse "rcv_{caseId}_{attemptNumber}" or "rcv_disc_{...}" format used by PaymentLinkExecutor
+    const rcvMatch = raw.match(/^rcv_(?:disc_|alt_|rtry_)?(.+)_(\d+)$/)
+    if (rcvMatch) {
+      caseId = rcvMatch[1]  // extracted caseId portion
+    } else {
+      caseId = raw  // assume it's a bare case ID
+    }
+  }
+
+  // If caseId is not found directly, check if providerReferenceId matches an attempt's externalRef (e.g. plink_xxx)
+  let matchedAttemptId: string | undefined
+  if (!caseId && providerReferenceId) {
+    const attempt = await db.recoveryAttempt.findFirst({
+      where: { externalRef: providerReferenceId },
+      select: { id: true, recoveryCaseId: true },
+    })
+    if (attempt) {
+      caseId = attempt.recoveryCaseId
+      matchedAttemptId = attempt.id
+    }
+  }
+
   if (!caseId) {
     return null;
   }
@@ -187,7 +215,6 @@ async function tryDeterministicAttribution(
       recoveryAttempts: {
         where: {
           status: "succeeded",
-          simulated: false,
         },
         orderBy: { attemptedAt: "desc" },
       },
@@ -211,7 +238,7 @@ async function tryDeterministicAttribution(
   return createAttribution({
     recoveryCaseId: recoveryCase.id,
     paymentId,
-    recoveryAttemptId: latestAttempt?.id,
+    recoveryAttemptId: matchedAttemptId ?? latestAttempt?.id,
     amount,
     source: "payment_link",
     confidence: 1.0,
@@ -313,7 +340,7 @@ async function createAttribution(
 ): Promise<AttributionResult> {
   const { recoveryCaseId, paymentId, recoveryAttemptId, amount, source, confidence, reason } = params
 
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     // 1. Load the case with current recovered amount
     const recoveryCase = await tx.recoveryCase.findUnique({
       where: { id: recoveryCaseId },
@@ -415,49 +442,55 @@ async function createAttribution(
       }
     }
 
-    // 8. Audit
+    return {
+      attributionId: attribution.id,
+      recoveryCaseId,
+      paymentId,
+      amount: actualIncrement,
+      status: "attributed" as AttributionStatus,
+      source,
+      confidence,
+      reason,
+      caseUpdated: true,
+      attemptUpdated,
+      fullyRecovered,
+      newRecovered,
+      amountAtRisk: recoveryCase.amountAtRisk,
+    }
+  })
+
+  // 8. Audit (performed AFTER transaction commits to prevent SQLite self-deadlock)
+  if (result.status === "attributed") {
+    const totalRecovered = result.newRecovered ?? result.amount
+    const amountAtRisk = result.amountAtRisk ?? 0
+    const remainingPaise = Math.max(0, amountAtRisk - totalRecovered)
+
     await logAudit({
       caseId: recoveryCaseId,
       actor: { type: "webhook", source: "razorpay" },
-      eventType: fullyRecovered ? "RECOVERY_CASE_FULLY_RECOVERED" : "RECOVERY_CASE_PARTIALLY_RECOVERED",
+      eventType: result.fullyRecovered ? "RECOVERY_CASE_FULLY_RECOVERED" : "RECOVERY_CASE_PARTIALLY_RECOVERED",
       entityType: "recovery_attribution",
-      entityId: attribution.id,
+      entityId: result.attributionId,
       action: "attributed",
       details: [
-        `Revenue attributed: ₹${(actualIncrement / 100).toFixed(2)}`,
+        `Revenue attributed: ₹${(result.amount / 100).toFixed(2)}`,
         `Source: ${source} (${(confidence * 100).toFixed(0)}% confidence)`,
-        fullyRecovered ? "Case FULLY RECOVERED" : `Case PARTIALLY RECOVERED (₹${((recoveryCase.amountAtRisk - newRecovered) / 100).toFixed(2)} remaining)`,
+        result.fullyRecovered ? "Case FULLY RECOVERED" : `Case PARTIALLY RECOVERED (₹${(remainingPaise / 100).toFixed(2)} remaining)`,
         `Payment: ${paymentId}`,
       ].join(" | "),
       metadata: {
-        attributionId: attribution.id,
+        attributionId: result.attributionId,
         paymentId,
-        amount: actualIncrement,
-        totalRecovered: newRecovered,
-        amountAtRisk: recoveryCase.amountAtRisk,
+        amount: result.amount,
+        totalRecovered,
+        amountAtRisk,
         source,
         confidence,
         recoveryAttemptId,
-        wasPartial: !fullyRecovered,
+        wasPartial: !result.fullyRecovered,
       },
     })
 
-    // 9. Trigger outcome evaluation for the linked attempt (cross-feature integration)
-    if (recoveryAttemptId) {
-      try {
-        const { markRecovered } = await import("../outcome")
-        await markRecovered(recoveryAttemptId, attribution.id)
-      } catch (err) {
-        // Outcome evaluation failure must NOT break the attribution flow
-        logger.error("OUTCOME_EVALUATION_FAILED_AFTER_ATTRIBUTION", {
-          attributionId: attribution.id,
-          recoveryAttemptId,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    }
-
-    // 10. Audit: payment attributed
     await logAudit({
       caseId: recoveryCaseId,
       actor: { type: "webhook", source: "razorpay" },
@@ -465,31 +498,40 @@ async function createAttribution(
       entityType: "payment",
       entityId: paymentId,
       action: "payment_attributed",
-      details: `Payment attributed to recovery case via ${source} (${(confidence * 100).toFixed(0)}% confidence). ₹${(actualIncrement / 100).toFixed(2)} recovered.`,
+      details: `Payment attributed to recovery case via ${source} (${(confidence * 100).toFixed(0)}% confidence). ₹${(result.amount / 100).toFixed(2)} recovered.`,
       metadata: {
-        attributionId: attribution.id,
+        attributionId: result.attributionId,
         paymentId,
         recoveryCaseId,
         source,
         confidence,
-        amount: actualIncrement,
+        amount: result.amount,
         recoveryAttemptId,
       },
     })
+  }
 
-    return {
-      attributionId: attribution.id,
-      recoveryCaseId,
-      paymentId,
-      amount: actualIncrement,
-      status: "attributed",
-      source,
-      confidence,
-      reason,
-      caseUpdated: true,
-      attemptUpdated,
+  // 9. Trigger outcome evaluation for the linked attempt AFTER transaction commits
+  // (avoids SQLite nested query deadlock during exclusive transaction)
+  if (recoveryAttemptId && result && result.status === "attributed") {
+    try {
+      const { markRecovered } = await import("../outcome")
+      await markRecovered(recoveryAttemptId, result.attributionId)
+    } catch (err) {
+      // Outcome evaluation failure must NOT break the attribution flow
+      if (typeof logger?.error === "function") {
+        logger.error("OUTCOME_EVALUATION_FAILED_AFTER_ATTRIBUTION", {
+          attributionId: result.attributionId,
+          recoveryAttemptId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      } else {
+        console.error("OUTCOME_EVALUATION_FAILED_AFTER_ATTRIBUTION", err)
+      }
     }
-  })
+  }
+
+  return result
 }
 
 // --- Manual Attribution ---------------------------------------------------
@@ -547,20 +589,28 @@ export async function manualAttribution(
 /**
  * Get attribution-specific metrics.
  */
-export async function getAttributionMetrics(): Promise<AttributionMetrics> {
+export async function getAttributionMetrics(merchantId?: string): Promise<AttributionMetrics> {
+  // Build scoped filters when merchantId is provided
+  const attrFilter = merchantId
+    ? { recoveryCase: { merchantId } }
+    : {}
+  const attemptFilter = merchantId
+    ? { recoveryCase: { merchantId } }
+    : {}
+
   const [attributed, unattributed, rejected, bySource] = await Promise.all([
     db.recoveryAttribution.aggregate({
       _count: true,
       _sum: { amount: true },
-      where: { status: "attributed" },
+      where: { ...attrFilter, status: "attributed" },
     }),
-    db.recoveryAttribution.count({ where: { status: "unattributed" } }),
-    db.recoveryAttribution.count({ where: { status: "rejected" } }),
+    db.recoveryAttribution.count({ where: { ...attrFilter, status: "unattributed" } }),
+    db.recoveryAttribution.count({ where: { ...attrFilter, status: "rejected" } }),
     db.recoveryAttribution.groupBy({
       by: ["source"],
       _count: true,
       _sum: { amount: true },
-      where: { status: "attributed" },
+      where: { ...attrFilter, status: "attributed" },
     }),
   ])
 
@@ -574,7 +624,7 @@ export async function getAttributionMetrics(): Promise<AttributionMetrics> {
 
   // Action effectiveness: for each action type, how many attempts led to attribution?
   const attempts = await db.recoveryAttempt.findMany({
-    where: { status: "succeeded" },
+    where: { ...attemptFilter, status: "succeeded" },
     include: {
       recoveryAttributions: {
         where: { status: "attributed" },
@@ -618,50 +668,61 @@ export async function getAttributionMetrics(): Promise<AttributionMetrics> {
  *
  * Only ATTRIBUTED revenue counts. Open cases' remaining at-risk is the denominator.
  */
-export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
+export async function getFullRecoveryMetrics(merchantId?: string): Promise<FullRecoveryMetrics> {
+  // Scope all queries to merchantId when provided (authenticated requests)
+  const merchantFilter = merchantId ? { merchantId } : {}
+  const caseFilter = merchantId
+    ? { merchantId }
+    : {}
+
   const [capturedSum, openCasesAggregate, completedAggregate, activeCasesCount, highPriorityCount, failedPaymentsAggregate, abandonedAggregate, subscriptionAtRiskAggregate, categoryBreakdown, priorityBreakdown, attributionMetrics] =
     await Promise.all([
-      db.payment.aggregate({ _sum: { amount: true }, where: { status: "captured" } }),
+      db.payment.aggregate({ _sum: { amount: true }, where: { ...merchantFilter, status: "captured" } }),
       db.recoveryCase.aggregate({
         _sum: { amountAtRisk: true, recoveredAmount: true },
-        where: { status: { in: [...OPEN_CASE_STATUSES] } },
+        where: { ...caseFilter, status: { in: [...OPEN_CASE_STATUSES] } },
       }),
-      db.recoveryCase.aggregate({ _sum: { recoveredAmount: true } }),
-      db.recoveryCase.count({ where: { status: { in: [...OPEN_CASE_STATUSES] } } }),
+      db.recoveryCase.aggregate({ _sum: { recoveredAmount: true }, where: { ...caseFilter } }),
+      db.recoveryCase.count({ where: { ...caseFilter, status: { in: [...OPEN_CASE_STATUSES] } } }),
       db.recoveryCase.count({
-        where: { status: { in: [...OPEN_CASE_STATUSES] }, priority: { in: ["high", "critical"] } },
+        where: { ...caseFilter, status: { in: [...OPEN_CASE_STATUSES] }, priority: { in: ["high", "critical"] } },
       }),
-      db.payment.aggregate({ _sum: { amount: true }, _count: true, where: { status: "failed" } }),
-      db.checkout.aggregate({ _sum: { amount: true }, where: { status: "abandoned" } }),
-      db.subscription.aggregate({ _sum: { amount: true }, where: { status: "past_due" } }),
+      db.payment.aggregate({ _sum: { amount: true }, _count: true, where: { ...merchantFilter, status: "failed" } }),
+      db.checkout.aggregate({ _sum: { amount: true }, where: { ...merchantFilter, status: "abandoned" } }),
+      db.subscription.aggregate({ _sum: { amount: true }, where: { ...merchantFilter, status: "past_due" } }),
       db.recoveryCase.groupBy({
         by: ["category"],
         _sum: { amountAtRisk: true, recoveredAmount: true },
         _count: true,
+        where: { ...caseFilter },
       }),
       db.recoveryCase.groupBy({
         by: ["priority"],
         _count: true,
+        where: { ...caseFilter },
       }),
-      getAttributionMetrics(),
+      getAttributionMetrics(merchantId),
     ])
 
   const totalRevenueProcessed = capturedSum._sum.amount ?? 0
   const totalOpenAtRisk = openCasesAggregate._sum.amountAtRisk ?? 0
   const totalOpenRecovered = openCasesAggregate._sum.recoveredAmount ?? 0
   const totalRecoveredRevenue = attributionMetrics.attributedRevenue
-  
-  // Aggregate Incremental Revenue explicitly
+
+  // Aggregate Incremental Revenue explicitly — scoped to merchant
   const incrementalRevenueAggr = await db.incrementalRevenue.aggregate({
     _sum: { incrementalAmount: true },
-    where: { attributionType: "DIRECT" }
+    where: { attributionType: "DIRECT", ...(merchantId ? { recoveryCase: { merchantId } } : {}) },
   })
   const directlyAttributedRecoveredRevenue = incrementalRevenueAggr._sum.incrementalAmount ?? 0
   const unattributedRecoveredRevenue = Math.max(0, totalRecoveredRevenue - directlyAttributedRecoveredRevenue)
 
   const agentDecisionsAggr = await db.agentDecision.aggregate({
     _sum: { expectedIncrementalRecovery: true },
-    where: { status: "approved" } // or whenever executed
+    where: {
+      status: "approved",
+      ...(merchantId ? { recoveryCase: { merchantId } } : {}),
+    },
   })
   const expectedIncrementalRecovery = agentDecisionsAggr._sum.expectedIncrementalRecovery ?? 0
 
@@ -670,17 +731,18 @@ export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
   const recoveryDenominator = totalRecoveredRevenue + remainingRevenueAtRisk
   const recoveryRate = recoveryDenominator > 0 ? totalRecoveredRevenue / recoveryDenominator : 0
 
-  // Case counts by status
+  // Case counts by status — scoped to merchant
   const recoveredCases = await db.recoveryCase.count({
-    where: { status: "completed", recoveredAmount: { gt: 0 } },
+    where: { ...caseFilter, status: "completed", recoveredAmount: { gt: 0 } },
   })
   const partiallyRecovered = await db.recoveryCase.count({
     where: {
+      ...caseFilter,
       status: { in: [...OPEN_CASE_STATUSES] },
       recoveredAmount: { gt: 0 },
     },
   })
-  const unrecoverable = await db.recoveryCase.count({ where: { status: "failed" } })
+  const unrecoverable = await db.recoveryCase.count({ where: { ...caseFilter, status: "failed" } })
   const unattributedPayments = attributionMetrics.totalUnattributed
 
   // Category breakdown
@@ -698,6 +760,32 @@ export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
   for (const row of priorityBreakdown) {
     byPriority[row.priority] = row._count
   }
+
+  // --- Eligible recovery exposure --- scoped to merchant
+  const ELIGIBLE_STATUSES = ["diagnosing", "diagnosed", "awaiting_approval", "executing"] as const
+  const eligibleAggregate = await db.recoveryCase.aggregate({
+    _sum: { amountAtRisk: true },
+    where: { ...caseFilter, status: { in: [...ELIGIBLE_STATUSES] } },
+  })
+  const eligibleRecoveryExposure = eligibleAggregate._sum.amountAtRisk ?? 0
+
+  // --- Net recovery value --- scoped to merchant
+  const costsAggr = await db.agentDecision.aggregate({
+    _sum: { interventionCost: true, incentiveCost: true },
+    where: {
+      status: { in: ["approved", "overridden"] },
+      ...(merchantId ? { recoveryCase: { merchantId } } : {}),
+      OR: [
+        { interventionCost: { not: null } },
+        { incentiveCost: { not: null } },
+      ],
+    },
+  })
+  const totalInterventionCost = (costsAggr._sum.interventionCost ?? 0) + (costsAggr._sum.incentiveCost ?? 0)
+  // Only expose net value if we have both recovered revenue and cost data
+  const netRecoveryValue = totalRecoveredRevenue > 0 || totalInterventionCost > 0
+    ? totalRecoveredRevenue - totalInterventionCost
+    : null
 
   return {
     totalRevenueProcessed,
@@ -721,5 +809,7 @@ export async function getFullRecoveryMetrics(): Promise<FullRecoveryMetrics> {
     byCategory,
     byPriority,
     attribution: attributionMetrics,
+    eligibleRecoveryExposure,
+    netRecoveryValue,
   }
 }

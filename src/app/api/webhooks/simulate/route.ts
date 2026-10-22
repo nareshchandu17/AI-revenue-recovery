@@ -31,8 +31,8 @@ import { ingestWebhook } from "@/services/webhook/ingest"
 import { isRecoveryRelevant } from "@/services/webhook/schemas"
 import type { WebhookEnvelope } from "@/services/webhook/schemas"
 import { z } from "zod/v4"
-import { db } from "@/lib/db"
 import { rateLimitResponse } from "@/lib/rate-limit"
+import { requireAuth } from "@/lib/auth"
 
 const simulateSchema = z.object({
   event: z.string().min(1),
@@ -56,6 +56,9 @@ export async function POST(request: NextRequest) {
     if (env.NODE_ENV === "production") {
       throw new ForbiddenError("Simulation endpoint is disabled in production")
     }
+
+    // Require auth even in dev — prevents unauthenticated simulation
+    const sessionUser = await requireAuth()
 
     // Rate limit
     const clientIP = request.headers.get("x-forwarded-for") ?? "unknown"
@@ -123,9 +126,11 @@ export async function POST(request: NextRequest) {
       },
     }
 
-    // Resolve merchant
+    // Resolve merchant — use authenticated merchant first, fall back to notes
     const merchantId =
-      payment.notes?.merchantId ?? (await getFirstMerchantId())
+      payment.notes?.merchantId ??
+      payment.notes?.merchant_id ??
+      sessionUser.merchantId
 
     if (!merchantId) {
       return Response.json(
@@ -147,9 +152,4 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     return errorResponse(err)
   }
-}
-
-async function getFirstMerchantId(): Promise<string | null> {
-  const merchant = await db.merchant.findFirst({ select: { id: true } })
-  return merchant?.id ?? null
 }

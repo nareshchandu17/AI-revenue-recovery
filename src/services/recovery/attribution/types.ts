@@ -48,6 +48,9 @@ export interface AttributionResult {
   reason: string
   caseUpdated: boolean
   attemptUpdated: boolean
+  fullyRecovered?: boolean
+  newRecovered?: number
+  amountAtRisk?: number
 }
 
 /** Input for attempting attribution. */
@@ -113,4 +116,18 @@ export interface FullRecoveryMetrics {
   byCategory: Record<string, { count: number; amountAtRisk: number; recovered: number }>
   byPriority: Record<string, number>
   attribution: AttributionMetrics
+
+  /**
+   * Eligible recovery exposure: total at-risk amount on cases that passed
+   * policy eligibility (status in diagnosing..executing, no dismissal).
+   * Backend-computed — never a dashboard multiplier.
+   */
+  eligibleRecoveryExposure: number
+
+  /**
+   * Net recovery value: verified recovered revenue minus total recorded
+   * intervention costs from AgentDecision.interventionCost + incentiveCost.
+   * Backend-computed. May be null if no costs have been recorded yet.
+   */
+  netRecoveryValue: number | null
 }

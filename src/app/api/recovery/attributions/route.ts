@@ -1,21 +1,27 @@
 /**
  * GET /api/recovery/attributions
  *
- * List recovery attributions with optional filtering.
+ * List recovery attributions for the authenticated merchant.
+ * Requires authentication.
  */
 
 import { errorResponse } from "@/lib/errors"
 import { db } from "@/lib/db"
+import { requireAuth } from "@/lib/auth"
 
 export async function GET(request: Request) {
   try {
+    const sessionUser = await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const source = searchParams.get("source")
     const caseId = searchParams.get("caseId")
     const limit = Math.min(Number(searchParams.get("limit") ?? 50), 100)
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = {
+      recoveryCase: { merchantId: sessionUser.merchantId },
+    }
     if (status) where.status = status
     if (source) where.source = source
     if (caseId) where.recoveryCaseId = caseId

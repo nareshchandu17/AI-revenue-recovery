@@ -20,7 +20,7 @@ import {
   ANOMALY_FACTOR_MIN,
   ANOMALY_FACTOR_MAX,
 } from './types'
-import type { AnomalyDetectionResult, AnomalyRiskAdjustment, AnomalyWindowKey } from './types'
+import type { AnomalyDetectionOptions, AnomalyDetectionResult, AnomalyRiskAdjustment, AnomalyWindowKey } from './types'
 
 // ------------------------------------------------------------------
 // Internal helpers
@@ -59,17 +59,28 @@ function classifySeverity(
   sd: number,
   sampleSize: number,
   baselineSampleSize: number,
+  options?: {
+    minObservations?: number
+    minSampleSize?: number
+    thresholds?: { WATCH?: number; ELEVATED?: number; CRITICAL?: number }
+  },
 ): { severity: 'NORMAL' | 'WATCH' | 'ELEVATED' | 'CRITICAL' | 'INSUFFICIENT_DATA'; explanation: string } {
+  const minObs = options?.minObservations ?? MIN_OBSERVATIONS
+  const minSample = options?.minSampleSize ?? MIN_SAMPLE_SIZE
+  const watchThreshold = options?.thresholds?.WATCH ?? SEVERITY_THRESHOLDS.WATCH
+  const elevatedThreshold = options?.thresholds?.ELEVATED ?? SEVERITY_THRESHOLDS.ELEVATED
+  const criticalThreshold = options?.thresholds?.CRITICAL ?? SEVERITY_THRESHOLDS.CRITICAL
+
   // Must meet minimum observations in BOTH windows
-  if (sampleSize < MIN_OBSERVATIONS || baselineSampleSize < MIN_OBSERVATIONS) {
+  if (sampleSize < minObs || baselineSampleSize < minObs) {
     return {
       severity: 'INSUFFICIENT_DATA',
-      explanation: `Insufficient data: current window has ${sampleSize} payments (need ≥${MIN_OBSERVATIONS}), baseline has ${baselineSampleSize} payments (need ≥${MIN_OBSERVATIONS})`,
+      explanation: `Insufficient data: current window has ${sampleSize} payments (need ≥${minObs}), baseline has ${baselineSampleSize} payments (need ≥${minObs})`,
     }
   }
 
   // Negative SD means observed is *below* baseline — not anomalous for failure rate
-  if (sd < SEVERITY_THRESHOLDS.WATCH) {
+  if (sd < watchThreshold) {
     return {
       severity: 'NORMAL',
       explanation: `Failure rate within normal range (${sd.toFixed(2)} SD from baseline)`,
@@ -77,16 +88,16 @@ function classifySeverity(
   }
 
   // Small sample capping: don't allow CRITICAL/ELEVATED from small samples
-  const isSmallSample = sampleSize < MIN_SAMPLE_SIZE || baselineSampleSize < MIN_SAMPLE_SIZE
+  const isSmallSample = sampleSize < minSample || baselineSampleSize < minSample
 
-  if (sd >= SEVERITY_THRESHOLDS.CRITICAL && !isSmallSample) {
+  if (sd >= criticalThreshold && !isSmallSample) {
     return {
       severity: 'CRITICAL',
       explanation: `Critical failure rate spike: ${sd.toFixed(2)} SD above baseline`,
     }
   }
 
-  if (sd >= SEVERITY_THRESHOLDS.ELEVATED && !isSmallSample) {
+  if (sd >= elevatedThreshold && !isSmallSample) {
     return {
       severity: 'ELEVATED',
       explanation: `Elevated failure rate spike: ${sd.toFixed(2)} SD above baseline`,
@@ -125,13 +136,27 @@ function computeAnomalyFactor(sd: number): number {
  * observation window, computes failure rate per sub-window, then measures
  * the observation window's rate in standard deviations from the baseline
  * distribution.
+ *
+ * Features:
+ * - Deterministic baseline statistical comparison
+ * - Automatic deduplication of repeated signals for active anomaly
+ * - Auto-resolution when metrics normalize
+ * - Alert delivery via notification pipeline with deduplication
  */
 export async function detectPaymentFailureRateSpike(
   merchantId: string,
-  windowKey: AnomalyWindowKey = '1h',
-  now: Date = new Date(),
+  windowKeyOrOptions: AnomalyWindowKey | AnomalyDetectionOptions = '1h',
+  legacyNow?: Date,
 ): Promise<AnomalyDetectionResult> {
-  const windowMinutes = ANOMALY_WINDOWS[windowKey]
+  const options: AnomalyDetectionOptions = typeof windowKeyOrOptions === 'string'
+    ? { windowKey: windowKeyOrOptions, now: legacyNow }
+    : (windowKeyOrOptions ?? {})
+
+  const windowKey: AnomalyWindowKey = options.windowKey ?? '1h'
+  const now: Date = options.now ?? legacyNow ?? new Date()
+  const suppressAlerts = options.suppressAlerts ?? false
+
+  const windowMinutes = ANOMALY_WINDOWS[windowKey] ?? 60
   const windowMs = windowMinutes * 60 * 1000
   const baselineMultiplier = BASELINE_MULTIPLIER
 
@@ -219,7 +244,16 @@ export async function detectPaymentFailureRateSpike(
   // ----------------------------------------------------------------
   // 6. Classify severity
   // ----------------------------------------------------------------
-  const { severity, explanation } = classifySeverity(standardDeviations, currentTotal, baselineTotal)
+  const { severity, explanation } = classifySeverity(
+    standardDeviations,
+    currentTotal,
+    baselineTotal,
+    {
+      minObservations: options.minObservations,
+      minSampleSize: options.minSampleSize,
+      thresholds: options.sensitivityThresholds,
+    },
+  )
 
   // ----------------------------------------------------------------
   // 7. Compute anomaly factor
@@ -234,13 +268,10 @@ export async function detectPaymentFailureRateSpike(
   const deviation = baselineMean > 0 ? (observedRate - baselineMean) / baselineMean : 0
 
   // ----------------------------------------------------------------
-  // 9. Build result
+  // 9. Build result template
   // ----------------------------------------------------------------
-  const status: 'active' | 'insufficient_data' = severity === 'INSUFFICIENT_DATA'
-    ? 'insufficient_data'
-    : severity === 'NORMAL'
-      ? 'insufficient_data'
-      : 'active'
+  const isSpike = severity === 'WATCH' || severity === 'ELEVATED' || severity === 'CRITICAL'
+  const isNormal = severity === 'NORMAL'
 
   const result: AnomalyDetectionResult = {
     merchantId,
@@ -255,7 +286,7 @@ export async function detectPaymentFailureRateSpike(
     severity,
     sampleSize: currentTotal,
     baselineSampleSize: baselineTotal,
-    status,
+    status: isSpike ? 'active' : 'insufficient_data',
     anomalyFactor,
     explanation,
   }
@@ -272,128 +303,176 @@ export async function detectPaymentFailureRateSpike(
   })
 
   // ----------------------------------------------------------------
-  // 10. Persist to RiskAnomaly (upsert via unique constraint)
+  // 10. Persistence, Deduplication & Lifecycle Resolution
   // ----------------------------------------------------------------
-  const dbStatus: AnomalyStatus = severity === 'INSUFFICIENT_DATA'
-    ? 'insufficient_data'
-    : severity === 'NORMAL'
-      ? 'insufficient_data'
-      : 'active'
-
   const dbSeverity: AnomalySeverity = severity === 'INSUFFICIENT_DATA' ? 'NORMAL' : (severity as AnomalySeverity)
 
-  // Resolve any previous active anomalies for this metric before upserting
-  if (status === 'active') {
-    await db.riskAnomaly.updateMany({
-      where: {
-        merchantId,
-        metric: 'PAYMENT_FAILURE_RATE' as AnomalyMetric,
-        status: 'active',
-        NOT: {
-          windowStart,
-          windowEnd,
-        },
-      },
-      data: {
-        status: 'resolved',
-        resolvedAt: new Date(),
-      },
-    })
-  }
-
-  await db.riskAnomaly.upsert({
+  // Find any currently active anomaly for this merchant and metric
+  const existingActive = await db.riskAnomaly.findFirst({
     where: {
-      merchantId_metric_windowStart_windowEnd_detectionVersion: {
-        merchantId,
-        metric: 'PAYMENT_FAILURE_RATE' as AnomalyMetric,
-        windowStart,
-        windowEnd,
-        detectionVersion: ANOMALY_DETECTION_VERSION,
-      },
-    },
-    create: {
       merchantId,
       metric: 'PAYMENT_FAILURE_RATE' as AnomalyMetric,
-      windowStart,
-      windowEnd,
-      baselineValue: result.baselineValue,
-      observedValue: result.observedValue,
-      deviation: result.deviation,
-      severity: dbSeverity,
-      sampleSize: result.sampleSize,
-      baselineSampleSize: result.baselineSampleSize,
-      detectionVersion: ANOMALY_DETECTION_VERSION,
-      status: dbStatus,
+      status: 'active',
     },
-    update: {
-      baselineValue: result.baselineValue,
-      observedValue: result.observedValue,
-      deviation: result.deviation,
-      severity: dbSeverity,
-      sampleSize: result.sampleSize,
-      baselineSampleSize: result.baselineSampleSize,
-      status: dbStatus,
-    },
+    orderBy: { detectedAt: 'desc' },
   })
 
-  // ----------------------------------------------------------------
-  // 11. Audit event
-  // ----------------------------------------------------------------
-  if (status === 'active') {
-    await logAudit({
-      actor: { type: 'system' },
-      eventType: 'ANOMALY_DETECTED',
-      entityType: 'RiskAnomaly',
-      entityId: `${merchantId}-PAYMENT_FAILURE_RATE`,
-      action: 'DETECT_ANOMALY',
-      details: explanation,
-      metadata: {
-        merchantId,
-        metric: 'PAYMENT_FAILURE_RATE',
-        severity,
-        standardDeviations: result.standardDeviations,
-        anomalyFactor: result.anomalyFactor,
-        windowMinutes,
-        deviation: result.deviation,
-        sampleSize: result.sampleSize,
-      },
-    })
-  }
+  let anomalyId: string | undefined
+  let actionTaken: AnomalyDetectionResult['actionTaken']
+  let alertDispatched = false
+  let alertSuppressedReason: string | undefined
 
-  // If previous anomaly existed but now normal, log resolved
-  if (status === 'insufficient_data' && severity !== 'INSUFFICIENT_DATA') {
-    // NORMAL result — check if there was a previously active anomaly
-    const previousActive = await db.riskAnomaly.findFirst({
-      where: {
-        merchantId,
-        metric: 'PAYMENT_FAILURE_RATE' as AnomalyMetric,
-        status: 'active',
-      },
-    })
-    if (previousActive) {
-      await db.riskAnomaly.update({
-        where: { id: previousActive.id },
-        data: { status: 'resolved', resolvedAt: new Date() },
+  if (isSpike) {
+    if (!existingActive) {
+      // 10a. New active anomaly detected — persist start/end times and metadata
+      const createdAnomaly = await db.riskAnomaly.create({
+        data: {
+          merchantId,
+          metric: 'PAYMENT_FAILURE_RATE' as AnomalyMetric,
+          windowStart,
+          windowEnd,
+          baselineValue: result.baselineValue,
+          observedValue: result.observedValue,
+          deviation: result.deviation,
+          severity: dbSeverity,
+          sampleSize: result.sampleSize,
+          baselineSampleSize: result.baselineSampleSize,
+          detectionVersion: ANOMALY_DETECTION_VERSION,
+          status: 'active',
+          detectedAt: now,
+        },
       })
+
+      anomalyId = createdAnomaly.id
+      actionTaken = 'new_anomaly_detected'
+
+      // Deliver enabled alert through notification pipeline
+      if (!suppressAlerts) {
+        const { dispatchAnomalyAlert } = await import('@/services/notifications/alert-service')
+        const alertRes = await dispatchAnomalyAlert({
+          merchantId,
+          anomalyId: createdAnomaly.id,
+          observedValue: result.observedValue,
+          baselineValue: result.baselineValue,
+          severity: severity as 'WATCH' | 'ELEVATED' | 'CRITICAL',
+          deviation: result.deviation,
+        })
+        alertDispatched = alertRes.dispatched
+        if (!alertRes.dispatched) {
+          alertSuppressedReason = alertRes.reason
+        }
+      }
+
+      await logAudit({
+        actor: { type: 'system' },
+        eventType: 'ANOMALY_DETECTED',
+        entityType: 'RiskAnomaly',
+        entityId: createdAnomaly.id,
+        action: 'DETECT_ANOMALY',
+        details: explanation,
+        metadata: {
+          merchantId,
+          metric: 'PAYMENT_FAILURE_RATE',
+          severity,
+          standardDeviations: result.standardDeviations,
+          anomalyFactor: result.anomalyFactor,
+          windowMinutes,
+          deviation: result.deviation,
+          sampleSize: result.sampleSize,
+          baselineSampleSize: result.baselineSampleSize,
+        },
+      })
+    } else {
+      // 10b. Repeated signal for the same active anomaly — DEDUPLICATE!
+      const updatedAnomaly = await db.riskAnomaly.update({
+        where: { id: existingActive.id },
+        data: {
+          baselineValue: result.baselineValue,
+          observedValue: result.observedValue,
+          deviation: result.deviation,
+          severity: dbSeverity,
+          sampleSize: result.sampleSize,
+          baselineSampleSize: result.baselineSampleSize,
+          windowEnd,
+        },
+      })
+
+      anomalyId = updatedAnomaly.id
+      actionTaken = 'existing_anomaly_updated'
+      alertDispatched = false
+      alertSuppressedReason = 'duplicate_active_anomaly'
+
+      log.info('Deduplicated repeated signal for active anomaly', {
+        anomalyId: existingActive.id,
+        merchantId,
+        severity,
+        observedRate,
+      })
+    }
+
+    result.status = 'active'
+  } else if (isNormal) {
+    if (existingActive) {
+      // 10c. Failure rate returned to normal — RESOLVE existing anomaly!
+      await db.riskAnomaly.update({
+        where: { id: existingActive.id },
+        data: {
+          status: 'resolved',
+          resolvedAt: now,
+        },
+      })
+
+      // Clean up any lingering active anomalies for this metric
+      await db.riskAnomaly.updateMany({
+        where: {
+          merchantId,
+          metric: 'PAYMENT_FAILURE_RATE' as AnomalyMetric,
+          status: 'active',
+          id: { not: existingActive.id },
+        },
+        data: {
+          status: 'resolved',
+          resolvedAt: now,
+        },
+      })
+
+      anomalyId = existingActive.id
+      actionTaken = 'anomaly_resolved'
+      result.status = 'resolved'
+
       await logAudit({
         actor: { type: 'system' },
         eventType: 'ANOMALY_RESOLVED',
         entityType: 'RiskAnomaly',
-        entityId: previousActive.id,
+        entityId: existingActive.id,
         action: 'RESOLVE_ANOMALY',
         details: `Failure rate returned to normal: ${explanation}`,
         metadata: {
           merchantId,
           metric: 'PAYMENT_FAILURE_RATE',
-          previousSeverity: previousActive.severity,
+          previousSeverity: existingActive.severity,
           currentStandardDeviations: result.standardDeviations,
+          resolvedAt: now.toISOString(),
         },
       })
+    } else {
+      actionTaken = 'normal_no_action'
+      result.status = 'insufficient_data'
     }
+  } else {
+    // INSUFFICIENT_DATA
+    actionTaken = 'insufficient_data'
+    result.status = 'insufficient_data'
   }
+
+  result.anomalyId = anomalyId
+  result.actionTaken = actionTaken
+  result.alertDispatched = alertDispatched
+  result.alertSuppressedReason = alertSuppressedReason
 
   return result
 }
+
 
 /**
  * Get the active anomaly risk adjustment for a merchant.

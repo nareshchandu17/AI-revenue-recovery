@@ -264,7 +264,12 @@ export async function ingestWebhook(
         merchantId,
         providerPaymentId: rpPayment.id,
         providerOrderId: rpPayment.order_id,
-        providerReferenceId: envelope.payload.payment_link?.entity?.reference_id ?? null,
+        // payment_link.paid: reference_id is in the payment_link entity and
+        // also echoed in the payment notes as recovery_case_id
+        providerReferenceId:
+          (envelope.payload.payment_link?.entity as Record<string, unknown> | undefined)?.reference_id as string | null
+          ?? rpPayment.notes?.recovery_case_id
+          ?? null,
         providerNotes: rpPayment.notes,
       })
     } catch (err) {
@@ -359,6 +364,26 @@ export async function ingestWebhook(
       recoveryCaseCreated = true
 
       log.info("Recovery case created", { caseId: recoveryCase.id, category, priority, amount: rpPayment.amount })
+
+      if (rpPayment.amount >= 50000) {
+        const { dispatchHighValueAlert } = await import("@/services/notifications/alert-service")
+        dispatchHighValueAlert({
+          merchantId,
+          caseId: recoveryCase.id,
+          paymentExternalId: rpPayment.id,
+          amount: rpPayment.amount,
+          customerEmail: customer.email,
+        }).catch((err) => log.error("Failed to dispatch high value alert", { error: String(err) }))
+      }
+
+      // Event-driven Anomaly Detection: enqueue debounced failure rate check
+      try {
+        const { enqueueAnomalyCheck } = await import("@/services/anomaly")
+        enqueueAnomalyCheck(merchantId)
+      } catch (err) {
+        log.error("Failed to enqueue anomaly check", { error: String(err) })
+      }
+
 
       await logAudit({
         caseId: recoveryCase.id,

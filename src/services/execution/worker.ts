@@ -191,6 +191,8 @@ export async function processJob(
       data: {
         externalRef: executorResult.externalRef,
         simulated: executorResult.simulated,
+        // Store provider-generated URL (e.g. Razorpay short_url for payment links)
+        providerUrl: (executorResult.details?.short_url as string | undefined) ?? "",
       },
     })
     await auditAttemptTransition(attempt, "succeeded", executorResult.summary, {

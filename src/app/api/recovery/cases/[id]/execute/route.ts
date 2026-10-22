@@ -3,13 +3,15 @@
  *
  * Triggers the recovery execution pipeline for a case.
  * Flow: validate → gate → create attempt → queue → return
- * Rate limited.
+ * Rate limited. Requires authentication — merchantId derived from session.
  */
 import { z } from "zod/v4"
 import { ValidationError, errorResponse } from "@/lib/errors"
 import { executeRecovery } from "@/services/execution"
 import { rateLimitResponse } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
+import { requireAuth } from "@/lib/auth"
+import { db } from "@/lib/db"
 
 import crypto from "crypto"
 import { checkIdempotency, saveIdempotency } from "@/lib/idempotency"
@@ -48,6 +50,27 @@ export async function POST(
       throw new ValidationError("Case ID is required")
     }
 
+    // Require authentication
+    const sessionUser = await requireAuth()
+
+    if (id === "demo_wow_01_case" || id === "demo_wow_02_case") {
+      const { ensureDemoWowCases } = await import("@/services/recovery/demo-cases")
+      await ensureDemoWowCases(sessionUser.merchantId)
+    }
+
+    // Verify the case belongs to the authenticated merchant
+    const recoveryCase = await db.recoveryCase.findUnique({
+      where: { id },
+      select: { merchantId: true },
+    })
+    if (!recoveryCase) {
+      // Use generic 404 — don't reveal whether the ID exists for another merchant
+      throw new ValidationError("Case not found")
+    }
+    if (recoveryCase.merchantId !== sessionUser.merchantId) {
+      throw new ValidationError("Case not found")
+    }
+
     let body: { decisionId?: string } = {}
     try {
       const raw = await request.json()
@@ -56,7 +79,7 @@ export async function POST(
       // Empty body is OK — decisionId is optional
     }
 
-    log.info("Executing recovery", { decisionId: body.decisionId })
+    log.info("Executing recovery", { decisionId: body.decisionId, merchantId: sessionUser.merchantId })
 
     const result = await executeRecovery({
       caseId: id,

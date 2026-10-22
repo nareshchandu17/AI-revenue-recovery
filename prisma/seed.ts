@@ -835,6 +835,60 @@ async function main() {
   console.log(`  Total at risk:    Rs.${(totalAtRisk._sum.amountAtRisk ?? 0) / 100}`)
   console.log(`  Total recovered:  Rs.${(totalRecovered._sum.recoveredAmount ?? 0) / 100}`)
   console.log('========================================\n')
+
+  // ----------------------------------------------------------------
+  // Create default login users for demo access
+  // ----------------------------------------------------------------
+  console.log('Creating demo login users...')
+
+  // Derive the password hash inline (PBKDF2 via Web Crypto — same as auth.ts)
+  async function hashPw(password: string): Promise<string> {
+    const ITERATIONS = 100_000
+    const HASH_LENGTH = 32
+    const SALT_LENGTH = 16
+    const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH))
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
+    )
+    const hash = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: ITERATIONS },
+      key, HASH_LENGTH * 8
+    )
+    const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('')
+    return `pbkdf2:${hex(salt.buffer)}:${hex(hash)}`
+  }
+
+  // Delete any existing users first (idempotent reseed)
+  await prisma.merchantUser.deleteMany()
+
+  const demoPasswordHash = await hashPw('demo1234')
+
+  await prisma.merchantUser.create({
+    data: {
+      id: 'user_technova_owner',
+      merchantId: merchantA.id,
+      email: 'admin@technova.example.com',
+      name: 'TechNova Admin',
+      passwordHash: demoPasswordHash,
+      role: 'owner',
+    },
+  })
+
+  await prisma.merchantUser.create({
+    data: {
+      id: 'user_fitlife_owner',
+      merchantId: merchantB.id,
+      email: 'admin@fitlife.example.com',
+      name: 'FitLife Admin',
+      passwordHash: demoPasswordHash,
+      role: 'owner',
+    },
+  })
+
+  console.log('  Demo users created:')
+  console.log('  TechNova: admin@technova.example.com / demo1234')
+  console.log('  FitLife:  admin@fitlife.example.com / demo1234')
+  console.log('========================================\n')
 }
 
 main()

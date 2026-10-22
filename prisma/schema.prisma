@@ -154,6 +154,37 @@ enum InterventionOutcome {
 
 // --- Models -------------------------------------------------------
 
+// =================================================================
+// Merchant Users — Authentication & Authorization (Phase 2)
+//
+// Separate from the Merchant tenant record. A MerchantUser is a
+// human who can sign in and act on behalf of a merchant. One merchant
+// may have multiple users with different roles.
+//
+// Passwords are stored as bcrypt hashes — NEVER plaintext.
+// Role values: "owner" | "operator" | "viewer"
+// =================================================================
+
+model MerchantUser {
+  id         String   @id @default(cuid())
+  merchantId String
+  email      String   @unique
+  name       String   @default("")
+  /** bcrypt hash of the user's password. Never store plaintext. */
+  passwordHash String
+  role       String   @default("owner") // owner | operator | viewer
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lastLoginAt DateTime?
+
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([email])
+}
+
+// --- Merchant model (update to add relation to MerchantUser) ---
 model Merchant {
   id        String   @id @default(cuid())
   name      String
@@ -174,6 +205,21 @@ model Merchant {
   /** Agent autonomy level: 0 (Observe), 1 (Manual), 2 (Supervised), 3 (Autonomous), 4 (Max). */
   autonomyLevel             Int @default(2)
 
+  // --- Merchant Profile & Settings ---
+  companyName               String?
+  supportEmail              String   @default("support@example.com")
+  timezone                  String   @default("utc")
+
+  // --- Recovery Rules ---
+  smartRetries              Boolean  @default(true)
+  maxDiscountPercent        Int      @default(15)
+  dunningEmails             Boolean  @default(true)
+
+  // --- Alerts & Notifications ---
+  alertHighValue            Boolean  @default(true)
+  alertDailyDigest          Boolean  @default(true)
+  alertAnomaly              Boolean  @default(true)
+
   customers    Customer[]
   payments     Payment[]
   checkouts    Checkout[]
@@ -183,8 +229,29 @@ model Merchant {
   riskAnomalies RiskAnomaly[]
   interventionFeedbackStats InterventionFeedbackStats[]
   interventionFeedbackRecords InterventionFeedbackRecord[]
+  users        MerchantUser[]
+  alerts       MerchantAlert[]
 
   @@index([email])
+}
+
+model MerchantAlert {
+  id              String   @id @default(cuid())
+  merchantId      String
+  type            String   // HIGH_VALUE_FAILURE | DAILY_DIGEST | ANOMALY_SPIKE | DUNNING_REMINDER
+  title           String
+  message         String
+  severity        String   @default("info") // info | warning | critical
+  delivered       Boolean  @default(false)
+  deliveryChannel String   @default("in_app") // email | webhook | in_app
+  metadataJson    String   @default("{}")
+  createdAt       DateTime @default(now())
+
+  merchant        Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 model Customer {
@@ -396,8 +463,10 @@ model RecoveryAttempt {
   // Feature 19: Failure Taxonomy
   failureCategory    String?
   nextStep           String?
-  // External reference (e.g. Razorpay refund_id, retry payment_id)
+  // External reference (e.g. Razorpay refund_id, retry payment_id, payment link ID)
   externalRef        String               @default("")
+  // Provider-generated URL for customer-facing links (e.g. Razorpay short_url for payment links)
+  providerUrl        String               @default("")
   // BullMQ job ID for tracing
   jobId              String               @default("")
   // Whether this execution was simulated (test mode)
@@ -901,4 +970,30 @@ model IncrementalRevenue {
   @@index([attributionType])
 }
 
+// =================================================================
+// Background Reconciliation Job Runs (Feature 17)
+//
+// Records execution history, health metrics, and outcomes for the
+// background reconciliation worker.
+// =================================================================
 
+model ReconciliationRun {
+  id              String    @id @default(cuid())
+  status          String    @default("running") // running | completed | failed | skipped
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  recordsExamined Int       @default(0)
+  confirmedCount  Int       @default(0)
+  deferredCount   Int       @default(0)
+  exhaustedCount  Int       @default(0)
+  failureCount    Int       @default(0)
+  errorsJson      String    @default("[]")
+  nextRunAt       DateTime?
+  triggerSource   String    @default("scheduler") // scheduler | manual | worker | test
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([startedAt])
+  @@index([status])
+}

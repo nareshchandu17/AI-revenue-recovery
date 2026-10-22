@@ -60,6 +60,10 @@ const mockDb = {
   webhookEvent: {
     create: mock(() => Promise.resolve({})),
   },
+  riskAnomaly: {
+    findFirst: mock(() => Promise.resolve(null)),
+    findMany: mock(() => Promise.resolve([])),
+  },
 }
 
 // ========================================================================
@@ -121,6 +125,27 @@ mock.module("@/services/razorpay", () => ({
     fetchPayment: mock(() => Promise.resolve({ status: "authorized" })),
     capturePayment: mock(() =>
       Promise.resolve({ id: "pay_mock_captured", captured: true })
+    ),
+    createPaymentLink: mock((params: any) =>
+      Promise.resolve({
+        id: "plink_mock_123",
+        short_url: "https://rzp.io/mock/123",
+        status: "created",
+        amount: params?.amount ?? 50000,
+        currency: "INR",
+        reference_id: params?.reference_id,
+        created_at: Math.floor(Date.now() / 1000),
+      })
+    ),
+    refundPayment: mock((paymentId: string, amount: number) =>
+      Promise.resolve({
+        id: "rfnd_mock_123",
+        payment_id: paymentId,
+        amount: amount ?? 50000,
+        currency: "INR",
+        status: "processed",
+        created_at: Math.floor(Date.now() / 1000),
+      })
     ),
   })),
 }))

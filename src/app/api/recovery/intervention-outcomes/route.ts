@@ -1,18 +1,18 @@
 /**
  * GET /api/recovery/intervention-outcomes
  *
- * Returns intervention effectiveness metrics.
- * Server-side only — all classification is done from persisted data.
- *
- * Query params:
- *   ?evaluate=true  — also run batch evaluation of unevaluated attempts
+ * Returns intervention effectiveness metrics for the authenticated merchant.
+ * Requires authentication.
  */
 
 import { errorResponse } from "@/lib/errors"
 import { getInterventionEffectivenessMetrics, batchEvaluatePending } from "@/services/recovery/outcome"
+import { requireAuth } from "@/lib/auth"
 
 export async function GET(request: Request) {
   try {
+    const sessionUser = await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const shouldEvaluate = searchParams.get("evaluate") === "true"
 
@@ -21,11 +21,11 @@ export async function GET(request: Request) {
       evaluatedCount = await batchEvaluatePending(200)
     }
 
-    const metrics = await getInterventionEffectivenessMetrics()
+    const metrics = await getInterventionEffectivenessMetrics(sessionUser.merchantId)
 
     return Response.json({
       success: true,
- evaluatedCount,
+      evaluatedCount,
       ...metrics,
     })
   } catch (err) {

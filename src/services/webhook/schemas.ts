@@ -85,6 +85,7 @@ export const RECOVERY_RELEVANT_EVENTS = [
   "payment.refunded",
   "payment.cancelled",
   "payment.authorized",
+  "payment_link.paid",      // Customer paid via a Razorpay payment link
 ] as const
 
 export type RecoveryEventName = (typeof RECOVERY_RELEVANT_EVENTS)[number]

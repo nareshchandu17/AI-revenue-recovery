@@ -361,11 +361,8 @@ export async function executeRecovery(params: ExecuteParams): Promise<ExecuteRes
     })
   }
 
-  // 15. Update communication event to sent if executed synchronously
-  if (executedSynchronously && communicationEventId) {
-    const { updateCommunicationStatus } = await import('@/services/contact-policy')
-    await updateCommunicationStatus(communicationEventId, 'sent', 'Executed synchronously')
-  }
+  // 15. Real communication event statuses are managed accurately by the delivery provider,
+  // preventing artificial 'sent' marks when only database rows were created.
 
   return {
     caseId,
@@ -497,7 +494,9 @@ async function executeSynchronously(params: SyncExecuteParams): Promise<void> {
   if (result.success) {
     await db.recoveryAttempt.update({
       where: { id: attempt.id },
-      data: { status: 'succeeded', externalRef: result.externalRef, simulated: result.simulated, completedAt: new Date() },
+      data: { status: 'succeeded', externalRef: result.externalRef, simulated: result.simulated, completedAt: new Date(),
+        providerUrl: (result.details?.short_url as string | undefined) ?? "",
+      },
     })
     await logAudit({
       caseId, actor: { type: 'system' },

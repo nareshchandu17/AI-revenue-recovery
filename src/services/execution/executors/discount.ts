@@ -45,18 +45,81 @@ export class DiscountExecutor implements ActionExecutor {
     const discountAmount = Math.floor(context.amountAtRisk * (discountPercent / 100))
     const finalAmount = context.amountAtRisk - discountAmount
 
-    if (finalAmount < 0) {
-        throw new Error("Final amount after discount cannot be negative")
+    if (finalAmount <= 0) {
+        throw new Error("Final amount after discount must be positive")
     }
 
-    // SIMULATED: No Razorpay discount API available in sandbox
+    const { getRazorpayService } = await import("@/services/razorpay")
+    const { isRazorpayConfigured } = await import("@/lib/config")
+    const rzp = getRazorpayService()
+    const isSimulated = !isRazorpayConfigured
+
+    // Create the adjusted payment link reflecting the approved discount
+    const referenceId = `rcv_disc_${context.recoveryCaseId.slice(-18)}_${context.attemptNumber}`
+    
+    // Load customer contact details
+    let customerName = ""
+    let customerEmail = ""
+    let customerContact = ""
+    try {
+      const customer = await db.customer.findUnique({
+        where: { id: context.customerId },
+        select: { displayName: true, email: true, phone: true },
+      })
+      customerName = customer?.displayName ?? ""
+      customerEmail = customer?.email ?? ""
+      customerContact = customer?.phone ?? ""
+    } catch {}
+
+    const linkResponse = await rzp.createPaymentLink({
+      amount: finalAmount,
+      currency: context.currency,
+      description: `Discounted recovery (${discountPercent}% off applied - saved ₹${(discountAmount / 100).toFixed(2)}) for case ${context.recoveryCaseId}`,
+      customer: {
+        name: customerName || undefined,
+        email: customerEmail || undefined,
+        contact: customerContact || undefined,
+      },
+      reference_id: referenceId,
+      notes: {
+        recovery_case_id: context.recoveryCaseId,
+        attempt_number: String(context.attemptNumber),
+        discount_percent: String(discountPercent),
+        original_amount: String(context.amountAtRisk),
+        discount_amount: String(discountAmount),
+        final_amount: String(finalAmount),
+        action: "offer_discount",
+      },
+      notify: { sms: false, email: false },
+      expire_by: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
+    })
+
+    // Dispatch delivery notification to customer with the discounted payment link
+    try {
+      const { deliverCustomerNotification } = await import("@/services/notifications/delivery-service")
+      await deliverCustomerNotification({
+        caseId: context.recoveryCaseId,
+        customerId: context.customerId,
+        merchantId: context.merchantId,
+        amount: finalAmount,
+        currency: context.currency,
+        paymentLinkUrl: linkResponse.short_url,
+        discountPercent,
+        actionType: "offer_discount",
+      })
+    } catch (deliveryErr) {
+      console.warn(`[discount:delivery] Non-fatal notification delivery warning:`, deliveryErr)
+    }
+
     return {
       success: true,
-      externalRef: `simulated_discount_${context.recoveryCaseId}_${context.attemptNumber}`,
-      summary: `SIMULATED: Discount of ${discountPercent}% (₹${(discountAmount / 100).toFixed(2)}) would be offered. Final amount: ₹${(finalAmount / 100).toFixed(2)} ${context.currency}`,
-      simulated: true,
+      externalRef: linkResponse.id,
+      summary: isSimulated
+        ? `SIMULATED: Discount of ${discountPercent}% applied. Payment link created for adjusted ₹${(finalAmount / 100).toFixed(2)} ${context.currency} (saved ₹${(discountAmount / 100).toFixed(2)}) — ${linkResponse.short_url}`
+        : `Razorpay Test Mode: Discount of ${discountPercent}% applied. Payment link created for adjusted ₹${(finalAmount / 100).toFixed(2)} ${context.currency} (saved ₹${(discountAmount / 100).toFixed(2)}) — ${linkResponse.short_url}`,
+      simulated: isSimulated,
       details: {
-        method: "simulated",
+        action: "offer_discount",
         caseId: context.recoveryCaseId,
         attemptNumber: context.attemptNumber,
         originalAmount: context.amountAtRisk,
@@ -64,6 +127,11 @@ export class DiscountExecutor implements ActionExecutor {
         discountAmount,
         finalAmount,
         currency: context.currency,
+        paymentLinkId: linkResponse.id,
+        short_url: linkResponse.short_url,
+        reference_id: referenceId,
+        provider_status: linkResponse.status,
+        executionMode: isSimulated ? "simulated" : "real_provider",
       },
     }
   }

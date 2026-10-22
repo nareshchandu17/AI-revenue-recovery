@@ -2,7 +2,9 @@
 
 Built for the **Razorpay Buildathon — Track 03**.
 
-> **Evaluation Results (Example, Seed 42)**: Our evaluation harness proves our **AI Economic Gate recovers +₹26,495.34 more Net Value** than a naive retry strategy across a 50-case batch. (Note: Running `bun run generate:demo --seed X` followed by `bun run evaluate` will generate a fresh dataset and yield a mathematically distinct positive net value).
+> **Evaluation Results (Example, Seed 42, 100-case batch)**: The evaluation harness runs three strategies — NO_ACTION, NAIVE_RETRY, and AI_ECONOMIC_GATE — against the same synthetic dataset. On this particular seed, NAIVE_RETRY achieves the highest net confirmed value. The AI Economic Gate avoids some interventions where the economic calculation does not justify the cost. Results vary across seeds; run `bun run evaluate` to regenerate fresh results from your own data.
+>
+> **Important**: Synthetic evaluation does not establish causal real-world revenue improvement. The harness measures simulated strategy performance on controlled datasets only.
 
 ## 1. Problem & Solution
 
@@ -71,12 +73,16 @@ The repository includes a deterministic evaluation harness (`bun run evaluate`) 
 │ AI_ECONOMIC_GATE │ 100   │ 97      │ 3         │ 3474.41                 │ 9978.49                   │ 149.00  │ 3325.41                 │ 37.0%         │ 13                  │
 └──────────────────┴───────┴─────────┴───────────┴─────────────────────────┴───────────────────────────┴─────────┴─────────────────────────┴───────────────┴─────────────────────┘
 
-=== KEY FINDINGS ===
-Actions avoided by AI Economic Gate: 3
-WINNER BY NET VALUE: NAIVE (+₹4703.17 over AI_ECONOMIC_GATE)
+=== KEY FINDINGS (Seed 42, 100 cases) ===
+Actions avoided by AI Economic Gate: 3 (cases where intervention cost > expected incremental recovery)
+Highest confirmed net value: NAIVE (+₹8,028.58) — outperforms AI_ECONOMIC_GATE on this seed
+AI_ECONOMIC_GATE avoids 3 interventions where the economic gate determines no action is justified.
+Results vary across seeds — run `bun run evaluate` to see results on your own data.
 
-Note: The evaluation harness measures simulated strategy performance on controlled datasets.
-It does not by itself establish causal real-world incremental revenue.
+IMPORTANT: These numbers are from a synthetic dataset. The evaluation does not prove
+that AI_ECONOMIC_GATE performs better or worse in real-world deployments.
+Both strategies recover similar total amounts (37-38% rate); the gate reduces unnecessary
+costs at the expense of slightly fewer actions.
 ```
 
 ## 5. Tech Stack

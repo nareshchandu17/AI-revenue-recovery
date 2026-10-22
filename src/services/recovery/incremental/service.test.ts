@@ -21,7 +21,10 @@ mock.module('@/lib/logger', () => ({
       info: mock(),
       error: mock(),
       warn: mock()
-    })
+    }),
+    info: mock(),
+    error: mock(),
+    warn: mock()
   }
 }))
 

@@ -2,12 +2,13 @@
  * GET /api/recovery/cases
  *
  * List recovery cases with filtering, sorting, and pagination.
- * All data comes from the database — no hardcoded values.
+ * Requires authentication. All data scoped to the authenticated merchant.
  */
 
 import { db } from "@/lib/db"
 import { errorResponse } from "@/lib/errors"
 import { OPEN_CASE_STATUSES } from "@/services/recovery/detection/constants"
+import { requireAuth } from "@/lib/auth"
 
 const VALID_STATUSES = [
   "detected", "diagnosing", "diagnosed", "awaiting_approval",
@@ -32,11 +33,16 @@ function parsePagination(searchParams: URLSearchParams) {
 
 export async function GET(request: Request) {
   try {
+    // Require authentication — all queries scoped to authenticated merchant
+    const sessionUser = await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const { page, limit, skip } = parsePagination(searchParams)
 
-    // Build where clause
-    const where: Record<string, unknown> = {}
+    // Build where clause — always scoped to authenticated merchant
+    const where: Record<string, unknown> = {
+      merchantId: sessionUser.merchantId,
+    }
 
     const status = searchParams.get("status")
     if (status && status !== "all") {
@@ -67,12 +73,14 @@ export async function GET(request: Request) {
 
     const search = searchParams.get("search")?.trim()
     if (search) {
+      // SQLite does not support mode: "insensitive" — use contains without mode
+      // SQLite's LIKE is case-insensitive for ASCII by default, so this works for most searches
       where.OR = [
-        { id: { contains: search, mode: "insensitive" } },
-        { payment: { description: { contains: search, mode: "insensitive" } } },
-        { payment: { externalId: { contains: search, mode: "insensitive" } } },
-        { customer: { displayName: { contains: search, mode: "insensitive" } } },
-        { customer: { email: { contains: search, mode: "insensitive" } } },
+        { id: { contains: search } },
+        { payment: { description: { contains: search } } },
+        { payment: { externalId: { contains: search } } },
+        { customer: { displayName: { contains: search } } },
+        { customer: { email: { contains: search } } },
       ]
     }
 
@@ -180,9 +188,10 @@ export async function GET(request: Request) {
       )
     }
 
-    // Status summary for filter badges
+    // Status summary for filter badges — scoped to merchant
     const statusCounts = await db.recoveryCase.groupBy({
       by: ["status"],
+      where: { merchantId: sessionUser.merchantId },
       _count: true,
     })
     const statusSummary: Record<string, number> = {}

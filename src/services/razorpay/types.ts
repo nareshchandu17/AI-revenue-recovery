@@ -96,7 +96,19 @@ export interface RazorpayService {
   ): Promise<RazorpayPayment>
   /** Resend a payment link / notification to the customer. */
   notifyCustomer(paymentId: string): Promise<unknown>
+  /**
+   * Create a Razorpay Payment Link.
+   * Returns the real provider link ID and short_url.
+   */
+  createPaymentLink(params: RazorpayPaymentLinkCreateParams): Promise<RazorpayPaymentLinkResponse>
+  /**
+   * Fetch a payment link by its Razorpay plink_xxx ID.
+   * Used by reconciliation to check current status.
+   */
+  fetchPaymentLink(paymentLinkId: string): Promise<RazorpayPaymentLinkResponse>
 }
+
+// --- Refund ---
 
 export interface RazorpayRefund {
   id: string
@@ -105,4 +117,55 @@ export interface RazorpayRefund {
   currency: string
   status: string
   created_at: number
+}
+
+// --- Payment Link ---
+
+export interface RazorpayPaymentLinkCreateParams {
+  /** Amount in paise (smallest currency unit). */
+  amount: number
+  currency?: string
+  description?: string
+  /** Customer details — at least one contact field should be present. */
+  customer: {
+    name?: string
+    email?: string
+    contact?: string
+  }
+  /**
+   * Merchant-side idempotency reference — max 40 chars.
+   * Razorpay de-dupes on this field per account.
+   */
+  reference_id?: string
+  /** Key/value metadata stored on the link. Max 15 key-value pairs. */
+  notes?: Record<string, string>
+  /** Whether to send SMS/email notifications to the customer via Razorpay. */
+  notify?: { sms?: boolean; email?: boolean }
+  /** Unix timestamp after which the link expires. */
+  expire_by?: number
+  /** Redirect URL after payment. */
+  callback_url?: string
+  callback_method?: string
+}
+
+export interface RazorpayPaymentLinkResponse {
+  id: string
+  /** The short URL customers use to pay. */
+  short_url: string
+  status: "created" | "partially_paid" | "expired" | "cancelled" | "paid"
+  amount: number
+  currency: string
+  reference_id?: string
+  description?: string
+  created_at: string | number
+  /** Amount already paid (for partial links). */
+  amount_paid: number
+  /** Populated after payment. */
+  payments?: {
+    payment_id: string
+    plink_id: string
+    amount: string | number
+    status: "captured" | "failed"
+    created_at: string | number
+  } | null
 }

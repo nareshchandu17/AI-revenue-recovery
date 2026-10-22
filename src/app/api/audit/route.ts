@@ -1,22 +1,29 @@
 /**
  * GET /api/audit
  *
- * Returns a paginated, human-readable audit timeline.
+ * Returns a paginated, human-readable audit timeline for the authenticated merchant.
+ * Requires authentication.
  */
 
 import { db } from "@/lib/db"
 import { errorResponse } from "@/lib/errors"
+import { requireAuth } from "@/lib/auth"
 
 const VALID_ACTOR_TYPES = ["system", "ai_agent", "merchant", "webhook"]
 
 export async function GET(request: Request) {
   try {
+    // Require auth — scope audit events to cases owned by this merchant
+    const sessionUser = await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "30", 10) || 30))
     const skip = (page - 1) * limit
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = {
+      recoveryCase: { merchantId: sessionUser.merchantId },
+    }
 
     const caseId = searchParams.get("caseId")
     if (caseId) {
@@ -30,7 +37,7 @@ export async function GET(request: Request) {
 
     const search = searchParams.get("search")?.trim()
     if (search) {
-      where.details = { contains: search, mode: "insensitive" }
+      where.details = { contains: search }
     }
 
     const [events, total] = await Promise.all([

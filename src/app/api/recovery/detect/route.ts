@@ -2,14 +2,13 @@
  * POST /api/recovery/detect
  *
  * Triggers the revenue-at-risk detection engine.
- * Scans all eligible records and creates RecoveryCases.
- *
- * Development-only: returns 403 in production.
+ * Development-only (returns 403 in production) AND requires auth.
  */
 
 import { env } from "@/lib/config"
 import { ForbiddenError, errorResponse } from "@/lib/errors"
 import { runDetection } from "@/services/recovery/detection/detector"
+import { requireAuth } from "@/lib/auth"
 
 export async function POST() {
   try {
@@ -18,6 +17,9 @@ export async function POST() {
         "Detection endpoint is disabled in production. Use the background worker."
       )
     }
+
+    // Require auth even in dev — prevent unauthenticated trigger
+    await requireAuth()
 
     const result = await runDetection()
 

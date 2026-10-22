@@ -4,7 +4,8 @@
  * Run via: bun run worker
  *
  * This process connects to Redis, starts the BullMQ worker,
- * and processes recovery execution jobs.
+ * launches the durable background reconciliation scheduler,
+ * and processes recovery execution and reconciliation jobs.
  *
  * The main Next.js app enqueues jobs; this worker dequeues and executes them.
  * They share the same codebase but run as separate processes.
@@ -12,11 +13,13 @@
 
 import { startWorker, stopWorker, checkRedisHealth } from "@/services/execution"
 import { closeRedis } from "@/services/execution"
+import { startReconciliationScheduler, stopReconciliationScheduler } from "@/services/reconciliation"
+import { startAnomalyDetectionScheduler, stopAnomalyDetectionScheduler } from "@/services/anomaly"
 
 const SHUTDOWN_TIMEOUT_MS = 10_000
 
 async function main() {
-  console.log("[worker] Starting recovery execution worker...")
+  console.log("[worker] Starting recovery execution worker, reconciliation service & anomaly detector...")
 
   // 1. Check Redis health
   const healthy = await checkRedisHealth()
@@ -27,11 +30,19 @@ async function main() {
     process.exit(1)
   }
 
-  // 2. Start the worker
+  // 2. Start the BullMQ execution worker
   const worker = startWorker()
   console.log("[worker] Worker started successfully. Waiting for jobs...")
 
-  // 3. Graceful shutdown
+  // 3. Register and start background reconciliation scheduler
+  startReconciliationScheduler()
+  console.log("[worker] Background reconciliation scheduler active.")
+
+  // 4. Register and start background anomaly detection scheduler
+  startAnomalyDetectionScheduler()
+  console.log("[worker] Background anomaly detection scheduler active.")
+
+  // 5. Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`[worker] Received ${signal}, shutting down gracefully...`)
     const timer = setTimeout(() => {
@@ -42,6 +53,8 @@ async function main() {
     timer.unref() // Don't let the timer prevent shutdown
 
     try {
+      await stopAnomalyDetectionScheduler()
+      await stopReconciliationScheduler()
       await stopWorker()
       await closeRedis()
       console.log("[worker] Shutdown complete")
@@ -52,8 +65,8 @@ async function main() {
     }
   }
 
-  process.on("SIGINT", () => shutdown("SIGINT"))
-  process.on("SIGTERM", () => shutdown("SIGTERM"))
+  ;(process as any).on("SIGINT", () => shutdown("SIGINT"))
+  ;(process as any).on("SIGTERM", () => shutdown("SIGTERM"))
 
   // Prevent the process from exiting
   await new Promise(() => {})

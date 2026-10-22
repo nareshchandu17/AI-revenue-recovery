@@ -48,6 +48,7 @@ import type { ProbabilityAssessment } from "../probability/types"
 export interface AnalyzeCaseParams {
   caseId: string
   policy?: MerchantPolicy
+  overrideAIDecision?: Partial<AIDecisionOutput>
 }
 
 /**
@@ -58,7 +59,34 @@ export interface AnalyzeCaseParams {
 export async function analyzeCase(
   params: AnalyzeCaseParams
 ): Promise<AgentAnalysisResult> {
-  const { caseId, policy = DEFAULT_MERCHANT_POLICY } = params
+  const { caseId } = params
+
+  // 0. Resolve policy: prefer explicitly provided policy, otherwise load stored merchant configuration
+  let policy = params.policy
+  if (!policy) {
+    const rc = await db.recoveryCase.findUnique({
+      where: { id: caseId },
+      select: { merchantId: true },
+    })
+    if (rc?.merchantId) {
+      const merchant = await db.merchant.findUnique({
+        where: { id: rc.merchantId },
+      })
+      if (merchant) {
+        policy = {
+          ...DEFAULT_MERCHANT_POLICY,
+          maxDiscountPercent: merchant.maxDiscountPercent ?? DEFAULT_MERCHANT_POLICY.maxDiscountPercent,
+          allowedActions: merchant.smartRetries === false
+            ? DEFAULT_MERCHANT_POLICY.allowedActions.filter((a) => a !== "retry_payment")
+            : DEFAULT_MERCHANT_POLICY.allowedActions,
+        }
+      }
+    }
+  }
+  if (!policy) {
+    policy = DEFAULT_MERCHANT_POLICY
+  }
+
   const usedFallback = false
 
   // 1. Build context
@@ -79,25 +107,40 @@ export async function analyzeCase(
     ? augmentContextWithProbabilities(context, probabilityAssessment)
     : context
 
-  // 4. Get AI decision (or fallback)
+  // 4. Get AI decision (or override / fallback)
   let aiDecision: AIDecisionOutput
-  try {
-    aiDecision = await callAI(augmentedContext)
-  } catch (err) {
-    // AI failed — use deterministic fallback
-    const fallbackResult = await handleAIFailure(err, context, probabilityAssessment, policy)
+  if (params.overrideAIDecision) {
+    aiDecision = {
+      action: params.overrideAIDecision.action ?? "offer_discount",
+      confidence: params.overrideAIDecision.confidence ?? 0.85,
+      reason: params.overrideAIDecision.reason ?? "Recommended recovery action based on scenario evaluation",
+      factors: params.overrideAIDecision.factors ?? ["Scenario candidate action"],
+      riskLevel: params.overrideAIDecision.riskLevel ?? "MEDIUM",
+      customerIntent: params.overrideAIDecision.customerIntent ?? "MEDIUM",
+      recommendedDelayMinutes: null,
+      stopReason: null,
+      discountPercent: params.overrideAIDecision.discountPercent ?? null,
+      ...params.overrideAIDecision,
+    } as AIDecisionOutput
+  } else {
+    try {
+      aiDecision = await callAI(augmentedContext)
+    } catch (err) {
+      // AI failed — use deterministic fallback
+      const fallbackResult = await handleAIFailure(err, context, probabilityAssessment, policy)
 
-    // Persist probability estimates even on fallback path
-    if (probabilityAssessment) {
-      try {
-        const { persistAssessment } = await import("../probability/persistence")
-        await persistAssessment(probabilityAssessment, fallbackResult.decisionId)
-      } catch {
-        // non-fatal
+      // Persist probability estimates even on fallback path
+      if (probabilityAssessment) {
+        try {
+          const { persistAssessment } = await import("../probability/persistence")
+          await persistAssessment(probabilityAssessment, fallbackResult.decisionId)
+        } catch {
+          // non-fatal
+        }
       }
-    }
 
-    return fallbackResult
+      return fallbackResult
+    }
   }
 
   // 5. Run policy validation
@@ -140,14 +183,33 @@ export async function analyzeCase(
     cancel_and_refund: true,
   }
 
-  let decisionStatus: "pending" | "approved" | "rejected"
+  // 5. Evaluate complete decision evidence (DND, consent, contact limits, policy, economic gate)
+  const { evaluateCaseEvidence } = await import("@/services/recovery/decision-evidence")
+  const customerId = augmentedContext.customer?.id ?? (augmentedContext.source as any)?.customerId
+  const merchantRecord = await db.recoveryCase.findUnique({ where: { id: caseId }, select: { merchantId: true } })
+  const merchantId = merchantRecord?.merchantId ?? ""
+
   let economicEvaluation = augmentedContext.economicEvaluations?.evaluations[aiDecision.action]
-  
-  if (economicEvaluation && economicEvaluation.economicDecision === "DO_NOT_ACT") {
+
+  const decisionEvidence = await evaluateCaseEvidence({
+    merchantId,
+    customerId,
+    action: aiDecision.action,
+    policyResult,
+    economicEvaluation,
+    decisionStatus: REQUIRES_APPROVAL[aiDecision.action] ? "pending" : "approved",
+    caseStatus: context.case.status,
+    decisionVersion: `${PROMPT_VERSION}+${economicEvaluation?.economicModelVersion ?? "v1.0"}`,
+  })
+
+  let decisionStatus: "pending" | "approved" | "rejected"
+  if (decisionEvidence.overallState === "BLOCKED" || decisionEvidence.overallState === "DO_NOT_ACT") {
     decisionStatus = "rejected"
     policyResult.allowed = false
-    policyResult.rejectionReason = `Blocked by Economic Gate: ${economicEvaluation.economicReason}`
-    policyResult.policyViolations.push("ECONOMIC_IRRATIONAL")
+    policyResult.rejectionReason = decisionEvidence.stateReason
+    if (!policyResult.policyViolations.includes(decisionEvidence.stateReason)) {
+      policyResult.policyViolations.push(decisionEvidence.stateReason)
+    }
   } else if (!policyResult.allowed) {
     decisionStatus = "rejected"
   } else if (REQUIRES_APPROVAL[aiDecision.action]) {
@@ -165,6 +227,7 @@ export async function analyzeCase(
     policyResult,
     usedFallback,
     decisionStatus,
+    decisionEvidence,
   })
 
   // 7. Persist probability estimates (linked to this decision)
@@ -266,6 +329,8 @@ const MAX_BATCH_SIZE = 50
 export interface BatchAnalyzeParams {
   limit?: number
   policy?: MerchantPolicy
+  /** When provided, only analyze cases belonging to this merchant. */
+  merchantId?: string
 }
 
 /**
@@ -286,8 +351,10 @@ export async function batchAnalyze(
   }
 
   // Find cases that are in open states and have no prior decision
+  // When merchantId provided, scope to that merchant only
   const cases = await db.recoveryCase.findMany({
     where: {
+      ...(params.merchantId ? { merchantId: params.merchantId } : {}),
       status: { in: [...OPEN_CASE_STATUSES] },
       agentDecisions: { none: {} },
     },
@@ -447,6 +514,18 @@ async function handleAIFailure(
     fallbackDecisionStatus = "approved"
   }
 
+  // Evaluate complete decision evidence for fallback
+  const { evaluateCaseEvidence } = await import("@/services/recovery/decision-evidence")
+  const merchantRecord = await db.recoveryCase.findUnique({ where: { id: context.case.id }, select: { merchantId: true } })
+  const fallbackEvidence = await evaluateCaseEvidence({
+    merchantId: merchantRecord?.merchantId ?? "",
+    customerId: context.customer?.id,
+    action: fallbackDecision.action,
+    policyResult,
+    decisionStatus: fallbackDecisionStatus,
+    caseStatus: context.case.status,
+  })
+
   // Persist the fallback decision
   const decision = await persistDecision({
     caseId: context.case.id,
@@ -456,6 +535,7 @@ async function handleAIFailure(
     policyResult,
     usedFallback: true,
     decisionStatus: fallbackDecisionStatus,
+    decisionEvidence: fallbackEvidence,
   })
 
   // Update case status
@@ -580,10 +660,11 @@ interface PersistParams {
   policyResult: PolicyResult
   usedFallback: boolean
   decisionStatus: "pending" | "approved" | "rejected"
+  decisionEvidence?: any
 }
 
 async function persistDecision(params: PersistParams) {
-  const { caseId, context, aiDecision, finalAction, policyResult, usedFallback, decisionStatus } = params
+  const { caseId, context, aiDecision, finalAction, policyResult, usedFallback, decisionStatus, decisionEvidence } = params
 
   // Map the AI output to observation + diagnosis for the AgentDecision model
   const observation = [
@@ -616,6 +697,7 @@ async function persistDecision(params: PersistParams) {
       rejectionReason: policyResult.rejectionReason,
       policyViolations: policyResult.policyViolations,
     },
+    decisionEvidence,
     usedFallback,
   })
 

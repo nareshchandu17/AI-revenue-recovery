@@ -152,12 +152,12 @@ export class InvalidStateTransitionError extends ExecutionError {
     from: string,
     to: string
   ) {
-      super(
-        `Invalid state transition: ${from} → ${to}`,
-        "INVALID_STATE_TRANSITION"
-      )
-      this.name = "InvalidStateTransitionError"
-    }
+    super(
+      `Invalid state transition: ${from} → ${to}`,
+      "INVALID_STATE_TRANSITION"
+    )
+    this.name = "InvalidStateTransitionError"
+  }
 }
 
 export class ExecutionGateError extends ExecutionError {
@@ -201,6 +201,7 @@ export const STOP_REASONS = {
   INVALID_AMOUNT: "Invalid amount for recovery",
   CASE_STATE_INVALID: "Case is in a state that does not permit execution",
   DUPLICATE_ATTEMPT: "Duplicate execution attempt detected",
+  ANOMALY_SPIKE_ACTIVE: "Payment retries paused due to active failure spike anomaly",
 } as const
 export type StopReason = (typeof STOP_REASONS)[keyof typeof STOP_REASONS]
 

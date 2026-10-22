@@ -94,10 +94,29 @@ export async function POST(request: NextRequest) {
 
     // 5. Route to ingestion (only for recovery-relevant events)
     if (isRecoveryRelevant(event)) {
-      const notes = entity?.notes as Record<string, string> | null
+      // Extract payment entity from wherever Razorpay places it for this event type
+      // payment_link.paid has both payload.payment.entity AND payload.payment_link.entity
+      const paymentNotes =
+        (result.data.payload.payment?.entity?.notes as Record<string, string> | null) ?? null
+      const paymentLinkEntity =
+        result.data.payload.payment_link?.entity as Record<string, unknown> | undefined
+
+      const notes: Record<string, string> | null =
+        paymentNotes ??
+        (paymentLinkEntity?.notes as Record<string, string> | null) ??
+        null
+
+      // Merchant resolution (in priority order):
+      // 1. notes.merchant_id — set explicitly by our PaymentLinkExecutor
+      // 2. notes.merchantId — legacy fallback
+      // 3. Razorpay account_id header — matches merchant by Razorpay key
+      // 4. First merchant in DB — only for single-tenant dev setups; logs a warning
+      const accountId = (result.data as unknown as Record<string, unknown>).account_id as string | undefined
       const merchantId =
+        notes?.merchant_id ??
         notes?.merchantId ??
-        (await getFirstMerchantId())
+        (accountId ? await getMerchantByRazorpayAccount(accountId) : null) ??
+        (await getFirstMerchantIdWithWarning())
 
       if (!merchantId) {
         log.error("No merchant found to ingest webhook")
@@ -131,4 +150,29 @@ export async function POST(request: NextRequest) {
 async function getFirstMerchantId(): Promise<string | null> {
   const merchant = await db.merchant.findFirst({ select: { id: true } })
   return merchant?.id ?? null
+}
+
+/**
+ * Log a warning and fall back to the first merchant.
+ * Only acceptable in single-tenant dev — production must route deterministically.
+ */
+async function getFirstMerchantIdWithWarning(): Promise<string | null> {
+  log.warn(
+    "Webhook has no merchant_id in notes — falling back to first merchant. " +
+    "Set notes.merchant_id on payment links for reliable multi-tenant routing."
+  )
+  return getFirstMerchantId()
+}
+
+/**
+ * Look up a merchant by their Razorpay account_id (from the webhook envelope).
+ * Razorpay sends `account_id` in the webhook payload for marketplace accounts.
+ * For standard accounts the field may be absent — returns null in that case.
+ */
+async function getMerchantByRazorpayAccount(_accountId: string): Promise<string | null> {
+  // When multiple merchants have different Razorpay keys configured, we would
+  // match the accountId to the merchant's stored key. For now (single integration)
+  // we skip this and fall through to the notes-based lookup.
+  // TODO: add a RazorpayIntegration model storing (merchantId, razorpayAccountId) pairs.
+  return null
 }

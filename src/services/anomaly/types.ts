@@ -39,6 +39,19 @@ export const SEVERITY_THRESHOLDS = {
 export const ANOMALY_FACTOR_MIN = 1.0
 export const ANOMALY_FACTOR_MAX = 1.5
 
+export interface AnomalyDetectionOptions {
+  windowKey?: AnomalyWindowKey
+  minObservations?: number
+  minSampleSize?: number
+  sensitivityThresholds?: {
+    WATCH?: number
+    ELEVATED?: number
+    CRITICAL?: number
+  }
+  now?: Date
+  suppressAlerts?: boolean
+}
+
 export interface AnomalyDetectionResult {
   merchantId: string
   metric: string
@@ -52,9 +65,13 @@ export interface AnomalyDetectionResult {
   severity: 'NORMAL' | 'WATCH' | 'ELEVATED' | 'CRITICAL' | 'INSUFFICIENT_DATA'
   sampleSize: number
   baselineSampleSize: number
-  status: 'active' | 'insufficient_data'
+  status: 'active' | 'insufficient_data' | 'resolved'
   anomalyFactor: number
   explanation: string
+  anomalyId?: string
+  actionTaken?: 'new_anomaly_detected' | 'existing_anomaly_updated' | 'anomaly_resolved' | 'normal_no_action' | 'insufficient_data'
+  alertDispatched?: boolean
+  alertSuppressedReason?: string
 }
 
 export interface AnomalyRiskAdjustment {
@@ -67,3 +84,23 @@ export interface AnomalyRiskAdjustment {
     explanation: string
   }>
 }
+
+export interface AnomalyJobOptions {
+  merchantId?: string
+  windowKey?: AnomalyWindowKey
+  triggerSource?: 'scheduler' | 'worker' | 'event' | 'manual' | 'test'
+  now?: Date
+}
+
+export interface AnomalyJobResult {
+  jobId: string
+  triggerSource: string
+  merchantsChecked: number
+  anomaliesDetected: number
+  anomaliesActive: number
+  anomaliesResolved: number
+  alertsDispatched: number
+  durationMs: number
+  results: AnomalyDetectionResult[]
+}
+

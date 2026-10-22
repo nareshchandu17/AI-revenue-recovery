@@ -13,6 +13,8 @@ import type {
   RazorpayPayment,
   RazorpayPaymentStatus,
   RazorpayRefund,
+  RazorpayPaymentLinkCreateParams,
+  RazorpayPaymentLinkResponse,
 } from "./types"
 import { UpstreamError } from "@/lib/errors"
 
@@ -152,5 +154,67 @@ export class RazorpayServiceImpl implements RazorpayService {
     // For now we fetch the payment to confirm it exists, then return.
     await this.fetchPayment(paymentId)
     return { notified: true, paymentId }
+  }
+
+  async createPaymentLink(params: RazorpayPaymentLinkCreateParams): Promise<RazorpayPaymentLinkResponse> {
+    try {
+      const payload: Record<string, unknown> = {
+        amount: params.amount,
+        currency: params.currency ?? "INR",
+        customer: {
+          name: params.customer.name ?? "",
+          email: params.customer.email ?? "",
+          contact: params.customer.contact ?? "",
+        },
+        // Disable Razorpay-side notifications by default — we manage comms ourselves
+        notify: params.notify ?? { sms: false, email: false },
+        reminder_enable: false,
+      }
+      if (params.description) payload.description = params.description
+      if (params.reference_id) payload.reference_id = params.reference_id
+      if (params.notes) payload.notes = params.notes
+      if (params.expire_by) payload.expire_by = params.expire_by
+      if (params.callback_url) {
+        payload.callback_url = params.callback_url
+        payload.callback_method = params.callback_method ?? "get"
+      }
+
+      const raw = await this.client.paymentLink.create(payload as unknown as Parameters<typeof this.client.paymentLink.create>[0])
+      return this.mapPaymentLinkEntity(raw as unknown as Record<string, unknown>)
+    } catch (err) {
+      throw new UpstreamError(
+        `Failed to create Razorpay payment link: ${err instanceof Error ? err.message : String(err)}`,
+        "RAZORPAY_PAYMENT_LINK_CREATE_FAILED"
+      )
+    }
+  }
+
+  async fetchPaymentLink(paymentLinkId: string): Promise<RazorpayPaymentLinkResponse> {
+    try {
+      const raw = await this.client.paymentLink.fetch(paymentLinkId)
+      return this.mapPaymentLinkEntity(raw as unknown as Record<string, unknown>)
+    } catch (err) {
+      throw new UpstreamError(
+        `Failed to fetch Razorpay payment link ${paymentLinkId}: ${err instanceof Error ? err.message : String(err)}`,
+        "RAZORPAY_PAYMENT_LINK_FETCH_FAILED"
+      )
+    }
+  }
+
+  private mapPaymentLinkEntity(raw: Record<string, unknown>): RazorpayPaymentLinkResponse {
+    return {
+      id: String(raw.id ?? ""),
+      short_url: String(raw.short_url ?? ""),
+      status: (raw.status as RazorpayPaymentLinkResponse["status"]) ?? "created",
+      amount: Number(raw.amount ?? 0),
+      currency: String(raw.currency ?? "INR"),
+      reference_id: raw.reference_id ? String(raw.reference_id) : undefined,
+      description: raw.description ? String(raw.description) : undefined,
+      created_at: raw.created_at as string | number ?? 0,
+      amount_paid: Number(raw.amount_paid ?? 0),
+      payments: raw.payments
+        ? (raw.payments as RazorpayPaymentLinkResponse["payments"])
+        : null,
+    }
   }
 }

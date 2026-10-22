@@ -2,6 +2,7 @@
  * POST /api/recovery/cases/:id/stop
  *
  * Allows a merchant to stop recovery on an open case.
+ * Requires authentication — merchantId from session.
  * Rate limited.
  */
 
@@ -11,6 +12,7 @@ import { OPEN_CASE_STATUSES } from "@/services/recovery/detection/constants"
 import { logAudit } from "@/services/audit/log"
 import { rateLimitResponse } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
+import { requireAuth } from "@/lib/auth"
 
 export async function POST(
   request: Request,
@@ -32,8 +34,13 @@ export async function POST(
       throw new ValidationError("Case ID is required")
     }
 
+    // Require authentication and verify merchant ownership
+    const sessionUser = await requireAuth()
+
     const recoveryCase = await db.recoveryCase.findUnique({ where: { id } })
-    if (!recoveryCase) throw new NotFoundError(`Case ${id} not found`)
+    if (!recoveryCase || recoveryCase.merchantId !== sessionUser.merchantId) {
+      throw new NotFoundError(`Case ${id} not found`)
+    }
 
     if (!(OPEN_CASE_STATUSES as readonly string[]).includes(recoveryCase.status)) {
       log.warn("Stop rejected — case not in open state", { currentStatus: recoveryCase.status })
@@ -49,7 +56,7 @@ export async function POST(
 
     await logAudit({
       caseId: id,
-      actor: { type: "merchant", merchantId: "merchant_dashboard" },
+      actor: { type: "merchant", merchantId: sessionUser.merchantId },
       eventType: "recovery_stopped",
       entityType: "RecoveryCase",
       entityId: id,

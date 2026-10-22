@@ -1,6 +1,6 @@
 "use client"
 
-import { useMetrics, useCases, useAnomalies, useFeedback } from "@/lib/hooks/use-queries"
+import { useMetrics, useCases, useAnomalies, useFeedback, useReconciliationHealth, useTriggerReconciliation } from "@/lib/hooks/use-queries"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { EmptyState } from "@/components/dashboard/empty-state"
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { ArrowRight, TrendingDown, TrendingUp, AlertCircle, Activity, IndianRupee, BarChart3, Zap, ShieldCheck, UserCheck, Clock } from "lucide-react"
+import { ArrowRight, TrendingDown, TrendingUp, AlertCircle, Activity, IndianRupee, BarChart3, Zap, ShieldCheck, UserCheck, Clock, Percent, RefreshCw, CheckCircle2 } from "lucide-react"
 import { formatCurrency, formatPercent, formatCategory, formatAction, truncate } from "@/lib/format"
 import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
 import { useSettingsStore } from "@/store/settings"
@@ -32,6 +32,8 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
   })
   const { data: anomaliesData } = useAnomalies("active")
   const { data: feedbackData } = useFeedback()
+  const { data: reconData } = useReconciliationHealth()
+  const triggerRecon = useTriggerReconciliation()
 
   const activeAnomaly = anomaliesData?.anomalies?.length
     ? anomaliesData.anomalies.find(a => a.severity === "CRITICAL" || a.severity === "ELEVATED")
@@ -73,9 +75,12 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
           </div>
           <div className="flex flex-col sm:items-end gap-2 mt-2 sm:mt-0">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Interactive Scenarios</p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap sm:justify-end">
               <Button size="sm" variant="outline" onClick={() => onNavigateCase("demo_wow_01_case")} className="h-8 text-xs font-semibold shadow-sm border-amber-200/50 bg-white/50 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900/50 dark:bg-black/20 dark:text-amber-400 dark:hover:bg-amber-950/40 backdrop-blur-sm transition-all hover:-translate-y-0.5">
                 <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Do Not Act (Blocked)
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onNavigateCase("demo_discount_07_case")} className="h-8 text-xs font-semibold shadow-sm border-violet-200/50 bg-white/50 text-violet-700 hover:bg-violet-50 hover:text-violet-800 dark:border-violet-900/50 dark:bg-black/20 dark:text-violet-400 dark:hover:bg-violet-950/40 backdrop-blur-sm transition-all hover:-translate-y-0.5">
+                <Percent className="h-3.5 w-3.5 mr-1.5" /> 7% Discount Ceiling
               </Button>
               <Button size="sm" onClick={() => onNavigateCase("demo_wow_02_case")} className="h-8 text-xs font-semibold shadow-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
                 <Zap className="h-3.5 w-3.5 mr-1.5" /> Execute AI Recovery
@@ -194,7 +199,7 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
                 <ArrowRight className="h-5 w-5" />
               </div>
               <p className="text-2xl font-black text-slate-700 dark:text-slate-300 group-hover:scale-105 transition-transform">
-                {formatCurrency((metrics?.totalRevenueAtRisk || 0) * 0.592)}
+                {metrics ? formatCurrency(metrics.eligibleRecoveryExposure) : "--"}
               </p>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Eligible</p>
             </div>
@@ -228,7 +233,7 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
               </div>
               <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/10 to-transparent pointer-events-none" />
               <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 group-hover:scale-105 transition-transform relative z-10">
-                {formatCurrency((metrics?.expectedIncrementalRecovery || 0) * 0.914)}
+                {metrics?.netRecoveryValue != null ? formatCurrency(metrics.netRecoveryValue) : "--"}
               </p>
               <p className="text-[10px] font-bold text-emerald-800/70 dark:text-emerald-200/70 uppercase tracking-wider mt-1 relative z-10">Net Value</p>
             </div>
@@ -461,6 +466,147 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
           </CardContent>
         </Card>
       )}
+
+      {/* ── Background Reconciliation Job Health & Unresolved Cases (Feature 17) ── */}
+      <Card className="border border-border/80 shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 border-b bg-muted/20">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                <RefreshCw className={cn("h-4 w-4", reconData?.health === "running" || triggerRecon.isPending ? "animate-spin" : "")} />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  Background Reconciliation Job
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tracking-wider",
+                      reconData?.health === "running"
+                        ? "bg-blue-500/10 text-blue-600 border-blue-500/30 dark:text-blue-400 animate-pulse"
+                        : reconData?.health === "degraded"
+                        ? "bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400"
+                        : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400"
+                    )}
+                  >
+                    {reconData?.health ?? "healthy"}
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Durable worker polling Razorpay provider for pending confirmations &amp; delayed webhook recovery
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={triggerRecon.isPending || reconData?.health === "running"}
+                onClick={() => triggerRecon.mutate()}
+                className="h-8 text-xs font-semibold shadow-xs"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", triggerRecon.isPending ? "animate-spin" : "")} />
+                {triggerRecon.isPending ? "Running..." : "Run Job Now"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="p-2.5 rounded-lg border bg-card text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase">Last Run</p>
+              <p className="text-xs font-bold mt-1">
+                {reconData?.latestRun?.completedAt ? new Date(reconData.latestRun.completedAt).toLocaleTimeString() : "Never"}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-lg border bg-card text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase">Duration</p>
+              <p className="text-xs font-bold mt-1">
+                {reconData?.latestRun ? `${reconData.latestRun.durationMs}ms` : "—"}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-lg border bg-card text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase">Examined</p>
+              <p className="text-xs font-bold mt-1">{reconData?.latestRun?.recordsExamined ?? 0}</p>
+            </div>
+            <div className="p-2.5 rounded-lg border bg-card text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase">Confirmed</p>
+              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                {reconData?.latestRun?.confirmedCount ?? 0}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-lg border bg-card text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase">Deferred Retries</p>
+              <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1">
+                {reconData?.latestRun?.deferredCount ?? 0}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-lg border bg-card text-center">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase">Next Retry Plan</p>
+              <p className="text-xs font-bold mt-1">
+                {reconData?.latestRun?.nextRunAt ? new Date(reconData.latestRun.nextRunAt).toLocaleTimeString() : "Every 60s"}
+              </p>
+            </div>
+          </div>
+
+          {reconData?.unresolvedAttempts && reconData.unresolvedAttempts.length > 0 ? (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Unresolved / Retrying Attempts ({reconData.unresolvedAttemptsCount})
+                </p>
+              </div>
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>
+                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Case / Customer</th>
+                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Action</th>
+                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Retries</th>
+                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Status</th>
+                      <th className="py-2 px-3 text-right font-medium text-muted-foreground">Next Retry</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {reconData.unresolvedAttempts.map((item) => (
+                      <tr
+                        key={item.id}
+                        onClick={() => onNavigateCase(item.caseId)}
+                        className="hover:bg-muted/30 cursor-pointer transition-colors"
+                      >
+                        <td className="py-2 px-3 font-medium">
+                          <span>{item.customerEmail}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1 font-mono">({truncate(item.caseId, 12)})</span>
+                        </td>
+                        <td className="py-2 px-3">{formatAction(item.action)}</td>
+                        <td className="py-2 px-3 font-mono">{item.reconciliationAttempts} / 10</td>
+                        <td className="py-2 px-3">
+                          <Badge variant="outline" className={cn(
+                            "text-[9px] font-semibold",
+                            item.finalReconciliationStatus === "EXHAUSTED" ? "text-red-500 border-red-500/30" : "text-amber-500 border-amber-500/30"
+                          )}>
+                            {item.finalReconciliationStatus ?? "PENDING"}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-3 text-right text-muted-foreground font-mono">
+                          {item.nextReconciliationAt ? new Date(item.nextReconciliationAt).toLocaleTimeString() : "Pending"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="py-3 px-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-muted-foreground flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium">
+                <CheckCircle2 className="h-4 w-4" /> All recovery attempts are synchronized and reconciled with provider.
+              </span>
+              <span className="text-[10px] text-muted-foreground">0 unresolved</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -30,3 +30,11 @@ export function getRazorpayService(): RazorpayService {
   }
   return _instance
 }
+
+/** Testing helper: override singleton instance with DevRazorpayService or mock */
+export function setRazorpayServiceInstance(instance: RazorpayService | null): void {
+  _instance = instance
+}
+
+export { DevRazorpayService }
+export * from "./types"

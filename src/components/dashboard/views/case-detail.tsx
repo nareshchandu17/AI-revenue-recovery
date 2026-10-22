@@ -96,6 +96,83 @@ function ValueTierBadge({ tier }: { tier: string }) {
   return <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0", c.className)}>{c.label}</Badge>
 }
 
+// ── Evidence & Guardrails Check Row ──
+
+function EvidenceCheckRow({
+  name,
+  check,
+}: {
+  name: string
+  check?: {
+    status: "PASSED" | "BLOCKED" | "NOT_CHECKED" | "NOT_APPLICABLE" | "INSUFFICIENT_DATA"
+    reason: string
+    evaluatedAt?: string
+  }
+}) {
+  const status = check?.status ?? "NOT_CHECKED"
+  const reason = check?.reason ?? "No evaluation recorded"
+
+  const statusConfig = {
+    PASSED: {
+      label: "PASSED",
+      badgeClass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800",
+      dotClass: "bg-emerald-500",
+      icon: CheckCircle,
+      iconClass: "text-emerald-600 dark:text-emerald-400",
+    },
+    BLOCKED: {
+      label: "BLOCKED",
+      badgeClass: "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300 dark:border-rose-800",
+      dotClass: "bg-rose-500",
+      icon: XCircle,
+      iconClass: "text-rose-600 dark:text-rose-400",
+    },
+    NOT_CHECKED: {
+      label: "NOT CHECKED",
+      badgeClass: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700",
+      dotClass: "bg-slate-400",
+      icon: AlertCircle,
+      iconClass: "text-slate-500",
+    },
+    NOT_APPLICABLE: {
+      label: "N/A",
+      badgeClass: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700",
+      dotClass: "bg-zinc-400",
+      icon: Info,
+      iconClass: "text-zinc-400",
+    },
+    INSUFFICIENT_DATA: {
+      label: "INSUFFICIENT DATA",
+      badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800",
+      dotClass: "bg-amber-500",
+      icon: AlertTriangle,
+      iconClass: "text-amber-600 dark:text-amber-400",
+    },
+  }[status]
+
+  const IconComponent = statusConfig.icon
+
+  return (
+    <div className="p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className={cn("w-2 h-2 rounded-full shrink-0", statusConfig.dotClass)} />
+          <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">{name}</span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider", statusConfig.badgeClass)}>
+            {statusConfig.label}
+          </span>
+          <IconComponent className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4", statusConfig.iconClass)} />
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground pl-4 leading-relaxed font-mono break-words">
+        {reason}
+      </p>
+    </div>
+  )
+}
+
 // ── Main Component ──
 
 export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
@@ -133,7 +210,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const isAwaitingApproval = c.status === "awaiting_approval"
   const hasApprovedDecision = decision?.status === "approved"
   const canApprove = isAwaitingApproval && decision?.status === "pending"
-  const canExecute = hasApprovedDecision && (c.status === "awaiting_approval" || c.status === "diagnosed" || c.status === "completed") && c.recoveryAttempts.filter(a => a.status === "pending" || a.status === "queued" || a.status === "running").length === 0
+  const canExecute = hasApprovedDecision && (c.status === "awaiting_approval" || c.status === "diagnosed" || c.status === "completed" || c.status === "executing")
   const canStop = isOpen && c.status !== "completed"
   const canAnalyze = c.status === "detected" || c.status === "diagnosed" || c.status === "completed"
 
@@ -175,7 +252,16 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   // Discount ceiling info from reasoning
   const aiDiscountPercent = reasoningParsed.discountPercent as number | null
   const isDiscountAction = decision?.recommendedAction === "offer_discount"
-  const maxDiscountPercent = 10 // from DEFAULT_MERCHANT_POLICY
+  const maxDiscountPercent = (c.merchant as any)?.maxDiscountPercent ?? (Number(useSettingsStore.getState().maxDiscountLimit) || 10)
+
+  // Decision evidence and overall state
+  const evidence = (data as any)?.evidence ?? (reasoningParsed.decisionEvidence as any)
+  const overallDecisionState: "ACT" | "DO_NOT_ACT" | "BLOCKED" | "AWAITING_APPROVAL" =
+    evidence?.overallState ?? (
+      policyPassed
+        ? (canApprove ? "AWAITING_APPROVAL" : "ACT")
+        : (decision?.economicDecision === "DO_NOT_ACT" ? "DO_NOT_ACT" : "BLOCKED")
+    )
 
   // ── Probability Estimates processing ──
   // Get the latest set of estimates (deduplicated by action, keeping latest per action)
@@ -285,7 +371,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
         </div>
         <div className="pl-9 mt-1">
           <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-            6 recovery decisions · {formatCurrencyFull(4280000)} recovered · {formatCurrencyFull(1850000)} incremental
+            {c.agentDecisions.length} recovery decision{c.agentDecisions.length !== 1 ? "s" : ""} · {formatCurrencyFull(c.recoveredAmount)} recovered · {formatCurrencyFull(c.amountAtRisk)} at risk
           </p>
         </div>
       </div>
@@ -374,12 +460,24 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                 <span className="font-bold text-slate-900 dark:text-white">{formatCurrencyFull(c.amountAtRisk)}</span>
                 <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">at risk</span>
                 <ArrowRight className="w-5 h-5 text-muted-foreground/50 mx-1 hidden sm:block" />
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrencyFull(c.amountAtRisk * (c.recoveryProbability ?? 0))}</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {decision?.expectedRecovery != null
+                    ? formatCurrencyFull(decision.expectedRecovery)
+                    : decision?.expectedIncrementalRecovery != null
+                      ? `+${formatCurrencyFull(decision.expectedIncrementalRecovery)}`
+                      : c.recoveryProbability != null && c.recoveryProbability > 0
+                        ? formatCurrencyFull(Math.round(c.amountAtRisk * c.recoveryProbability))
+                        : <span className="text-muted-foreground text-xs font-normal">unavailable</span>}
+                </span>
                 <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">expected recovery</span>
               </div>
               
               <div className="flex items-center gap-2 text-lg font-medium mt-1">
-                <span className="font-bold text-violet-600 dark:text-violet-400">+{formatCurrencyFull((decision.expectedIncrementalRecovery ?? 0))}</span>
+                <span className="font-bold text-violet-600 dark:text-violet-400">
+                  {decision?.expectedIncrementalRecovery != null
+                    ? `+${formatCurrencyFull(decision.expectedIncrementalRecovery)}`
+                    : <span className="text-muted-foreground text-xs font-normal">unavailable</span>}
+                </span>
                 <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">expected incremental value</span>
               </div>
             </div>
@@ -387,7 +485,7 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
         </Card>
       )}
 
-      {/* "Why?" Panel */}
+      {/* "Why did the agent act?" Panel */}
       {decision && (
         <Card className="mb-8 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -404,22 +502,42 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Baseline recovery</span>
-                  <span className="font-medium font-mono">{formatPercent(baselineEstimate?.probability ?? 0.095)}</span>
+                  <span className="font-medium font-mono">
+                    {baselineEstimate
+                      ? formatPercent(baselineEstimate.probability)
+                      : decision?.baselineExpectedRecovery != null
+                        ? formatCurrencyFull(decision.baselineExpectedRecovery)
+                        : <span className="text-muted-foreground text-xs">unavailable</span>}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Intervention recovery</span>
-                  <span className="font-medium font-mono text-emerald-600 dark:text-emerald-400">{formatPercent(bestIntervention?.probability ?? (c.recoveryProbability ?? 0))}</span>
+                  <span className="font-medium font-mono text-emerald-600 dark:text-emerald-400">
+                    {bestIntervention
+                      ? formatPercent(bestIntervention.probability)
+                      : (decision.recoveryProbability != null && decision.recoveryProbability > 0
+                        ? formatPercent(decision.recoveryProbability)
+                        : <span className="text-muted-foreground text-xs">unavailable</span>)}
+                  </span>
                 </div>
                 
                 <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-800" />
                 
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Expected incremental</span>
-                  <span className="font-medium font-mono text-violet-600 dark:text-violet-400">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 463000)}</span>
+                  <span className="font-medium font-mono text-violet-600 dark:text-violet-400">
+                    {decision.expectedIncrementalRecovery != null
+                      ? `+${formatCurrencyFull(decision.expectedIncrementalRecovery)}`
+                      : <span className="text-muted-foreground text-xs">unavailable</span>}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-600 dark:text-slate-400">Intervention cost</span>
-                  <span className="font-medium font-mono text-red-600 dark:text-red-400">-{formatCurrencyFull(decision.incentiveCost ?? 15000)}</span>
+                  <span className="font-medium font-mono text-red-600 dark:text-red-400">
+                    {(decision.incentiveCost != null || decision.interventionCost != null)
+                      ? `-${formatCurrencyFull((decision.incentiveCost ?? 0) + (decision.interventionCost ?? 0))}`
+                      : <span className="text-muted-foreground text-xs">unavailable</span>}
+                  </span>
                 </div>
                 
                 <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-800" />
@@ -427,66 +545,88 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-900 dark:text-slate-100">Expected net value</span>
                   <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                    {formatCurrencyFull((decision.expectedIncrementalRecovery ?? 463000) - (decision.incentiveCost ?? 15000))}
+                    {decision.expectedIncrementalRecovery != null && decision.incentiveCost != null
+                      ? formatCurrencyFull(decision.expectedIncrementalRecovery - decision.incentiveCost)
+                      : decision.netExpectedValue != null
+                        ? formatCurrencyFull(decision.netExpectedValue)
+                        : <span className="text-muted-foreground text-xs font-normal">unavailable</span>}
                   </span>
                 </div>
                 
-                <div className="mt-6 pt-4 border-t-2 border-slate-900 dark:border-slate-100 flex justify-between items-center">
-                  <span className="font-black tracking-widest text-slate-900 dark:text-slate-100">DECISION</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-black tracking-widest text-emerald-600 dark:text-emerald-400">{policyPassed ? "ACT" : "BLOCKED"}</span>
-                    {policyPassed && <CheckCircle className="w-5 h-5 text-emerald-600" />}
+                {/* DECISION overall status */}
+                <div className="mt-6 pt-4 border-t-2 border-slate-900 dark:border-slate-100 flex flex-col gap-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="font-black tracking-widest text-slate-900 dark:text-slate-100 text-xs sm:text-sm">DECISION</span>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "font-black tracking-widest text-xs px-2.5 py-1 rounded border uppercase",
+                        overallDecisionState === "ACT" ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800" :
+                        overallDecisionState === "DO_NOT_ACT" ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800" :
+                        overallDecisionState === "AWAITING_APPROVAL" ? "bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800" :
+                        "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800"
+                      )}>
+                        {overallDecisionState}
+                      </span>
+                      {overallDecisionState === "ACT" && <CheckCircle className="w-4 h-4 text-emerald-600" />}
+                      {overallDecisionState === "DO_NOT_ACT" && <Ban className="w-4 h-4 text-amber-600" />}
+                      {overallDecisionState === "AWAITING_APPROVAL" && <Clock className="w-4 h-4 text-sky-600" />}
+                      {overallDecisionState === "BLOCKED" && <XCircle className="w-4 h-4 text-rose-600" />}
+                    </div>
                   </div>
+                  {evidence?.stateReason && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
+                      {evidence.stateReason}
+                    </p>
+                  )}
                 </div>
               </div>
               
               {/* Right Column: Evidence / Guardrails */}
               <div className="p-6 bg-slate-50/30 dark:bg-slate-900/30">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-5">Evidence & Guardrails</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">Customer consent</span>
-                    </div>
-                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">DND check passed</span>
-                    </div>
-                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">Contact limit passed</span>
-                    </div>
-                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">Policy passed</span>
-                    </div>
-                    {policyPassed ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">Economic gate passed</span>
-                    </div>
-                    {((decision.expectedIncrementalRecovery ?? 463000) - (decision.incentiveCost ?? 15000)) > 0 ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                    )}
-                  </div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Evidence & Guardrails</h3>
+                  {evidence?.decisionVersion && (
+                    <span className="text-[10px] text-muted-foreground font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                      {evidence.decisionVersion}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2.5">
+                  <EvidenceCheckRow
+                    name="Customer consent"
+                    check={evidence?.checks?.consent ?? {
+                      status: "NOT_CHECKED",
+                      reason: "Customer consent verification not available",
+                    }}
+                  />
+                  <EvidenceCheckRow
+                    name="DND check"
+                    check={evidence?.checks?.dnd ?? {
+                      status: "NOT_CHECKED",
+                      reason: "DND registry check not available",
+                    }}
+                  />
+                  <EvidenceCheckRow
+                    name="Contact limit"
+                    check={evidence?.checks?.contactLimit ?? {
+                      status: "NOT_CHECKED",
+                      reason: "Contact frequency policy check not available",
+                    }}
+                  />
+                  <EvidenceCheckRow
+                    name="Merchant policy"
+                    check={evidence?.checks?.policy ?? {
+                      status: policyPassed ? "PASSED" : "BLOCKED",
+                      reason: policyViolations.length > 0 ? policyViolations.join("; ") : (policyReason ?? "Merchant policy guardrails evaluated"),
+                    }}
+                  />
+                  <EvidenceCheckRow
+                    name="Economic gate"
+                    check={evidence?.checks?.economicGate ?? {
+                      status: ((decision.expectedIncrementalRecovery ?? 0) - (decision.incentiveCost ?? 0)) > 0 ? "PASSED" : "BLOCKED",
+                      reason: decision.economicReason ?? (decision.netExpectedValue != null ? `Net Expected Value: ${formatCurrencyFull(decision.netExpectedValue)}` : "Economic gate evaluated"),
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -1126,12 +1266,50 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
                     <StatusBadge status={att.status} showDot={false} />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {att.simulated ? "Simulated" : "Live"}{att.externalRef ? ` · Ref: ${att.externalRef}` : ""}
+                    {att.simulated ? "Simulated" : "Live"}
+                    {att.externalRef ? ` · Ref: ${att.externalRef}` : ""}
                   </p>
+                  {/* Show clickable payment link URL when available */}
+                  {att.providerUrl && (
+                    <a
+                      href={att.providerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-emerald-600 hover:underline flex items-center gap-1 mt-0.5"
+                    >
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                      {att.simulated ? "Dev stub link (not real)" : "Open payment link"}
+                    </a>
+                  )}
                   {att.startedAt && <p className="text-[10px] text-muted-foreground mt-0.5">Started {formatRelativeTime(att.startedAt)}</p>}
                   {att.completedAt && <p className="text-[10px] text-muted-foreground">Completed {formatRelativeTime(att.completedAt)}</p>}
                   {att.failureReason && <p className="text-xs text-red-600 mt-1">{att.failureReason}</p>}
                   {att.recoveredAmount > 0 && <p className="text-xs text-emerald-600 font-medium mt-1">Recovered {formatCurrencyFull(att.recoveredAmount)}</p>}
+                  {/* Reconciliation tracking (Feature 17) */}
+                  {att.finalReconciliationStatus && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] text-muted-foreground">Reconciliation:</span>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[9px] px-1.5 py-0 font-medium",
+                          att.finalReconciliationStatus === "CONFIRMED" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" :
+                          att.finalReconciliationStatus === "EXHAUSTED" ? "text-red-500 border-red-500/30" :
+                          "text-amber-500 border-amber-500/30"
+                        )}
+                      >
+                        {att.finalReconciliationStatus}
+                      </Badge>
+                      {(att.reconciliationAttempts ?? 0) > 0 && (
+                        <span className="text-[10px] text-muted-foreground font-mono">({att.reconciliationAttempts} checks)</span>
+                      )}
+                    </div>
+                  )}
+                  {att.nextReconciliationAt && !att.finalReconciliationStatus && (
+                    <p className="text-[10px] text-amber-600 mt-0.5">
+                      Next reconciliation check scheduled for {formatDateTime(att.nextReconciliationAt)}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

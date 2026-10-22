@@ -39,6 +39,34 @@ export async function evaluateStoppingRules(
     return { shouldStop: true, reason: STOP_REASONS.CUSTOMER_PAID, rule: "Payment captured" }
   }
 
+  // 3. Anomaly Safety Rule: Pause aggressive payment retries during active payment failure spike
+  if (action === "retry_payment" && db.riskAnomaly?.findFirst) {
+    const activeAnomaly = await db.riskAnomaly.findFirst({
+      where: {
+        merchantId: recoveryCase.merchantId,
+        metric: "PAYMENT_FAILURE_RATE",
+        status: "active",
+        severity: { in: ["CRITICAL", "ELEVATED"] },
+      },
+      orderBy: { detectedAt: "desc" },
+    })
+
+    if (activeAnomaly) {
+      return {
+        shouldStop: true,
+        reason: STOP_REASONS.ANOMALY_SPIKE_ACTIVE,
+        rule: `Anomaly Safety Rule: Aggressive retries paused during ${activeAnomaly.severity} failure rate spike (${(activeAnomaly.observedValue * 100).toFixed(1)}% vs ${(activeAnomaly.baselineValue * 100).toFixed(1)}% baseline)`,
+        details: {
+          anomalyId: activeAnomaly.id,
+          severity: activeAnomaly.severity,
+          observedValue: activeAnomaly.observedValue,
+          baselineValue: activeAnomaly.baselineValue,
+          deviation: activeAnomaly.deviation,
+        },
+      }
+    }
+  }
+
   const customerId = recoveryCase.payment?.customerId
 
   // Communication logic

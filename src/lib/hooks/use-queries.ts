@@ -33,6 +33,10 @@ export interface MetricsData {
     bySource: Record<string, { count: number; amount: number }>
     byAction: Record<string, { attempted: number; recovered: number; recoveredAmount: number; recoveryRate: number }>
   }
+  /** Backend-computed: total at-risk on cases currently in active pipeline stages. Never a multiplier. */
+  eligibleRecoveryExposure: number
+  /** Backend-computed: verified recovered revenue minus recorded intervention costs. Null if no data yet. */
+  netRecoveryValue: number | null
 }
 
 export interface CaseItem {
@@ -109,14 +113,29 @@ export interface CaseDetail {
     updatedAt: string
     merchant: { id: string; name: string }
     payment: { id: string; externalId: string; amount: number; status: string; method: string; failureCode: string | null; failureReason: string | null; description: string | null; createdAt: string; customer: { id: string; displayName: string; email: string } | null } | null
-    agentDecisions: { id: string; recommendedAction: string; confidence: number; status: string; diagnosis: string | null; reasoningJson: unknown; createdAt: string; reviewedBy: string | null; reviewedAt: string | null; economicDecision: string | null; economicReason: string | null; expectedRecovery: number | null; interventionCost: number | null; netExpectedValue: number | null; expectedIncrementalRecovery: number | null; baselineExpectedRecovery: number | null; incentiveCost: number | null }[]
+    agentDecisions: { id: string; recommendedAction: string; confidence: number; recoveryProbability?: number | null; status: string; diagnosis: string | null; reasoningJson: unknown; createdAt: string; reviewedBy: string | null; reviewedAt: string | null; economicDecision: string | null; economicReason: string | null; expectedRecovery: number | null; interventionCost: number | null; netExpectedValue: number | null; expectedIncrementalRecovery: number | null; baselineExpectedRecovery: number | null; incentiveCost: number | null; economicModelVersion?: string | null }[]
     probabilityEstimates: ProbabilityEstimateItem[]
-    recoveryAttempts: { id: string; action: string; status: string; attemptNumber: number; recoveredAmount: number; externalRef: string | null; simulated: boolean; failureReason: string | null; startedAt: string | null; completedAt: string | null; attemptedAt: string | null }[]
+    recoveryAttempts: { id: string; action: string; status: string; attemptNumber: number; recoveredAmount: number; externalRef: string | null; providerUrl: string | null; simulated: boolean; failureReason: string | null; startedAt: string | null; completedAt: string | null; attemptedAt: string | null; reconciliationAttempts?: number; lastReconciledAt?: string | null; nextReconciliationAt?: string | null; finalReconciliationStatus?: string | null }[]
     recoveryAttributions: { id: string; amount: number; status: string; source: string; confidence: number; reason: string | null; createdAt: string; payment: { id: string; externalId: string; amount: number; status: string; method: string; createdAt: string } }[]
     incrementalRevenues: { id: string; attributionType: string; recoveredAmount: number; baselineExpectedAmount: number; incrementalAmount: number; confidence: string; methodologyVersion: string; evaluatedAt: string; status: string }[]
     auditEvents: { id: string; eventType: string; action: string; details: string | null; actorType: string; createdAt: string }[]
   }
   customerValue: CustomerValueData | null
+  evidence?: {
+    evaluatedAt: string
+    decisionVersion: string
+    overallState: "ACT" | "DO_NOT_ACT" | "BLOCKED" | "AWAITING_APPROVAL"
+    stateReason: string
+    action: string
+    requiresApproval: boolean
+    checks: {
+      consent: { name: string; status: "PASSED" | "BLOCKED" | "NOT_CHECKED" | "NOT_APPLICABLE" | "INSUFFICIENT_DATA"; reason: string; evaluatedAt: string; version?: string }
+      dnd: { name: string; status: "PASSED" | "BLOCKED" | "NOT_CHECKED" | "NOT_APPLICABLE" | "INSUFFICIENT_DATA"; reason: string; evaluatedAt: string; version?: string }
+      contactLimit: { name: string; status: "PASSED" | "BLOCKED" | "NOT_CHECKED" | "NOT_APPLICABLE" | "INSUFFICIENT_DATA"; reason: string; evaluatedAt: string; version?: string }
+      policy: { name: string; status: "PASSED" | "BLOCKED" | "NOT_CHECKED" | "NOT_APPLICABLE" | "INSUFFICIENT_DATA"; reason: string; evaluatedAt: string; version?: string }
+      economicGate: { name: string; status: "PASSED" | "BLOCKED" | "NOT_CHECKED" | "NOT_APPLICABLE" | "INSUFFICIENT_DATA"; reason: string; evaluatedAt: string; version?: string }
+    }
+  } | null
 }
 
 export interface AuditEvent {
@@ -225,16 +244,15 @@ export function useAudit(params?: Record<string, string>) {
 
 // --- Mutation Hooks ---
 
-const DEFAULT_MERCHANT_ID = "merchant_dashboard"
-
 export function useApproveDecision() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (decisionId: string) => {
+      // merchantId is derived server-side from the session cookie — not sent in body
       const res = await fetch("/api/recovery/decisions/" + decisionId + "/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchantId: DEFAULT_MERCHANT_ID }),
+        body: JSON.stringify({}),
       })
       if (!res.ok) {
         throw new Error(await getErrorMessage(res, "Could not approve this decision. It may have already been processed."))
@@ -249,10 +267,11 @@ export function useRejectDecision() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (decisionId: string) => {
+      // merchantId is derived server-side from the session cookie — not sent in body
       const res = await fetch("/api/recovery/decisions/" + decisionId + "/reject", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchantId: DEFAULT_MERCHANT_ID }),
+        body: JSON.stringify({}),
       })
       if (!res.ok) {
         throw new Error(await getErrorMessage(res, "Could not reject this decision. It may have already been processed."))
@@ -406,5 +425,73 @@ export function useFeedback() {
       return res.json()
     },
     staleTime: 30_000,
+  })
+}
+
+// --- Feature 17: Reconciliation Hooks ---
+
+export interface ReconciliationRunData {
+  id: string
+  status: "running" | "completed" | "failed" | "skipped"
+  startedAt: string
+  completedAt: string | null
+  durationMs: number
+  recordsExamined: number
+  confirmedCount: number
+  deferredCount: number
+  exhaustedCount: number
+  failureCount: number
+  nextRunAt: string | null
+  triggerSource: string
+}
+
+export interface UnresolvedAttemptItem {
+  id: string
+  caseId: string
+  action: string
+  status: string
+  attemptNumber: number
+  reconciliationAttempts: number
+  lastReconciledAt: string | null
+  nextReconciliationAt: string | null
+  finalReconciliationStatus: string | null
+  amountAtRisk: number
+  customerEmail: string
+}
+
+export interface ReconciliationHealthData {
+  success: boolean
+  health: "healthy" | "running" | "degraded"
+  latestRun: ReconciliationRunData | null
+  unresolvedAttemptsCount: number
+  unresolvedAttempts: UnresolvedAttemptItem[]
+}
+
+export function useReconciliationHealth() {
+  return useQuery({
+    queryKey: ["reconciliation-health"],
+    queryFn: async (): Promise<ReconciliationHealthData> => {
+      const res = await fetch("/api/recovery/reconciliation")
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to load reconciliation health"))
+      return res.json()
+    },
+    refetchInterval: 15_000, // Poll health every 15s
+  })
+}
+
+export function useTriggerReconciliation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/recovery/reconciliation", { method: "POST" })
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to trigger reconciliation"))
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reconciliation-health"] })
+      qc.invalidateQueries({ queryKey: ["metrics"] })
+      qc.invalidateQueries({ queryKey: ["cases"] })
+      qc.invalidateQueries({ queryKey: ["case"] })
+    },
   })
 }
