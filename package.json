@@ -10,7 +10,7 @@
     "build": "bun next build",
     "start": "bun next start",
     "lint": "eslint .",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "tsc": "bunx tsc --noEmit",
     "evaluate": "bun run scripts/evaluate/evaluate.ts",
     "db:push": "bunx prisma db push --accept-data-loss",

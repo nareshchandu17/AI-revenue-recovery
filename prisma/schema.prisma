@@ -231,6 +231,7 @@ model Merchant {
   interventionFeedbackRecords InterventionFeedbackRecord[]
   users        MerchantUser[]
   alerts       MerchantAlert[]
+  razorpayIntegrations RazorpayIntegration[]
 
   @@index([email])
 }
@@ -997,3 +998,38 @@ model ReconciliationRun {
   @@index([startedAt])
   @@index([status])
 }
+
+// =================================================================
+// Razorpay Multi-Tenant Integration & Webhook Health (Feature 7)
+// =================================================================
+
+model RazorpayIntegration {
+  id                     String    @id @default(cuid())
+  merchantId             String
+  provider               String    @default("razorpay")
+  accountId              String?   // Razorpay account ID / MID (e.g. "acc_123456")
+  keyId                  String?   // Public Key ID (e.g. "rzp_test_123456")
+  keySecretEncrypted     String?   // Encrypted at rest (AES-256-GCM)
+  webhookSecretEncrypted String?   // Encrypted at rest (AES-256-GCM)
+  webhookEndpointSlug    String    @unique @default(cuid()) // Dedicated webhook endpoint slug
+  environment            String    @default("test") // test | live
+  status                 String    @default("active") // active | inactive | pending
+
+  // Webhook health & diagnostics
+  lastWebhookAt          DateTime?
+  lastWebhookStatus      String?   // success | invalid_signature | failed | tenant_mismatch
+  lastWebhookEvent       String?
+  webhookSuccessCount    Int       @default(0)
+  webhookFailureCount    Int       @default(0)
+  lastError              String?
+
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  merchant               Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([accountId])
+  @@index([webhookEndpointSlug])
+}
+

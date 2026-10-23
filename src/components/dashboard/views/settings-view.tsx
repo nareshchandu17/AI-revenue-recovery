@@ -15,6 +15,7 @@ import { useSettingsStore } from "@/store/settings"
 import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import { getMerchantSettings, updateMerchantSettings } from "@/app/actions/settings"
+import { RazorpayIntegrationCard } from "./razorpay-integration-card"
 
 export function SettingsView() {
   const [mounted, setMounted] = useState(false)
@@ -110,11 +111,12 @@ export function SettingsView() {
       <Separator />
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 max-w-[400px]">
+        <TabsList className="grid w-full grid-cols-5 max-w-[540px]">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="recovery">Recovery</TabsTrigger>
           <TabsTrigger value="autonomy">Autonomy</TabsTrigger>
           <TabsTrigger value="notifications">Alerts</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="mt-6 space-y-4">
@@ -330,6 +332,10 @@ export function SettingsView() {
               </Button>
             </CardFooter>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="mt-6 space-y-4">
+          <RazorpayIntegrationCard />
         </TabsContent>
       </Tabs>
     </div>

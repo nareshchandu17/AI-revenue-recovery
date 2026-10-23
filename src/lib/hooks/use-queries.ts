@@ -549,3 +549,81 @@ export function useSimulateDeliveryStatus() {
   })
 }
 
+export interface RazorpayIntegrationData {
+  id: string
+  merchantId: string
+  provider: string
+  accountId: string | null
+  keyId: string | null
+  maskedKeyId: string
+  isKeySecretConfigured: boolean
+  isWebhookSecretConfigured: boolean
+  webhookEndpointSlug: string
+  webhookEndpointUrl: string
+  environment: string
+  status: string
+  lastWebhookAt: string | null
+  lastWebhookStatus: string | null
+  lastWebhookEvent: string | null
+  webhookSuccessCount: number
+  webhookFailureCount: number
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export function useRazorpayIntegration() {
+  return useQuery<{ success: boolean; integration: RazorpayIntegrationData | null }>({
+    queryKey: ["razorpay-integration"],
+    queryFn: async () => {
+      const res = await fetch("/api/merchants/integrations/razorpay")
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to fetch Razorpay integration"))
+      return res.json()
+    },
+    staleTime: 30000,
+  })
+}
+
+export function useUpdateRazorpayIntegration() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: {
+      accountId?: string
+      keyId?: string
+      keySecret?: string
+      webhookSecret?: string
+      environment?: "test" | "live"
+      status?: "active" | "inactive"
+    }) => {
+      const res = await fetch("/api/merchants/integrations/razorpay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to save Razorpay integration"))
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["razorpay-integration"] })
+    },
+  })
+}
+
+export function useTestRazorpayWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/merchants/integrations/razorpay/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) throw new Error(await getErrorMessage(res, "Failed to test webhook connection"))
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["razorpay-integration"] })
+    },
+  })
+}
+

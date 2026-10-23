@@ -1,0 +1,80 @@
+/**
+ * Encryption at rest utility for provider secrets, keys, and tokens.
+ *
+ * Implements AES-256-GCM with authenticated tags and random IVs.
+ * Ensures webhook secrets and API keys are never stored in plaintext
+ * and never exposed in API responses or logs.
+ */
+
+import crypto from "crypto"
+
+const ALGORITHM = "aes-256-gcm"
+const IV_LENGTH = 12 // 96 bits for GCM
+const AUTH_TAG_LENGTH = 16
+
+/**
+ * Get or derive a 32-byte encryption key from environment.
+ */
+function getMasterKey(): Buffer {
+  const masterSecret =
+    process.env.ENCRYPTION_KEY ||
+    process.env.APP_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "ai-revenue-recovery-encryption-master-key-2026"
+
+  return crypto.createHash("sha256").update(masterSecret).digest()
+}
+
+/**
+ * Encrypt plaintext secret string using AES-256-GCM.
+ * Output format: enc:v1:<iv_hex>:<authTag_hex>:<ciphertext_hex>
+ */
+export function encryptSecret(plaintext: string): string {
+  if (!plaintext) return ""
+  const key = getMasterKey()
+  const iv = crypto.randomBytes(IV_LENGTH)
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH })
+
+  let encrypted = cipher.update(plaintext, "utf8", "hex")
+  encrypted += cipher.final("hex")
+  const authTag = cipher.getAuthTag().toString("hex")
+
+  return `enc:v1:${iv.toString("hex")}:${authTag}:${encrypted}`
+}
+
+/**
+ * Decrypt ciphertext encrypted with encryptSecret.
+ */
+export function decryptSecret(encryptedPayload: string): string {
+  if (!encryptedPayload) return ""
+  if (!encryptedPayload.startsWith("enc:v1:")) {
+    // If not in encrypted format (e.g. legacy/plain during migration), return as-is
+    return encryptedPayload
+  }
+
+  const parts = encryptedPayload.split(":")
+  if (parts.length !== 5) {
+    throw new Error("Invalid encrypted payload format")
+  }
+
+  const [, , ivHex, authTagHex, ciphertextHex] = parts
+  const key = getMasterKey()
+  const iv = Buffer.from(ivHex, "hex")
+  const authTag = Buffer.from(authTagHex, "hex")
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH })
+  decipher.setAuthTag(authTag)
+
+  let decrypted = decipher.update(ciphertextHex, "hex", "utf8")
+  decrypted += decipher.final("utf8")
+  return decrypted
+}
+
+/**
+ * Mask secret for safe display (e.g. "••••••••" or "••••5a8b")
+ */
+export function maskSecret(secret?: string | null): string {
+  if (!secret) return "Not configured"
+  if (secret.length <= 4) return "••••••••"
+  return `••••${secret.slice(-4)}`
+}

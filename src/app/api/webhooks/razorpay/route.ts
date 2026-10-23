@@ -1,178 +1,165 @@
 /**
  * POST /api/webhooks/razorpay
  *
- * Razorpay webhook receiver endpoint.
+ * Multi-tenant Razorpay webhook receiver endpoint.
  *
- * Flow:
- * 1. Read raw body for HMAC signature verification
- * 2. Validate the envelope with Zod
- * 3. Route to the ingestion service
- * 4. Return 200 (even for ignored events — Razorpay retries on non-2xx)
- *
- * Security:
- * - Signature verification is enforced when RAZORPAY_WEBHOOK_SECRET is set.
- * - In development (no secret), verification is skipped with a log warning.
- * - The raw body string is used for HMAC — no JSON re-serialization.
+ * Security & Routing Architecture (Item 7):
+ * 1. Read raw body string for cryptographic HMAC signature verification.
+ * 2. Resolve target merchant integration via trusted identifiers (dedicated endpoint slug,
+ *    verified provider account ID, or candidate signature matching).
+ * 3. Enforce valid HMAC SHA-256 signature against the decrypted integration secret.
+ * 4. Reject unknown or inactive integrations with appropriate HTTP status codes (NO FIRST-MERCHANT FALLBACK).
+ * 5. Reject tenant mismatch when payload notes claim a different merchant than the integration.
+ * 6. Scope all ingested payments, customers, and recovery cases strictly to the resolved merchant.
+ * 7. Track webhook health (timestamp, status, success/failure counts) on the integration record.
  */
 
 import { NextRequest } from "next/server"
 import { ValidationError, errorResponse } from "@/lib/errors"
-import { env } from "@/lib/config"
-import { db } from "@/lib/db"
-import { getRazorpayService } from "@/services/razorpay"
 import {
   webhookEnvelopeSchema,
   isRecoveryRelevant,
   isKnownEvent,
 } from "@/services/webhook/schemas"
 import { ingestWebhook } from "@/services/webhook/ingest"
+import {
+  resolveRazorpayWebhookIntegration,
+  recordWebhookHealth,
+} from "@/services/integrations/razorpay"
 import { logAudit } from "@/services/audit/log"
 import { logger } from "@/lib/logger"
 
 const log = logger.child({ source: "razorpay_webhook" })
 
-export async function POST(request: NextRequest) {
+export async function handleRazorpayWebhookRequest(
+  request: NextRequest,
+  endpointSlugOverride?: string
+): Promise<Response> {
   try {
-    // 1. Read raw body — needed for HMAC verification
+    // 1. Read raw body for HMAC signature verification
     const rawBody = await request.text()
-
-    // 2. Verify Razorpay signature (skip in dev if no secret)
-    const signature = request.headers.get("x-razorpay-signature") ?? ""
-    const webhookSecret = env.RAZORPAY_WEBHOOK_SECRET
-
-    if (webhookSecret) {
-      const razorpay = getRazorpayService()
-      const valid = razorpay.verifyWebhookSignature(
-        rawBody,
-        signature,
-        webhookSecret
+    if (!rawBody) {
+      return Response.json(
+        { error: { message: "Empty request body", code: "EMPTY_BODY" } },
+        { status: 400 }
       )
-      if (!valid) {
-        return Response.json(
-          { error: { message: "Invalid webhook signature", code: "INVALID_SIGNATURE" } },
-          { status: 401 }
-        )
-      }
-    } else {
-      log.warn("No RAZORPAY_WEBHOOK_SECRET set — skipping signature verification")
     }
 
-    // 3. Parse + validate the payload
+    // 2. Extract signature and routing identifiers
+    const signature = request.headers.get("x-razorpay-signature")
+    const headerEndpointSlug = request.headers.get("x-razorpay-endpoint-id")
+    const queryEndpointSlug =
+      request.nextUrl.searchParams.get("endpointId") ||
+      request.nextUrl.searchParams.get("slug")
+    const endpointSlug = endpointSlugOverride || headerEndpointSlug || queryEndpointSlug || null
+
+    const headerAccountId = request.headers.get("x-razorpay-account-id")
+
+    // 3. Parse + validate webhook envelope schema
     let parsed: unknown
     try {
       parsed = JSON.parse(rawBody)
     } catch {
-      throw new ValidationError("Invalid JSON body")
-  }
+      throw new ValidationError("Invalid JSON body", "INVALID_JSON")
+    }
 
-    const result = webhookEnvelopeSchema.safeParse(parsed)
-    if (!result.success) {
+    const envelopeResult = webhookEnvelopeSchema.safeParse(parsed)
+    if (!envelopeResult.success) {
       throw new ValidationError(
-        "Webhook payload validation failed: " + result.error.issues.map(function(i) { return i.path.join(".") }).join(", "),
+        "Webhook payload validation failed: " +
+          envelopeResult.error.issues.map((i) => i.path.join(".")).join(", "),
         "WEBHOOK_VALIDATION_FAILED"
       )
     }
 
-    // Use any-access to work around zod/v4 passthrough type inference
-    const data = result.data as unknown as Record<string, unknown>
-    const event: string = String(data.event ?? "")
-    const paymentEntity = data.payload as Record<string, unknown> | undefined
-    const entity = paymentEntity?.entity as Record<string, unknown> | undefined
+    const parsedData = envelopeResult.data as unknown as Record<string, unknown>
+    const event = String(parsedData.event ?? "")
+    const payloadAccountId = (parsedData.account_id as string | undefined) ?? headerAccountId ?? null
 
-    // 4. Audit webhook receipt
+    // Extract notes from payment or payment_link entity
+    const paymentEntity = envelopeResult.data.payload.payment?.entity
+    const paymentLinkEntity = envelopeResult.data.payload.payment_link?.entity as Record<string, unknown> | undefined
+    const paymentNotes = (paymentEntity?.notes as Record<string, string> | null) ?? null
+    const paymentLinkNotes = (paymentLinkEntity?.notes as Record<string, string> | null) ?? null
+    const notes = paymentNotes ?? paymentLinkNotes ?? null
+    const payloadMerchantIdNote = notes?.merchant_id ?? notes?.merchantId ?? null
+
+    // 4. Resolve integration (NO FIRST-MERCHANT FALLBACK)
+    const resolution = await resolveRazorpayWebhookIntegration({
+      endpointSlug,
+      accountId: payloadAccountId,
+      signature,
+      rawBody,
+      payloadMerchantIdNote,
+    })
+
+    if (!resolution.valid || !resolution.integration || !resolution.merchantId) {
+      const statusCode =
+        resolution.error === "INVALID_SIGNATURE" || resolution.error === "MISSING_SIGNATURE"
+          ? 401
+          : resolution.error === "INTEGRATION_INACTIVE" || resolution.error === "TENANT_MISMATCH"
+          ? 403
+          : 404
+
+      return Response.json(
+        {
+          error: {
+            message: resolution.errorMessage || "Webhook authentication or routing failed",
+            code: resolution.error || "UNKNOWN_INTEGRATION",
+          },
+        },
+        { status: statusCode }
+      )
+    }
+
+    const integration = resolution.integration
+    const merchantId = resolution.merchantId
+
+    // 5. Audit webhook receipt
     await logAudit({
       actor: { type: "webhook", source: "razorpay" },
       eventType: "webhook.received",
       action: event,
-      details: "Received Razorpay webhook: " + event,
+      details: `Received Razorpay webhook: ${event} for merchant ${merchantId} (integration: ${integration.id})`,
       metadata: {
         event,
-        paymentId: entity?.id as string | undefined,
-        hasPaymentEntity: !!entity,
+        merchantId,
+        integrationId: integration.id,
+        paymentId: paymentEntity?.id,
+        hasPaymentEntity: Boolean(paymentEntity),
       },
     })
 
-    // 5. Route to ingestion (only for recovery-relevant events)
+    // 6. Route to ingestion for recovery-relevant events
     if (isRecoveryRelevant(event)) {
-      // Extract payment entity from wherever Razorpay places it for this event type
-      // payment_link.paid has both payload.payment.entity AND payload.payment_link.entity
-      const paymentNotes =
-        (result.data.payload.payment?.entity?.notes as Record<string, string> | null) ?? null
-      const paymentLinkEntity =
-        result.data.payload.payment_link?.entity as Record<string, unknown> | undefined
-
-      const notes: Record<string, string> | null =
-        paymentNotes ??
-        (paymentLinkEntity?.notes as Record<string, string> | null) ??
-        null
-
-      // Merchant resolution (in priority order):
-      // 1. notes.merchant_id — set explicitly by our PaymentLinkExecutor
-      // 2. notes.merchantId — legacy fallback
-      // 3. Razorpay account_id header — matches merchant by Razorpay key
-      // 4. First merchant in DB — only for single-tenant dev setups; logs a warning
-      const accountId = (result.data as unknown as Record<string, unknown>).account_id as string | undefined
-      const merchantId =
-        notes?.merchant_id ??
-        notes?.merchantId ??
-        (accountId ? await getMerchantByRazorpayAccount(accountId) : null) ??
-        (await getFirstMerchantIdWithWarning())
-
-      if (!merchantId) {
-        log.error("No merchant found to ingest webhook")
-        return Response.json({ ingested: false, reason: "no_merchant" })
-      }
-
-      const ingestResult = await ingestWebhook(result.data, event, merchantId)
+      const ingestResult = await ingestWebhook(envelopeResult.data, event, merchantId)
+      await recordWebhookHealth(integration.id, "success", event)
 
       return Response.json({
         ingested: true,
         event,
+        merchantId,
         paymentId: ingestResult.paymentId,
         recoveryCaseCreated: ingestResult.recoveryCaseCreated,
         recoveryCaseId: ingestResult.recoveryCaseId,
       })
     }
 
-    // 6. Known but not recovery-relevant → acknowledge
+    // 7. Known non-recovery events acknowledged
     if (isKnownEvent(event)) {
-      return Response.json({ ingested: false, reason: "acknowledged", event })
+      await recordWebhookHealth(integration.id, "success", event)
+      return Response.json({ ingested: false, reason: "acknowledged", event, merchantId })
     }
 
-    // 7. Completely unknown event → still 200 to prevent Razorpay retries
-    log.warn("Unknown event")
-    return Response.json({ ingested: false, reason: "unknown_event", event })
+    // 8. Unknown event acknowledged
+    log.warn(`Unknown Razorpay webhook event: ${event}`)
+    await recordWebhookHealth(integration.id, "success", event)
+    return Response.json({ ingested: false, reason: "unknown_event", event, merchantId })
   } catch (err) {
     return errorResponse(err)
   }
 }
 
-async function getFirstMerchantId(): Promise<string | null> {
-  const merchant = await db.merchant.findFirst({ select: { id: true } })
-  return merchant?.id ?? null
-}
-
-/**
- * Log a warning and fall back to the first merchant.
- * Only acceptable in single-tenant dev — production must route deterministically.
- */
-async function getFirstMerchantIdWithWarning(): Promise<string | null> {
-  log.warn(
-    "Webhook has no merchant_id in notes — falling back to first merchant. " +
-    "Set notes.merchant_id on payment links for reliable multi-tenant routing."
-  )
-  return getFirstMerchantId()
-}
-
-/**
- * Look up a merchant by their Razorpay account_id (from the webhook envelope).
- * Razorpay sends `account_id` in the webhook payload for marketplace accounts.
- * For standard accounts the field may be absent — returns null in that case.
- */
-async function getMerchantByRazorpayAccount(_accountId: string): Promise<string | null> {
-  // When multiple merchants have different Razorpay keys configured, we would
-  // match the accountId to the merchant's stored key. For now (single integration)
-  // we skip this and fall through to the notes-based lookup.
-  // TODO: add a RazorpayIntegration model storing (merchantId, razorpayAccountId) pairs.
-  return null
+export async function POST(request: NextRequest) {
+  return handleRazorpayWebhookRequest(request)
 }
