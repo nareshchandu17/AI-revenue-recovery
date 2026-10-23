@@ -111,8 +111,12 @@ function AppContent() {
           {currentView === "case-detail" && selectedCaseId && (
             <CaseDetail caseId={selectedCaseId} onBack={handleBack} />
           )}
-          {currentView === "recovered" && <RevenueRecoveredView />}
-          {currentView === "at-risk" && <RevenueAtRiskView />}
+          {currentView === "recovered" && (
+            <RevenueRecoveredView onNavigate={navigateTo} onNavigateCase={navigateToCase} />
+          )}
+          {currentView === "at-risk" && (
+            <RevenueAtRiskView onNavigate={navigateTo} onNavigateCase={navigateToCase} />
+          )}
           {currentView === "audit" && <AuditView onNavigateCase={navigateToCase} />}
           {currentView === "settings" && <SettingsView />}
         </main>

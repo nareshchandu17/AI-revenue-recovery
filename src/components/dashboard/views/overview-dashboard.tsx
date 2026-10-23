@@ -10,10 +10,23 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { ArrowRight, TrendingDown, TrendingUp, AlertCircle, Activity, IndianRupee, BarChart3, Zap, ShieldCheck, UserCheck, Clock, Percent, RefreshCw, CheckCircle2 } from "lucide-react"
+import {
+  ArrowRight,
+  TrendingDown,
+  TrendingUp,
+  AlertCircle,
+  Activity,
+  IndianRupee,
+  BarChart3,
+  Zap,
+  ShieldCheck,
+  Clock,
+  RefreshCw,
+  CheckCircle2,
+  HelpCircle,
+  ExternalLink,
+} from "lucide-react"
 import { formatCurrency, formatPercent, formatCategory, formatAction, truncate } from "@/lib/format"
-import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
-import { useSettingsStore } from "@/store/settings"
 import type { AppView } from "@/components/app-shell/app-sidebar"
 
 interface OverviewDashboardProps {
@@ -22,7 +35,6 @@ interface OverviewDashboardProps {
 }
 
 export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashboardProps) {
-  const { autonomyLevel } = useSettingsStore()
   const { data: metrics, isLoading: metricsLoading, error: metricsError, refetch: refetchMetrics } = useMetrics()
   const { data: casesData, isLoading: casesLoading } = useCases({
     status: "open",
@@ -51,70 +63,119 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
 
   return (
     <div className="space-y-6">
-      {/* ── Value Proposition Hero ── */}
-      <div className="relative overflow-hidden rounded-xl border border-emerald-900/10 bg-gradient-to-br from-card via-card to-emerald-50/30 dark:border-emerald-800/20 dark:from-card dark:to-emerald-950/20 px-6 py-6 sm:px-8 sm:py-8 shadow-sm">
-        {/* Abstract Background Elements */}
-        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
-        
-        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <Badge variant="secondary" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400 backdrop-blur-sm relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-100/30 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
-                <ShieldCheck className="h-3 w-3 mr-1.5 text-amber-600 dark:text-amber-500" />
-                <span className="relative z-10 font-semibold tracking-wide">Autonomy: {AUTONOMY_CONFIGS[autonomyLevel].badgeLabel}</span>
-              </Badge>
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-700 to-teal-900 dark:from-emerald-400 dark:to-teal-200">
-              Recovr
-            </h2>
-            <p className="text-sm font-medium text-muted-foreground mt-1 max-w-md leading-relaxed">
-              Autonomous AI agent protecting your bottom line with deterministic financial guardrails.
-            </p>
+      {/* ── Operational Page Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 pb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Recovery Operations
+            </h1>
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono font-medium text-muted-foreground border-border/80">
+              LIVE LEDGER
+            </Badge>
           </div>
-          <div className="flex flex-col sm:items-end gap-2 mt-2 sm:mt-0">
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Interactive Scenarios</p>
-            <div className="flex gap-2 flex-wrap sm:justify-end">
-              <Button size="sm" variant="outline" onClick={() => onNavigateCase("demo_wow_01_case")} className="h-8 text-xs font-semibold shadow-sm border-amber-200/50 bg-white/50 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900/50 dark:bg-black/20 dark:text-amber-400 dark:hover:bg-amber-950/40 backdrop-blur-sm transition-all hover:-translate-y-0.5">
-                <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Do Not Act (Blocked)
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => onNavigateCase("demo_discount_07_case")} className="h-8 text-xs font-semibold shadow-sm border-violet-200/50 bg-white/50 text-violet-700 hover:bg-violet-50 hover:text-violet-800 dark:border-violet-900/50 dark:bg-black/20 dark:text-violet-400 dark:hover:bg-violet-950/40 backdrop-blur-sm transition-all hover:-translate-y-0.5">
-                <Percent className="h-3.5 w-3.5 mr-1.5" /> 7% Discount Ceiling
-              </Button>
-              <Button size="sm" onClick={() => onNavigateCase("demo_wow_02_case")} className="h-8 text-xs font-semibold shadow-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border-0 transition-all hover:-translate-y-0.5 hover:shadow-md">
-                <Zap className="h-3.5 w-3.5 mr-1.5" /> Execute AI Recovery
-              </Button>
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Real-time exposure monitoring, deterministic AI interventions, and verified revenue attribution.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onNavigate("cases")}
+            className="h-8 text-xs font-medium border-border/80 hover:bg-muted/50"
+          >
+            All Cases ({metrics ? metrics.activeCases + metrics.recoveredCases : "—"})
+            <ArrowRight className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            disabled={triggerRecon.isPending || reconData?.health === "running"}
+            onClick={() => triggerRecon.mutate()}
+            className="h-8 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", triggerRecon.isPending ? "animate-spin" : "")} />
+            {triggerRecon.isPending ? "Reconciling..." : "Reconcile Now"}
+          </Button>
         </div>
       </div>
 
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      {/* ── Payment Failure Anomaly Alert (if detected by monitor) ── */}
+      {activeAnomaly && (
+        <div
+          className={cn(
+            "rounded-lg border px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs",
+            activeAnomaly.severity === "CRITICAL"
+              ? "bg-red-500/10 border-red-500/30 text-red-900 dark:text-red-200"
+              : activeAnomaly.severity === "ELEVATED"
+              ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+              : "bg-yellow-500/10 border-yellow-500/30 text-yellow-900 dark:text-yellow-200"
+          )}
+        >
+          <div className="flex items-start sm:items-center gap-2.5">
+            <Activity className="h-4 w-4 shrink-0 mt-0.5 sm:mt-0" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold uppercase tracking-wider text-[11px]">
+                  {activeAnomaly.severity} Payment Failure Spike
+                </span>
+                <span className="font-mono text-[10px] opacity-80">
+                  Window: {activeAnomaly.sampleSize} transactions
+                </span>
+              </div>
+              <p className="opacity-90 mt-0.5 text-[11px]">
+                Failure rate surged to{" "}
+                <span className="font-semibold tabular-nums">
+                  {(activeAnomaly.observedValue * 100).toFixed(1)}%
+                </span>{" "}
+                (baseline is {(activeAnomaly.baselineValue * 100).toFixed(1)}%).{" "}
+                {activeAnomaly.deviation > 0
+                  ? `+${(activeAnomaly.deviation * 100).toFixed(0)}% deviation.`
+                  : ""}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onNavigate("audit")}
+            className="h-7 text-[11px] self-start sm:self-auto bg-background/60 hover:bg-background border-current/20 shrink-0"
+          >
+            Investigate Audit Log
+          </Button>
+        </div>
+      )}
+
+      {/* ── Financial KPI Row ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard
           label="Revenue At Risk"
           value={formatCurrency(metrics?.totalRevenueAtRisk)}
-          description={metrics ? `${metrics.activeCases} active case${metrics.activeCases !== 1 ? "s" : ""} need attention` : undefined}
+          description={
+            metrics
+              ? `${metrics.activeCases} active case${metrics.activeCases !== 1 ? "s" : ""}`
+              : undefined
+          }
           icon={TrendingDown}
           loading={metricsLoading}
           variant="risk"
         />
         <KpiCard
-          label="Verified Total Recovered"
+          label="Verified Recovered"
           value={formatCurrency(metrics?.totalRecoveredRevenue)}
-          description="Total verified payments"
+          description="Confirmed webhook payments"
           icon={TrendingUp}
           loading={metricsLoading}
           variant="success"
         />
         <KpiCard
-          label="Directly Attributed"
+          label="Direct Attribution"
           value={formatCurrency(metrics?.directlyAttributedRecoveredRevenue)}
-          description="Incrementally caused by AI"
+          description="Directly caused by AI intervention"
           icon={Zap}
           loading={metricsLoading}
-          variant="success"
+          variant="ai"
         />
         <KpiCard
           label="Expected Incremental"
@@ -126,487 +187,467 @@ export function OverviewDashboard({ onNavigate, onNavigateCase }: OverviewDashbo
         <KpiCard
           label="Recovery Rate"
           value={formatPercent(metrics?.recoveryRate)}
-          description={metrics ? `${metrics.recoveredCases} case${metrics.recoveredCases !== 1 ? "s" : ""} fully recovered` : undefined}
+          description={
+            metrics
+              ? `${metrics.recoveredCases} of ${metrics.activeCases + metrics.recoveredCases} cases`
+              : undefined
+          }
           icon={BarChart3}
           loading={metricsLoading}
         />
-        <KpiCard
-          label="Active Cases"
-          value={metrics?.activeCases?.toString() ?? "--"}
-          description={metrics ? `${metrics.highPriorityCases} high/critical priority` : undefined}
-          icon={AlertCircle}
-          loading={metricsLoading}
-          variant={metrics && metrics.highPriorityCases > 0 ? "warning" : "default"}
-        />
       </div>
 
-      {/* ── Payment Failure Spike Alert (Feature 13) ── */}
-      {activeAnomaly && (
-        <Card className={cn(
-          "border-l-4",
-          activeAnomaly.severity === 'CRITICAL' ? 'border-l-red-500 bg-red-50/50 dark:bg-red-950/20' :
-          activeAnomaly.severity === 'ELEVATED' ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-950/20' :
-          'border-l-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20'
-        )}>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Payment Failure Spike Detected
-              </CardTitle>
-              <Badge variant={activeAnomaly.severity === 'CRITICAL' ? 'destructive' : 'secondary'} className="text-[10px]">
-                {activeAnomaly.severity}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="text-xs space-y-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-foreground">
-                {(activeAnomaly.observedValue * 100).toFixed(1)}%
-              </span>
-              <span className="text-muted-foreground">failures</span>
-              <span className="text-muted-foreground">vs</span>
-              <span className="font-medium">
-                {(activeAnomaly.baselineValue * 100).toFixed(1)}% baseline
-              </span>
-            </div>
-            <p className="text-muted-foreground">
-              {activeAnomaly.deviation > 0
-                ? `${(activeAnomaly.deviation * 100).toFixed(0)}% above normal  •  ${activeAnomaly.sampleSize} payments in window`
-                : `${Math.abs(activeAnomaly.deviation * 100).toFixed(0)}% below normal  •  ${activeAnomaly.sampleSize} payments in window`
-              }
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Live Money Flow Strip ── */}
-      <Card className="border-emerald-500/30 shadow-md shadow-emerald-500/5 bg-gradient-to-r from-slate-50 to-emerald-50/10 dark:from-slate-950 dark:to-emerald-950/10 overflow-hidden mb-6">
+      {/* ── Money Flow Pipeline Strip ── */}
+      <Card className="border border-border/80 shadow-xs overflow-hidden bg-card">
+        <CardHeader className="py-2.5 px-4 border-b border-border/60 bg-muted/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              Financial Pipeline & Conversion Flow
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs text-xs">
+                    Demonstrates money movement from raw payment failure exposure through guardrail eligibility to verified settlement.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </span>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              Deterministic Conversion
+            </span>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
-            
-            {/* 1. Revenue At Risk */}
-            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors">
-              <p className="text-2xl font-black text-slate-800 dark:text-slate-200 group-hover:scale-105 transition-transform">
+          <div className="grid grid-cols-1 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-border/60 text-left">
+            {/* Step 1: Total Risk */}
+            <div className="p-3.5 sm:p-4 hover:bg-muted/20 transition-colors">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span>1. Open Exposure</span>
+                <span className="font-mono text-muted-foreground/60">RAW</span>
+              </div>
+              <p className="text-xl font-bold tracking-tight text-foreground mt-1 tabular-nums">
                 {formatCurrency(metrics?.totalRevenueAtRisk)}
               </p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Revenue at Risk</p>
-            </div>
-
-            {/* 2. Eligible */}
-            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors relative">
-              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-white dark:bg-slate-950 rounded-full text-muted-foreground/40 hidden sm:block">
-                <ArrowRight className="h-5 w-5" />
-              </div>
-              <p className="text-2xl font-black text-slate-700 dark:text-slate-300 group-hover:scale-105 transition-transform">
-                {metrics ? formatCurrency(metrics.eligibleRecoveryExposure) : "--"}
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                Gross payment failures
               </p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Eligible</p>
             </div>
 
-            {/* 3. Recovered */}
-            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors relative">
-              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-white dark:bg-slate-950 rounded-full text-emerald-600/40 hidden sm:block">
-                <ArrowRight className="h-5 w-5" />
+            {/* Step 2: Eligible */}
+            <div className="p-3.5 sm:p-4 hover:bg-muted/20 transition-colors">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span>2. Policy Eligible</span>
+                <span className="font-mono text-muted-foreground/60">GATED</span>
               </div>
-              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-500 group-hover:scale-105 transition-transform">
+              <p className="text-xl font-bold tracking-tight text-foreground mt-1 tabular-nums">
+                {metrics ? formatCurrency(metrics.eligibleRecoveryExposure) : "—"}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                Passed DND &amp; caps
+              </p>
+            </div>
+
+            {/* Step 3: Verified Recovered */}
+            <div className="p-3.5 sm:p-4 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                <span>3. Verified Recovered</span>
+                <span className="font-mono">SETTLED</span>
+              </div>
+              <p className="text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">
                 {formatCurrency(metrics?.totalRecoveredRevenue)}
               </p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Recovered</p>
+              <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 mt-0.5 truncate">
+                Webhook payment proof
+              </p>
             </div>
 
-            {/* 4. Incremental */}
-            <div className="flex-1 p-4 sm:p-6 text-center group hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition-colors relative">
-              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-white dark:bg-slate-950 rounded-full text-violet-600/40 hidden sm:block">
-                <ArrowRight className="h-5 w-5" />
+            {/* Step 4: Incremental Lift */}
+            <div className="p-3.5 sm:p-4 hover:bg-muted/20 transition-colors">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <span>4. Incremental Lift</span>
+                <span className="font-mono text-muted-foreground/60">MODEL</span>
               </div>
-              <p className="text-2xl font-black text-violet-600 dark:text-violet-400 group-hover:scale-105 transition-transform">
+              <p className="text-xl font-bold tracking-tight text-foreground mt-1 tabular-nums">
                 {formatCurrency(metrics?.expectedIncrementalRecovery)}
               </p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-1">Incremental</p>
-            </div>
-
-            {/* 5. Net Value */}
-            <div className="flex-1 p-4 sm:p-6 text-center group bg-emerald-100/50 dark:bg-emerald-900/30 relative overflow-hidden">
-              <div className="absolute left-1/2 -top-2.5 sm:-left-3 sm:top-1/2 -translate-x-1/2 sm:-translate-y-1/2 sm:translate-x-0 bg-emerald-50 dark:bg-emerald-950 rounded-full text-emerald-600/60 hidden sm:block z-20">
-                <ArrowRight className="h-5 w-5" />
-              </div>
-              <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/10 to-transparent pointer-events-none" />
-              <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 group-hover:scale-105 transition-transform relative z-10">
-                {metrics?.netRecoveryValue != null ? formatCurrency(metrics.netRecoveryValue) : "--"}
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                Estimated baseline delta
               </p>
-              <p className="text-[10px] font-bold text-emerald-800/70 dark:text-emerald-200/70 uppercase tracking-wider mt-1 relative z-10">Net Value</p>
             </div>
 
+            {/* Step 5: Net Value */}
+            <div className="p-3.5 sm:p-4 bg-teal-500/5 hover:bg-teal-500/10 transition-colors">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-teal-700 dark:text-teal-400">
+                <span>5. Net Value</span>
+                <span className="font-mono">ROI</span>
+              </div>
+              <p className="text-xl font-bold tracking-tight text-teal-600 dark:text-teal-400 mt-1 tabular-nums">
+                {metrics?.netRecoveryValue != null ? formatCurrency(metrics.netRecoveryValue) : "—"}
+              </p>
+              <p className="text-[11px] text-teal-700/80 dark:text-teal-400/80 mt-0.5 truncate">
+                Less channel costs &amp; discounts
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── Two-Column: Priority Cases + Risk by Category ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Priority Recovery Cases */}
-        <Card>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Priority Recovery Cases</CardTitle>
-            <Button variant="ghost" size="sm" className="text-xs" onClick={() => onNavigate("cases")}>
-              View all <ArrowRight className="ml-1 h-3 w-3" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {casesLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />
-                ))}
+      {/* ── Two-Column Operational Layout ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Priority Cases Queue (8 cols) */}
+        <div className="lg:col-span-8 space-y-4">
+          <Card className="border border-border/80 shadow-xs">
+            <CardHeader className="py-3 px-4 border-b border-border/60 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+                  Priority Recovery Queue
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  High &amp; critical risk exposure requiring review or automated execution
+                </p>
               </div>
-            ) : highPriorityCases.length === 0 ? (
-              <EmptyState icon={Activity} title="No active recovery cases" description="You're currently not leaving recoverable revenue on the table." />
-            ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto">
-                {highPriorityCases.slice(0, 5).map((c) => {
-                  const decision = c.agentDecisions[0]
-                  const recovered = c.recoveredAmount > 0
-                  return (
-                    <button key={c.id} onClick={() => onNavigateCase(c.id)} className="w-full text-left rounded-xl border border-transparent hover:border-violet-200 dark:hover:border-violet-900/50 p-4 hover:bg-violet-50/30 dark:hover:bg-violet-950/10 transition-all duration-300 cursor-pointer group hover:shadow-sm">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2 min-w-0 transition-transform duration-300 group-hover:translate-x-1">
-                          <span className={c.priority === "critical" ? "text-destructive font-semibold text-[10px] uppercase tracking-wider" : c.priority === "high" ? "text-amber-600 font-semibold text-[10px] uppercase tracking-wider" : "text-[10px] font-medium text-muted-foreground uppercase tracking-wider"}>
-                            {c.priority} Priority
-                          </span>
-                          <StatusBadge status={c.status} />
-                          {/* Time decay indicator */}
-                          {(() => {
-                            const ageMs = Date.now() - new Date(c.detectedAt).getTime()
-                            const ageHours = ageMs / 3_600_000
-                            if (ageHours < 1) return null
-                            const decayFactor = Math.exp(-0.693 * ageHours / 24)
-                            const isAging = decayFactor < 0.7
-                            return (
-                              <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className={cn(
-                                      "text-[10px] tabular-nums ml-auto",
-                                      isAging ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
-                                    )}>
-                                      <Clock className="inline h-3 w-3 mr-0.5" />
-                                      {decayFactor >= 0.9 ? 'Fresh' : decayFactor >= 0.7 ? 'Aging' : decayFactor >= 0.4 ? 'Old' : 'Stale'}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="text-xs">
-                                    Case is {ageHours < 24 ? `${ageHours.toFixed(0)}h` : `${(ageHours / 24).toFixed(1)}d`} old — decay factor {decayFactor.toFixed(2)}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )
-                          })()}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground hover:text-foreground font-medium"
+                onClick={() => onNavigate("cases")}
+              >
+                View all cases <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {casesLoading ? (
+                <div className="p-4 space-y-2.5">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-14 rounded-md bg-muted/60 animate-pulse" />
+                  ))}
+                </div>
+              ) : highPriorityCases.length === 0 ? (
+                <div className="py-8">
+                  <EmptyState
+                    icon={Activity}
+                    title="No open high-priority cases"
+                    description="All critical failed payment exposure is either recovered, executing, or monitored."
+                  />
+                </div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {highPriorityCases.slice(0, 5).map((c) => {
+                    const decision = c.agentDecisions[0]
+                    const recovered = c.recoveredAmount > 0
+
+                    // Time decay calculation
+                    const ageMs = Date.now() - new Date(c.detectedAt).getTime()
+                    const ageHours = ageMs / 3_600_000
+                    const decayFactor = Math.exp((-0.693 * ageHours) / 24)
+
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => onNavigateCase(c.id)}
+                        className="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 hover:bg-muted/30 cursor-pointer transition-colors gap-3"
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-xs font-semibold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              {truncate(c.id, 14)}
+                            </span>
+                            <StatusBadge status={c.status} />
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "h-4 px-1 text-[9px] font-bold uppercase tracking-wider",
+                                c.priority === "critical"
+                                  ? "text-red-600 border-red-500/30 bg-red-500/5 dark:text-red-400"
+                                  : "text-amber-600 border-amber-500/30 bg-amber-500/5 dark:text-amber-400"
+                              )}
+                            >
+                              {c.priority}
+                            </Badge>
+                            {ageHours >= 1 && (
+                              <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-0.5">
+                                <Clock className="h-2.5 w-2.5" />
+                                {decayFactor >= 0.7 ? "Fresh" : decayFactor >= 0.4 ? "Aging" : "Stale"}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-muted-foreground truncate">
+                            <span className="text-foreground font-medium">
+                              {c.customer?.displayName || c.customer?.email || "Unknown Customer"}
+                            </span>
+                            {" · "}
+                            <span>{formatCategory(c.category)}</span>
+                            {c.payment?.description && ` · ${truncate(c.payment.description, 28)}`}
+                          </div>
+
+                          {decision && (
+                            <div className="flex items-center gap-2 pt-0.5">
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                Rec: {formatAction(decision.recommendedAction)}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground font-mono">
+                                {formatPercent(decision.confidence)} confidence
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold shrink-0">
-                            {formatCurrency(c.amountAtRisk)}
-                            {recovered && <span className="text-emerald-600 ml-1 font-normal text-[10px] uppercase tracking-wide bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">Recovered {formatCurrency(c.recoveredAmount)}</span>}
-                          </span>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-all -translate-x-2 group-hover:translate-x-0" />
+
+                        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-border/40">
+                          <div className="text-right">
+                            <p className="text-sm font-bold tracking-tight text-foreground tabular-nums">
+                              {formatCurrency(c.amountAtRisk)}
+                            </p>
+                            {recovered ? (
+                              <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                Recovered {formatCurrency(c.recoveredAmount)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">
+                                At risk
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all mt-1">
+                            <span className="text-[11px] font-medium mr-1 hidden sm:inline">Workspace</span>
+                            <ArrowRight className="h-3 w-3" />
+                          </div>
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground truncate transition-transform duration-300 group-hover:translate-x-1">
-                        {c.customer?.displayName ?? "Unknown Customer"}
-                        {c.customer?.email ? ` · ${c.customer.email}` : ""}
-                        {" · "}{formatCategory(c.category)}
-                        {c.payment?.description ? ` · ${truncate(c.payment.description, 30)}` : ""}
-                      </p>
-                      {decision && (
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                            AI: {formatAction(decision.recommendedAction)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {formatPercent(decision.confidence)} confidence
-                          </span>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Risk by Category */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Risk by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {metricsLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-10 rounded bg-muted animate-pulse" />
-                ))}
-              </div>
-            ) : metrics?.byCategory && Object.keys(metrics.byCategory).length > 0 ? (
-              <div className="space-y-4">
-                {Object.entries(metrics.byCategory)
-                  .sort(([, a], [, b]) => b.amountAtRisk - a.amountAtRisk)
-                  .map(([category, data]) => {
-                    const total = Object.values(metrics.byCategory).reduce((s, c) => s + c.amountAtRisk, 0)
-                    const pct = total > 0 ? (data.amountAtRisk / total) * 100 : 0
-                    const recoveredPct = data.amountAtRisk > 0 ? (data.recovered / data.amountAtRisk) * 100 : 0
-                    return (
-                      <button key={category} onClick={() => onNavigate("cases")} className="w-full text-left group cursor-pointer p-3 rounded-xl hover:bg-muted/50 transition-colors border border-transparent hover:border-border">
-                        <div className="flex items-center justify-between text-xs mb-2">
-                          <span className="font-semibold group-hover:text-primary transition-colors">{formatCategory(category)}</span>
-                          <span className="text-muted-foreground font-medium">{data.count} case{data.count !== 1 ? "s" : ""} · {formatCurrency(data.amountAtRisk)}</span>
-                        </div>
-                        <div className="flex h-2.5 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="bg-emerald-500 rounded-full transition-all group-hover:bg-emerald-400"
-                            style={{ width: `${pct * recoveredPct / 100}%` }}
-                          />
-                          <div
-                            className="bg-amber-500 rounded-full transition-all group-hover:bg-amber-400"
-                            style={{ width: `${pct * (1 - recoveredPct / 100)}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5 font-medium">
-                          <span className="text-emerald-600 dark:text-emerald-400">{formatCurrency(data.recovered)} recovered</span>
-                          <span>{pct.toFixed(1)}% of total risk</span>
-                        </div>
-                      </button>
                     )
                   })}
-              </div>
-            ) : (
-              <EmptyState icon={IndianRupee} title="No risk categories" description="Risk category data will appear as recovery cases are created." />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-      {/* ── How It Works (for judges) ── */}
-      <Card>
-        <CardContent className="pt-6">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">How It Works</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex items-start gap-3 group">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/30 shrink-0 transition-all duration-300 group-hover:bg-violet-200 dark:group-hover:bg-violet-800/50 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.2)]">
-                <Zap className="h-5 w-5 text-violet-600 transition-transform duration-300 group-hover:scale-110" />
+          {/* Background Reconciliation Job Health */}
+          <Card className="border border-border/80 shadow-xs">
+            <CardHeader className="py-2.5 px-4 border-b border-border/60 bg-muted/20 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RefreshCw
+                  className={cn(
+                    "h-3.5 w-3.5 text-muted-foreground",
+                    reconData?.health === "running" || triggerRecon.isPending ? "animate-spin text-emerald-500" : ""
+                  )}
+                />
+                <span className="text-xs font-semibold text-foreground">
+                  Provider Polling &amp; Reconciliation Status
+                </span>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "h-4 px-1.5 text-[9px] font-bold uppercase",
+                    reconData?.health === "running"
+                      ? "text-blue-600 border-blue-500/30 bg-blue-500/5 animate-pulse"
+                      : reconData?.health === "degraded"
+                      ? "text-amber-600 border-amber-500/30 bg-amber-500/5"
+                      : "text-emerald-600 border-emerald-500/30 bg-emerald-500/5"
+                  )}
+                >
+                  {reconData?.health ?? "healthy"}
+                </Badge>
               </div>
-              <div>
-                <p className="text-sm font-semibold transition-colors group-hover:text-violet-700 dark:group-hover:text-violet-400">AI Detection &amp; Diagnosis</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Failed payments are detected, categorized, and analyzed with confidence scores.</p>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {reconData?.latestRun?.durationMs ? `${reconData.latestRun.durationMs}ms runtime` : "Standby"}
+              </span>
+            </CardHeader>
+            <CardContent className="p-3.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                <div className="p-2 rounded border bg-card">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Last Sync</p>
+                  <p className="font-semibold mt-0.5 font-mono text-[11px]">
+                    {reconData?.latestRun?.completedAt
+                      ? new Date(reconData.latestRun.completedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                      : "Never"}
+                  </p>
+                </div>
+                <div className="p-2 rounded border bg-card">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Examined</p>
+                  <p className="font-semibold mt-0.5 font-mono text-[11px]">
+                    {reconData?.latestRun?.recordsExamined ?? 0} records
+                  </p>
+                </div>
+                <div className="p-2 rounded border bg-card">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Confirmed</p>
+                  <p className="font-semibold mt-0.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                    {reconData?.latestRun?.confirmedCount ?? 0} payments
+                  </p>
+                </div>
+                <div className="p-2 rounded border bg-card">
+                  <p className="text-[10px] text-muted-foreground uppercase font-medium">Retries Pending</p>
+                  <p className="font-semibold mt-0.5 font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                    {reconData?.unresolvedAttemptsCount ?? 0} cases
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-start gap-3 group">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30 shrink-0 transition-all duration-300 group-hover:bg-amber-200 dark:group-hover:bg-amber-800/50 group-hover:shadow-[0_0_15px_rgba(245,158,11,0.2)]">
-                <ShieldCheck className="h-5 w-5 text-amber-600 transition-transform duration-300 group-hover:scale-110" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold transition-colors group-hover:text-amber-700 dark:group-hover:text-amber-400">Policy Gate + Merchant Approval</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Every recovery action passes through a policy check and requires merchant sign-off.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 group">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/30 shrink-0 transition-all duration-300 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/50 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-                <UserCheck className="h-5 w-5 text-emerald-600 transition-transform duration-300 group-hover:scale-110" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">Execute &amp; Verify Attribution</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Actions execute with webhook-verified payment events proving real revenue recovery.</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* ── Outcome Feedback Loop (Feature 15) ── */}
-      {feedbackData && Object.keys(feedbackData.byAction).length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Intervention Feedback
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {Object.entries(feedbackData.byAction).map(([action, stats]) => (
-                <div key={action} className="flex items-center gap-3">
-                  <span className="text-xs font-medium w-32 shrink-0 truncate" title={action}>
-                    {formatAction(action)}
+              {reconData?.unresolvedAttempts && reconData.unresolvedAttempts.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border/60">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Active Deferred Retries
+                  </p>
+                  <div className="divide-y divide-border/40 text-xs">
+                    {reconData.unresolvedAttempts.slice(0, 3).map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => onNavigateCase(item.caseId)}
+                        className="py-1.5 flex items-center justify-between hover:text-emerald-600 cursor-pointer"
+                      >
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {truncate(item.customerEmail, 24)}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] bg-muted px-1 py-0.2 rounded font-mono">
+                            Attempt {item.reconciliationAttempts}/10
+                          </span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {item.nextReconciliationAt
+                              ? new Date(item.nextReconciliationAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                              : "Queued"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column: Risk Distribution & AI Calibration (4 cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          {/* Risk by Category Card */}
+          <Card className="border border-border/80 shadow-xs">
+            <CardHeader className="py-3 px-4 border-b border-border/60">
+              <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+                Exposure by Category
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Distribution across failure classifications
+              </p>
+            </CardHeader>
+            <CardContent className="p-4">
+              {metricsLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-8 rounded bg-muted/60 animate-pulse" />
+                  ))}
+                </div>
+              ) : metrics?.byCategory && Object.keys(metrics.byCategory).length > 0 ? (
+                <div className="space-y-3.5">
+                  {Object.entries(metrics.byCategory)
+                    .sort(([, a], [, b]) => b.amountAtRisk - a.amountAtRisk)
+                    .map(([category, data]) => {
+                      const total = Object.values(metrics.byCategory).reduce((s, c) => s + c.amountAtRisk, 0)
+                      const pct = total > 0 ? (data.amountAtRisk / total) * 100 : 0
+                      const recoveredPct = data.amountAtRisk > 0 ? (data.recovered / data.amountAtRisk) * 100 : 0
+
+                      return (
+                        <div
+                          key={category}
+                          onClick={() => onNavigate("cases")}
+                          className="group cursor-pointer space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              {formatCategory(category)}
+                            </span>
+                            <span className="font-mono text-muted-foreground text-[11px]">
+                              {formatCurrency(data.amountAtRisk)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden flex">
+                            <div
+                              className="bg-emerald-500 rounded-full transition-all"
+                              style={{ width: `${pct * (recoveredPct / 100)}%` }}
+                              title={`Recovered: ${formatCurrency(data.recovered)}`}
+                            />
+                            <div
+                              className="bg-border rounded-full transition-all"
+                              style={{ width: `${pct * (1 - recoveredPct / 100)}%` }}
+                              title={`Remaining: ${formatCurrency(data.amountAtRisk - data.recovered)}`}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                            <span>{data.count} case{data.count !== 1 ? "s" : ""}</span>
+                            <span>{pct.toFixed(0)}% of total</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={IndianRupee}
+                  title="No category data"
+                  description="Failure category breakdown will populate as cases are ingested."
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AI Feedback Calibration Card */}
+          {feedbackData && Object.keys(feedbackData.byAction).length > 0 && (
+            <Card className="border border-border/80 shadow-xs">
+              <CardHeader className="py-2.5 px-4 border-b border-border/60 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    Intervention Empirical Calibration
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    Bayesian Smoothing
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="p-3.5 space-y-2.5">
+                {Object.entries(feedbackData.byAction).map(([action, stats]) => (
+                  <div key={action} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-muted-foreground truncate max-w-[140px]" title={action}>
+                        {formatAction(action)}
+                      </span>
+                      <div className="flex items-center gap-2 font-mono text-[11px]">
+                        <span className="font-semibold text-foreground">
+                          {(stats.smoothedProbability * 100).toFixed(0)}%
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          n={stats.sampleSize}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-1 rounded-full bg-muted overflow-hidden">
                       <div
                         className={cn(
                           "h-full rounded-full transition-all",
-                          stats.smoothedProbability >= 0.6 ? "bg-emerald-500" :
-                          stats.smoothedProbability >= 0.4 ? "bg-amber-500" : "bg-red-400"
+                          stats.smoothedProbability >= 0.6
+                            ? "bg-emerald-500"
+                            : stats.smoothedProbability >= 0.4
+                            ? "bg-amber-500"
+                            : "bg-red-400"
                         )}
                         style={{ width: `${Math.round(stats.smoothedProbability * 100)}%` }}
                       />
                     </div>
                   </div>
-                  <span className="text-xs font-bold tabular-nums w-10 text-right">
-                    {(stats.smoothedProbability * 100).toFixed(0)}%
-                  </span>
-                  <span className="text-[10px] text-muted-foreground tabular-nums w-16 text-right">
-                    n={stats.sampleSize}
-                  </span>
-                </div>
-              ))}
-              {feedbackData.overallSmoothedRate !== null && (
-                <p className="text-[10px] text-muted-foreground pt-1 border-t">
-                  Overall smoothed recovery rate: {(feedbackData.overallSmoothedRate * 100).toFixed(1)}%
-                  {feedbackData.feedbackCoverage !== null && `  •  Feedback coverage: ${(feedbackData.feedbackCoverage * 100).toFixed(0)}%`}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Background Reconciliation Job Health & Unresolved Cases (Feature 17) ── */}
-      <Card className="border border-border/80 shadow-xs overflow-hidden">
-        <CardHeader className="pb-3 border-b bg-muted/20">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400">
-                <RefreshCw className={cn("h-4 w-4", reconData?.health === "running" || triggerRecon.isPending ? "animate-spin" : "")} />
-              </div>
-              <div>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  Background Reconciliation Job
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] font-semibold uppercase tracking-wider",
-                      reconData?.health === "running"
-                        ? "bg-blue-500/10 text-blue-600 border-blue-500/30 dark:text-blue-400 animate-pulse"
-                        : reconData?.health === "degraded"
-                        ? "bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400"
-                        : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400"
-                    )}
-                  >
-                    {reconData?.health ?? "healthy"}
-                  </Badge>
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Durable worker polling Razorpay provider for pending confirmations &amp; delayed webhook recovery
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={triggerRecon.isPending || reconData?.health === "running"}
-                onClick={() => triggerRecon.mutate()}
-                className="h-8 text-xs font-semibold shadow-xs"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", triggerRecon.isPending ? "animate-spin" : "")} />
-                {triggerRecon.isPending ? "Running..." : "Run Job Now"}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="p-2.5 rounded-lg border bg-card text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase">Last Run</p>
-              <p className="text-xs font-bold mt-1">
-                {reconData?.latestRun?.completedAt ? new Date(reconData.latestRun.completedAt).toLocaleTimeString() : "Never"}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg border bg-card text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase">Duration</p>
-              <p className="text-xs font-bold mt-1">
-                {reconData?.latestRun ? `${reconData.latestRun.durationMs}ms` : "—"}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg border bg-card text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase">Examined</p>
-              <p className="text-xs font-bold mt-1">{reconData?.latestRun?.recordsExamined ?? 0}</p>
-            </div>
-            <div className="p-2.5 rounded-lg border bg-card text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase">Confirmed</p>
-              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                {reconData?.latestRun?.confirmedCount ?? 0}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg border bg-card text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase">Deferred Retries</p>
-              <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1">
-                {reconData?.latestRun?.deferredCount ?? 0}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg border bg-card text-center">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase">Next Retry Plan</p>
-              <p className="text-xs font-bold mt-1">
-                {reconData?.latestRun?.nextRunAt ? new Date(reconData.latestRun.nextRunAt).toLocaleTimeString() : "Every 60s"}
-              </p>
-            </div>
-          </div>
-
-          {reconData?.unresolvedAttempts && reconData.unresolvedAttempts.length > 0 ? (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Unresolved / Retrying Attempts ({reconData.unresolvedAttemptsCount})
-                </p>
-              </div>
-              <div className="rounded-lg border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Case / Customer</th>
-                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Action</th>
-                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Retries</th>
-                      <th className="py-2 px-3 text-left font-medium text-muted-foreground">Status</th>
-                      <th className="py-2 px-3 text-right font-medium text-muted-foreground">Next Retry</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {reconData.unresolvedAttempts.map((item) => (
-                      <tr
-                        key={item.id}
-                        onClick={() => onNavigateCase(item.caseId)}
-                        className="hover:bg-muted/30 cursor-pointer transition-colors"
-                      >
-                        <td className="py-2 px-3 font-medium">
-                          <span>{item.customerEmail}</span>
-                          <span className="text-[10px] text-muted-foreground ml-1 font-mono">({truncate(item.caseId, 12)})</span>
-                        </td>
-                        <td className="py-2 px-3">{formatAction(item.action)}</td>
-                        <td className="py-2 px-3 font-mono">{item.reconciliationAttempts} / 10</td>
-                        <td className="py-2 px-3">
-                          <Badge variant="outline" className={cn(
-                            "text-[9px] font-semibold",
-                            item.finalReconciliationStatus === "EXHAUSTED" ? "text-red-500 border-red-500/30" : "text-amber-500 border-amber-500/30"
-                          )}>
-                            {item.finalReconciliationStatus ?? "PENDING"}
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-3 text-right text-muted-foreground font-mono">
-                          {item.nextReconciliationAt ? new Date(item.nextReconciliationAt).toLocaleTimeString() : "Pending"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="py-3 px-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-muted-foreground flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium">
-                <CheckCircle2 className="h-4 w-4" /> All recovery attempts are synchronized and reconciled with provider.
-              </span>
-              <span className="text-[10px] text-muted-foreground">0 unresolved</span>
-            </div>
+                ))}
+                {feedbackData.overallSmoothedRate !== null && (
+                  <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                    <span>Overall Rate</span>
+                    <span className="font-semibold text-foreground">
+                      {(feedbackData.overallSmoothedRate * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

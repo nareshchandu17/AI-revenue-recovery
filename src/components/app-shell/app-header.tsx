@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { ChevronLeft, RotateCcw, ShieldCheck, LogOut, User } from "lucide-react"
+import { ChevronLeft, ShieldCheck, LogOut, User, ChevronRight } from "lucide-react"
 import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
 import { useSettingsStore } from "@/store/settings"
 import { useAuthStore } from "@/store/auth"
@@ -23,23 +23,46 @@ export function AppHeader({ title, showBack, onBack, subtitle }: AppHeaderProps)
   const { user, signOut } = useAuthStore()
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:px-6">
-      <SidebarTrigger className="-ml-1" />
+    <header className="sticky top-0 z-30 flex h-13 items-center gap-2.5 border-b border-border/70 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-4 md:px-6">
+      <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground" />
+
       {showBack && onBack && (
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onBack}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
       )}
-      <div className="flex-1 min-w-0">
-        <h1 className="text-sm font-semibold truncate">{title}</h1>
-        {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
+
+      {/* Breadcrumbs & Title */}
+      <div className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted-foreground">
+        {showBack ? (
+          <>
+            <button
+              onClick={onBack}
+              className="hover:text-foreground transition-colors truncate max-w-[120px]"
+            >
+              Cases
+            </button>
+            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+            <h1 className="text-sm font-semibold text-foreground truncate">{title}</h1>
+          </>
+        ) : (
+          <div className="flex flex-col">
+            <h1 className="text-sm font-semibold text-foreground truncate">{title}</h1>
+            {subtitle && <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>}
+          </div>
+        )}
       </div>
-      <TooltipProvider delayDuration={200}>
+
+      {/* Autonomy Badge */}
+      <TooltipProvider delayDuration={150}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge variant="secondary" className="shrink-0 text-[10px] gap-1 bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50 cursor-help">
+            <Badge
+              variant="outline"
+              className="shrink-0 text-[10px] font-medium gap-1 px-2 py-0.5 h-6 rounded-md bg-amber-500/10 text-amber-700 border-amber-300/60 dark:text-amber-400 dark:border-amber-800/60 cursor-help"
+            >
               <ShieldCheck className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-              Autonomy: {autonomy.badgeLabel}
+              <span>Autonomy: {autonomy.badgeLabel}</span>
             </Badge>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="end" className="max-w-xs text-xs space-y-1 p-2.5">
@@ -50,25 +73,36 @@ export function AppHeader({ title, showBack, onBack, subtitle }: AppHeaderProps)
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <Badge variant="outline" className="shrink-0 text-[10px] gap-1">
-        <RotateCcw className="h-3 w-3" />
-        Test Mode
-      </Badge>
+
+      {/* Test Mode / Simulation Indicator */}
+      <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border/70 bg-muted/30 text-[11px] text-muted-foreground font-mono">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        <span>Test Mode</span>
+      </div>
 
       {/* User menu */}
       {user && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs font-medium max-w-[120px] truncate px-2">
-              <User className="h-3.5 w-3.5 shrink-0" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs font-medium max-w-[140px] truncate px-2 border border-transparent hover:border-border/60"
+            >
+              <div className="h-4 w-4 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <User className="h-2.5 w-2.5 text-muted-foreground" />
+              </div>
               <span className="truncate">{user.name || user.email}</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-52">
             <div className="px-2 py-1.5">
-              <p className="text-xs font-medium truncate">{user.name}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
-              <Badge variant="outline" className="mt-1 text-[9px] py-0">{user.role}</Badge>
+              <p className="text-xs font-semibold text-foreground truncate">{user.name}</p>
+              <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+              <div className="mt-1 flex items-center gap-1">
+                <Badge variant="outline" className="text-[9px] uppercase font-mono px-1.5 py-0 h-4">{user.role}</Badge>
+                <span className="text-[10px] text-muted-foreground">• Merchant Tenant</span>
+              </div>
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem

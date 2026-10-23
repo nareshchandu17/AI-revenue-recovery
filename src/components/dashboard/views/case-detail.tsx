@@ -1,21 +1,70 @@
 "use client"
 
-import { useCaseDetail, useApproveDecision, useRejectDecision, useExecuteRecovery, useStopRecovery, useAnalyzeCase, useSimulatePayment, useSimulateDeliveryStatus } from "@/lib/hooks/use-queries"
-import type { ProbabilityEstimateItem, CustomerValueData } from "@/lib/hooks/use-queries"
+import { useState } from "react"
+import {
+  useCaseDetail,
+  useApproveDecision,
+  useRejectDecision,
+  useExecuteRecovery,
+  useStopRecovery,
+  useAnalyzeCase,
+  useSimulatePayment,
+  useSimulateDeliveryStatus,
+} from "@/lib/hooks/use-queries"
+import type { CustomerValueData } from "@/lib/hooks/use-queries"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { ErrorState } from "@/components/dashboard/error-state"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
-import { CheckCircle, XCircle, SquarePlay, Ban, Brain, ArrowRight, ExternalLink, Loader2, ShieldCheck, UserCheck, Clock, AlertTriangle, Zap, AlertCircle, TrendingUp, Users, Percent, Info, Mail } from "lucide-react"
-import { formatCurrency, formatCurrencyFull, formatPercent, formatCategory, formatAction, formatPriority, formatDateTime, formatRelativeTime, formatActorType } from "@/lib/format"
-import { AUTONOMY_CONFIGS } from "@/lib/autonomy"
-import { useSettingsStore } from "@/store/settings"
+import {
+  CheckCircle2,
+  XCircle,
+  Play,
+  Ban,
+  Brain,
+  RotateCcw,
+  ShieldCheck,
+  AlertTriangle,
+  Zap,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  CreditCard,
+  User,
+  Clock,
+  Sparkles,
+  TrendingUp,
+  Percent,
+  Check,
+  Copy,
+  Mail,
+  Send,
+  HelpCircle,
+  Activity,
+} from "lucide-react"
+import {
+  formatCurrency,
+  formatCategory,
+  formatAction,
+  formatDateTime,
+  formatRelativeTime,
+} from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 interface CaseDetailProps {
@@ -23,82 +72,9 @@ interface CaseDetailProps {
   onBack: () => void
 }
 
-// ── Trust Flow Step ──
+// ── Evidence & Guardrail Row ──
 
-function TrustStep({ icon: Icon, label, status }: { icon: React.ElementType; label: string; status: "done" | "active" | "pending" }) {
-  return (
-    <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
-      <div className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
-        status === "done" && "bg-emerald-100 dark:bg-emerald-900/30",
-        status === "active" && "bg-amber-100 dark:bg-amber-900/30 ring-2 ring-amber-400/50",
-        status === "pending" && "bg-muted",
-      )}>
-        {status === "pending" ? <Icon className="h-4 w-4 text-muted-foreground" /> : <Icon className={cn("h-4 w-4", status === "done" ? "text-emerald-600" : "text-amber-600")} />}
-      </div>
-      <p className={cn(
-        "text-[10px] font-medium text-center leading-tight",
-        status === "done" ? "text-emerald-700 dark:text-emerald-400" :
-        status === "active" ? "text-amber-700 dark:text-amber-400" :
-        "text-muted-foreground"
-      )}>{label}</p>
-    </div>
-  )
-}
-
-// ── Probability Bar ──
-
-function ProbabilityBar({ probability, confidence, isRecommended, isBaseline }: { probability: number; confidence: number; isRecommended: boolean; isBaseline?: boolean }) {
-  const pct = Math.round(probability * 100)
-  const barColor = isBaseline
-    ? "bg-zinc-400"
-    : pct >= 60
-      ? "bg-emerald-500"
-      : pct >= 40
-        ? "bg-amber-500"
-        : "bg-red-400"
-
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 min-w-0">
-        <div className="h-2 rounded-full bg-muted overflow-hidden">
-          <div className={cn("h-full rounded-full transition-all", barColor)} style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-      <span className="text-sm font-bold tabular-nums w-12 text-right">{pct}%</span>
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right">{(confidence * 100).toFixed(0)}% c.</span>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="text-xs">Confidence: {(confidence * 100).toFixed(1)}%</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      {isRecommended && !isBaseline && (
-        <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-[9px] px-1.5 py-0 h-4 shrink-0">
-          Best
-        </Badge>
-      )}
-    </div>
-  )
-}
-
-// ── Customer Value Tier Badge ──
-
-function ValueTierBadge({ tier }: { tier: string }) {
-  const config: Record<string, { label: string; className: string }> = {
-    very_high: { label: "Very High", className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" },
-    high: { label: "High", className: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
-    normal: { label: "Normal", className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" },
-    low: { label: "Low", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
-  }
-  const c = config[tier] ?? config.normal
-  return <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0", c.className)}>{c.label}</Badge>
-}
-
-// ── Evidence & Guardrails Check Row ──
-
-function EvidenceCheckRow({
+function GuardrailRow({
   name,
   check,
 }: {
@@ -110,73 +86,66 @@ function EvidenceCheckRow({
   }
 }) {
   const status = check?.status ?? "NOT_CHECKED"
-  const reason = check?.reason ?? "No evaluation recorded"
+  const reason = check?.reason ?? "No recorded evaluation"
 
-  const statusConfig = {
+  const config = {
     PASSED: {
-      label: "PASSED",
-      badgeClass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800",
-      dotClass: "bg-emerald-500",
-      icon: CheckCircle,
+      label: "Passed",
+      className: "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/60",
+      icon: CheckCircle2,
       iconClass: "text-emerald-600 dark:text-emerald-400",
     },
     BLOCKED: {
-      label: "BLOCKED",
-      badgeClass: "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300 dark:border-rose-800",
-      dotClass: "bg-rose-500",
+      label: "Blocked",
+      className: "bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800/60",
       icon: XCircle,
       iconClass: "text-rose-600 dark:text-rose-400",
     },
     NOT_CHECKED: {
-      label: "NOT CHECKED",
-      badgeClass: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700",
-      dotClass: "bg-slate-400",
-      icon: AlertCircle,
-      iconClass: "text-slate-500",
+      label: "Unchecked",
+      className: "bg-zinc-50 text-zinc-600 border-zinc-200 dark:bg-zinc-900/40 dark:text-zinc-400 dark:border-zinc-800",
+      icon: HelpCircle,
+      iconClass: "text-zinc-400",
     },
     NOT_APPLICABLE: {
       label: "N/A",
-      badgeClass: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700",
-      dotClass: "bg-zinc-400",
+      className: "bg-zinc-50 text-zinc-600 border-zinc-200 dark:bg-zinc-900/40 dark:text-zinc-400 dark:border-zinc-800",
       icon: Info,
       iconClass: "text-zinc-400",
     },
     INSUFFICIENT_DATA: {
-      label: "INSUFFICIENT DATA",
-      badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800",
-      dotClass: "bg-amber-500",
+      label: "No Data",
+      className: "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800/60",
       icon: AlertTriangle,
       iconClass: "text-amber-600 dark:text-amber-400",
     },
   }[status]
 
-  const IconComponent = statusConfig.icon
+  const Icon = config.icon
 
   return (
-    <div className="p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className={cn("w-2 h-2 rounded-full shrink-0", statusConfig.dotClass)} />
-          <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">{name}</span>
+    <div className="flex items-start justify-between gap-3 p-2.5 rounded-lg border border-border/60 bg-card/60 text-xs">
+      <div className="space-y-0.5 min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <Icon className={cn("h-3.5 w-3.5 shrink-0", config.iconClass)} />
+          <span className="font-medium text-foreground truncate">{name}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider", statusConfig.badgeClass)}>
-            {statusConfig.label}
-          </span>
-          <IconComponent className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4", statusConfig.iconClass)} />
-        </div>
+        <p className="text-[11px] text-muted-foreground leading-normal break-words pl-5">
+          {reason}
+        </p>
       </div>
-      <p className="text-[11px] text-muted-foreground pl-4 leading-relaxed font-mono break-words">
-        {reason}
-      </p>
+      <Badge variant="outline" className={cn("shrink-0 text-[10px] font-mono uppercase px-1.5 py-0 h-4.5", config.className)}>
+        {config.label}
+      </Badge>
     </div>
   )
 }
 
-// ── Main Component ──
-
 export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
-  const { autonomyLevel } = useSettingsStore()
+  const [copied, setCopied] = useState(false)
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false)
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null)
+
   const { data, isLoading, error, refetch } = useCaseDetail(caseId)
   const approveMutation = useApproveDecision()
   const rejectMutation = useRejectDecision()
@@ -186,19 +155,34 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const simulatePaymentMutation = useSimulatePayment()
   const simulateDeliveryMutation = useSimulateDeliveryStatus()
 
+  const copyCaseId = () => {
+    navigator.clipboard.writeText(caseId)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    toast.success("Case ID copied to clipboard")
+  }
+
   if (error) {
-    return <ErrorState message="Failed to load case details. The case may not exist." onRetry={() => refetch()} />
+    return <ErrorState message="Failed to load recovery case details." onRetry={() => refetch()} />
   }
 
   if (isLoading || !data) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-48" />
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-9 w-32" />
         </div>
-        <Skeleton className="h-64 rounded-lg" />
-        <Skeleton className="h-48 rounded-lg" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 space-y-6">
+            <Skeleton className="h-44 w-full rounded-xl" />
+            <Skeleton className="h-60 w-full rounded-xl" />
+          </div>
+          <div className="lg:col-span-4 space-y-6">
+            <Skeleton className="h-48 w-full rounded-xl" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+        </div>
       </div>
     )
   }
@@ -206,1317 +190,722 @@ export function CaseDetail({ caseId, onBack }: CaseDetailProps) {
   const c = data.case
   const cv: CustomerValueData | null = data.customerValue
   const decision = c.agentDecisions[0]
+  const evidence = data.evidence
+
   const openStatuses = ["detected", "diagnosing", "diagnosed", "awaiting_approval", "executing"]
   const isOpen = openStatuses.includes(c.status)
   const isAwaitingApproval = c.status === "awaiting_approval"
   const hasApprovedDecision = decision?.status === "approved"
   const canApprove = isAwaitingApproval && decision?.status === "pending"
-  const canExecute = hasApprovedDecision && (c.status === "awaiting_approval" || c.status === "diagnosed" || c.status === "completed" || c.status === "executing")
+  const canExecute = hasApprovedDecision && isOpen
   const canStop = isOpen && c.status !== "completed"
   const canAnalyze = c.status === "detected" || c.status === "diagnosed" || c.status === "completed"
 
-  const remainingAmount = c.amountAtRisk - c.recoveredAmount
-
-  // Customer info from payment relation
-  const customerName = c.payment?.customer?.displayName ?? "Unknown Customer"
+  // Customer info
+  const customerName = c.payment?.customer?.displayName ?? "Direct Customer"
   const customerEmail = c.payment?.customer?.email ?? null
 
-  // Parse reasoning JSON
-  let reasoningParsed: Record<string, unknown> = {}
-  let factors: Array<{ type: "positive" | "negative"; text: string }> = []
+  // Parse reasoning JSON safely
+  let reasoning: Record<string, any> = {}
   if (decision?.reasoningJson) {
     try {
-      reasoningParsed = typeof decision.reasoningJson === "string" ? JSON.parse(decision.reasoningJson) : decision.reasoningJson as Record<string, unknown>
-      if (reasoningParsed.factors && Array.isArray(reasoningParsed.factors)) {
-        factors = (reasoningParsed.factors as Array<Record<string, unknown>>).map((f) => ({
-          type: f.positive !== false && f.type !== "negative" ? "positive" as const : "negative" as const,
-          text: (f.text ?? f.factor ?? "Unknown factor") as string,
-        }))
-      }
-    } catch {}
-  }
-
-  // Diagnosis text
-  let diagnosisText = decision?.diagnosis ?? ""
-  if (!diagnosisText && reasoningParsed.diagnosis) {
-    diagnosisText = reasoningParsed.diagnosis as string
-  } else if (!diagnosisText && reasoningParsed.reasoning) {
-    diagnosisText = reasoningParsed.reasoning as string
-  }
-
-  // Policy gate result
-  const policyResult = reasoningParsed.policyResult as Record<string, unknown> | undefined
-  const policyPassed = policyResult?.passed ?? (decision?.recommendedAction !== "NO_ACTION")
-  const policyViolations = Array.isArray(policyResult?.violations) ? policyResult.violations as string[] : []
-  const policyReason = (policyResult?.reason ?? policyResult?.summary) as string | null
-
-  // Discount ceiling info from reasoning
-  const aiDiscountPercent = reasoningParsed.discountPercent as number | null
-  const isDiscountAction = decision?.recommendedAction === "offer_discount"
-  const maxDiscountPercent = (c.merchant as any)?.maxDiscountPercent ?? (Number(useSettingsStore.getState().maxDiscountLimit) || 10)
-
-  // Decision evidence and overall state
-  const evidence = (data as any)?.evidence ?? (reasoningParsed.decisionEvidence as any)
-  const overallDecisionState: "ACT" | "DO_NOT_ACT" | "BLOCKED" | "AWAITING_APPROVAL" =
-    evidence?.overallState ?? (
-      policyPassed
-        ? (canApprove ? "AWAITING_APPROVAL" : "ACT")
-        : (decision?.economicDecision === "DO_NOT_ACT" ? "DO_NOT_ACT" : "BLOCKED")
-    )
-
-  // ── Probability Estimates processing ──
-  // Get the latest set of estimates (deduplicated by action, keeping latest per action)
-  const latestEstimates = processProbabilityEstimates(c.probabilityEstimates)
-  const baselineEstimate = latestEstimates.find(e => e.isBaseline)
-  const interventionEstimates = latestEstimates.filter(e => !e.isBaseline).sort((a, b) => b.probability - a.probability)
-  const bestIntervention = interventionEstimates[0] ?? null
-  const hasProbabilityData = latestEstimates.length > 0
-
-  // Parse factors from probability estimates
-  function parseFactors(factorsJson: unknown): Array<{ signal: string; direction: string; detail: string }> {
-    try {
-      const raw = typeof factorsJson === "string" ? JSON.parse(factorsJson) : factorsJson
-      return Array.isArray(raw) ? raw : []
+      reasoning = typeof decision.reasoningJson === "string" ? JSON.parse(decision.reasoningJson) : decision.reasoningJson
     } catch {
-      return []
+      reasoning = {}
     }
   }
 
-  const handleApprove = () => {
-    if (!decision) return
-    approveMutation.mutate(decision.id, {
-      onSuccess: () => toast.success("Decision approved"),
-      onError: (e) => toast.error(e.message),
-    })
-  }
+  // Model & diagnostic metadata
+  const providerName = reasoning.provider ?? "zai"
+  const modelName = reasoning.model ?? "standard"
+  const usedFallback = reasoning.usedFallback === true
+  const fallbackReason = reasoning.fallbackReason
+  const decisionTimeMs = reasoning.decisionTimeMs
 
-  const handleReject = () => {
-    if (!decision) return
-    rejectMutation.mutate(decision.id, {
-      onSuccess: () => toast.success("Decision rejected"),
-      onError: (e) => toast.error(e.message),
-    })
-  }
+  // Economic status definition
+  const overallState = evidence?.overallState ?? (decision?.status === "approved" ? "ACT" : decision?.status === "pending" ? "AWAITING_APPROVAL" : "DO_NOT_ACT")
+  const stateReason = evidence?.stateReason ?? decision?.diagnosis ?? "Economic evaluation determined candidate action"
 
-  const handleExecute = () => {
-    executeMutation.mutate(c.id, {
-      onSuccess: () => toast.success("Recovery action queued"),
-      onError: (e) => toast.error(e.message),
-    })
-  }
-
-  const handleStop = () => {
-    stopMutation.mutate(c.id, {
-      onSuccess: () => toast.success("Recovery stopped"),
-      onError: (e) => toast.error(e.message),
-    })
-  }
-
-  const handleAnalyze = () => {
-    analyzeMutation.mutate(c.id, {
-      onSuccess: () => toast.success("Analysis started"),
-      onError: (e) => toast.error(e.message),
-    })
-  }
-
-  const handleSimulatePayment = () => {
-    if (!c.payment?.externalId) return
-    simulatePaymentMutation.mutate({
-      paymentId: c.payment.externalId,
-      amount: c.amountAtRisk, // Pay the full amount
-      method: "upi",
-      email: c.payment.customer?.email ?? "simulated@example.com"
-    }, {
-      onSuccess: () => toast.success("Simulated customer payment successfully!"),
-      onError: (e) => toast.error(e.message),
-    })
-  }
-
-  // Determine trust flow states
-  const hasDecision = !!decision
-  const aiStep = hasDecision ? "done" as const : "pending" as const
-  const policyStep = hasDecision && policyResult ? (policyPassed ? "done" as const : "active" as const) : (hasDecision ? "active" as const : "pending" as const)
-  const merchantStep = decision?.status === "approved" ? "done" as const : decision?.status === "rejected" ? "active" as const : (isAwaitingApproval ? "active" as const : "pending" as const)
-  const executionStep = c.recoveryAttempts.some(a => a.status === "succeeded")
-    ? "done" as const
-    : c.recoveryAttempts.some(a => a.status === "running" || a.status === "queued" || a.status === "pending")
-    ? "active" as const
-    : "pending" as const
-
-  const autonomy = AUTONOMY_CONFIGS[autonomyLevel]
+  // Primary Action
+  const recommendedAction = decision?.recommendedAction ?? "no_action"
+  const discountPercent = reasoning.aiOutput?.discountPercent ?? null
 
   return (
     <div className="space-y-6">
-      {/* ── AI Decision Center Hero ── */}
-      <div className="flex flex-col mb-8 mt-2">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8 -ml-2 text-muted-foreground hover:text-foreground">
-              <ArrowRight className="h-4 w-4 rotate-180" />
-            </Button>
-            <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">AI Decision Center</h1>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className={cn(
-              "text-xs font-bold uppercase px-2 py-0.5 rounded",
-              c.priority === "critical" ? "bg-destructive/10 text-destructive" :
-              c.priority === "high" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" :
-              c.priority === "medium" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
-              "bg-zinc-100 text-zinc-600"
-            )}>
-              {formatPriority(c.priority)} Priority
+      {/* ── Compact Workspace Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/70 bg-card shadow-xs">
+        <div className="space-y-1.5 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-semibold tracking-tight text-foreground flex items-center gap-1.5">
+              <span>{c.id}</span>
+              <button
+                onClick={copyCaseId}
+                className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+                title="Copy Case ID"
+              >
+                {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
             </span>
+            <span className="text-muted-foreground/60">•</span>
+            <span className="text-xs text-muted-foreground truncate font-medium">{customerName}</span>
+            {customerEmail && (
+              <span className="text-xs text-muted-foreground/70 hidden md:inline truncate">
+                ({customerEmail})
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
             <StatusBadge status={c.status} />
-            <span className="text-xs text-muted-foreground font-mono">{c.id}</span>
+            <Badge variant="outline" className="text-[11px] font-medium h-5 rounded-md px-2 bg-muted/30">
+              {formatCategory(c.category)}
+            </Badge>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[11px] font-medium h-5 rounded-md px-2",
+                c.priority === "critical" ? "border-rose-300 text-rose-700 bg-rose-50/50 dark:border-rose-900 dark:text-rose-300" :
+                c.priority === "high" ? "border-amber-300 text-amber-700 bg-amber-50/50 dark:border-amber-900 dark:text-amber-300" :
+                "border-zinc-300 text-zinc-700 bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300"
+              )}
+            >
+              <span className={cn(
+                "h-1.5 w-1.5 rounded-full mr-1.5",
+                c.priority === "critical" ? "bg-rose-500" :
+                c.priority === "high" ? "bg-amber-500" : "bg-zinc-400"
+              )} />
+              {c.priority.toUpperCase()} PRIORITY
+            </Badge>
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              Detected {formatRelativeTime(c.detectedAt)}
+            </span>
           </div>
         </div>
-        <div className="pl-9 mt-1">
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-            {c.agentDecisions.length} recovery decision{c.agentDecisions.length !== 1 ? "s" : ""} · {formatCurrencyFull(c.recoveredAmount)} recovered · {formatCurrencyFull(c.amountAtRisk)} at risk
-          </p>
+
+        {/* Header Right: Financial Exposure */}
+        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-2 sm:pt-0 border-border/60 shrink-0">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Amount At Risk
+          </span>
+          <span className="text-2xl font-bold tracking-tight font-mono text-foreground">
+            {formatCurrency(c.amountAtRisk)}
+          </span>
+          {c.recoveredAmount > 0 && (
+            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              {formatCurrency(c.recoveredAmount)} Recovered
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Fallback if no decision exists yet */}
-      {!decision && (
-        <Card className="mb-8 border-violet-500/30 shadow-lg shadow-violet-500/10 bg-gradient-to-br from-violet-500/5 to-indigo-500/5 dark:from-violet-900/10 dark:to-indigo-900/10 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
-            <Brain className="w-48 h-48 text-violet-600" />
-          </div>
-          <CardContent className="p-12 text-center flex flex-col items-center justify-center relative z-10 min-h-[300px]">
-            <h2 className="text-3xl font-black tracking-tight mb-4 font-mono text-slate-800 dark:text-slate-100 uppercase">
-              AI Analysis Pending
-            </h2>
-            <p className="text-muted-foreground mb-8 max-w-lg mx-auto text-base">
-              This recovery case ({formatCurrencyFull(c.amountAtRisk)} at risk) has been diagnosed but hasn't been evaluated by the AI yet. Execute the AI to generate an economic recovery strategy.
-            </p>
-            <Button size="lg" onClick={handleAnalyze} disabled={analyzeMutation.isPending} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-md shadow-violet-500/20 px-8 py-6 text-lg">
-              {analyzeMutation.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <Brain className="h-5 w-5 mr-2" />}
-              Execute AI Recovery
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Featured Decision Card */}
-      {decision && (
-        <Card className="border-violet-500/30 shadow-lg shadow-violet-500/10 mb-8 relative overflow-hidden bg-gradient-to-br from-violet-500/5 to-indigo-500/5 dark:from-violet-900/10 dark:to-indigo-900/10">
-          <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
-            <Brain className="w-48 h-48 text-violet-600" />
-          </div>
-          <CardContent className="p-6 relative z-10">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-              <Badge className={cn(
-                "px-3 py-1 font-black tracking-widest text-[10px] border-0 w-fit",
-                policyPassed 
-                  ? "bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-500/20" 
-                  : "bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-500/20"
-              )}>
-                AI DECISION → {policyPassed ? "ACT" : "BLOCKED"}
-              </Badge>
-              
-              <div className="flex gap-2 flex-wrap">
-                {canApprove && (
-                  <Button size="sm" onClick={handleApprove} disabled={approveMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
-                    <CheckCircle className="h-4 w-4 mr-1.5" /> Approve Action
-                  </Button>
-                )}
-                {canApprove && (
-                  <Button size="sm" variant="outline" onClick={handleReject} disabled={rejectMutation.isPending} className="border-red-200 text-red-700 hover:bg-red-50">
-                    <XCircle className="h-4 w-4 mr-1.5" /> Reject
-                  </Button>
-                )}
-                {canExecute && (
-                  <Button size="sm" onClick={handleExecute} disabled={executeMutation.isPending} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-md shadow-violet-500/20">
-                    {executeMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
-                    Execute Action
-                  </Button>
-                )}
-                {canStop && !canApprove && !canExecute && (
-                  <Button size="sm" variant="outline" onClick={handleStop} disabled={stopMutation.isPending}>
-                    <Ban className="h-3.5 w-3.5 mr-1" /> Stop
-                  </Button>
-                )}
-                {canAnalyze && (
-                  <Button size="sm" variant="secondary" onClick={handleAnalyze} disabled={analyzeMutation.isPending}>
-                    {analyzeMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Brain className="h-3.5 w-3.5 mr-1" />}
-                    Re-analyze
-                  </Button>
-                )}
-                {c.status === "executing" && (
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSimulatePayment} disabled={simulatePaymentMutation.isPending}>
-                    {simulatePaymentMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Zap className="h-3.5 w-3.5 mr-1" />}
-                    Simulate Payment
-                  </Button>
-                )}
-              </div>
-            </div>
-            
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight mb-8 font-mono text-slate-800 dark:text-slate-100 uppercase">
-              {formatAction(decision.recommendedAction)}
-            </h2>
-            
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3 text-lg font-medium flex-wrap">
-                <span className="font-bold text-slate-900 dark:text-white">{formatCurrencyFull(c.amountAtRisk)}</span>
-                <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">at risk</span>
-                <ArrowRight className="w-5 h-5 text-muted-foreground/50 mx-1 hidden sm:block" />
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                  {decision?.expectedRecovery != null
-                    ? formatCurrencyFull(decision.expectedRecovery)
-                    : decision?.expectedIncrementalRecovery != null
-                      ? `+${formatCurrencyFull(decision.expectedIncrementalRecovery)}`
-                      : c.recoveryProbability != null && c.recoveryProbability > 0
-                        ? formatCurrencyFull(Math.round(c.amountAtRisk * c.recoveryProbability))
-                        : <span className="text-muted-foreground text-xs font-normal">unavailable</span>}
-                </span>
-                <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">expected recovery</span>
-              </div>
-              
-              <div className="flex items-center gap-2 text-lg font-medium mt-1">
-                <span className="font-bold text-violet-600 dark:text-violet-400">
-                  {decision?.expectedIncrementalRecovery != null
-                    ? `+${formatCurrencyFull(decision.expectedIncrementalRecovery)}`
-                    : <span className="text-muted-foreground text-xs font-normal">unavailable</span>}
-                </span>
-                <span className="text-muted-foreground text-sm uppercase tracking-wider font-semibold">expected incremental value</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* "Why did the agent act?" Panel */}
-      {decision && (
-        <Card className="mb-8 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 pb-4">
-            <CardTitle className="text-sm font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Why did the agent act?</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800">
-              
-              {/* Left Column: Economic Justification */}
-              <div className="p-6 space-y-4">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Revenue at risk</span>
-                  <span className="font-medium font-mono">{formatCurrencyFull(c.amountAtRisk)}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Baseline recovery</span>
-                  <span className="font-medium font-mono">
-                    {baselineEstimate
-                      ? formatPercent(baselineEstimate.probability)
-                      : decision?.baselineExpectedRecovery != null
-                        ? formatCurrencyFull(decision.baselineExpectedRecovery)
-                        : <span className="text-muted-foreground text-xs">unavailable</span>}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Intervention recovery</span>
-                  <span className="font-medium font-mono text-emerald-600 dark:text-emerald-400">
-                    {bestIntervention
-                      ? formatPercent(bestIntervention.probability)
-                      : (decision.recoveryProbability != null && decision.recoveryProbability > 0
-                        ? formatPercent(decision.recoveryProbability)
-                        : <span className="text-muted-foreground text-xs">unavailable</span>)}
-                  </span>
-                </div>
-                
-                <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-800" />
-                
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Expected incremental</span>
-                  <span className="font-medium font-mono text-violet-600 dark:text-violet-400">
-                    {decision.expectedIncrementalRecovery != null
-                      ? `+${formatCurrencyFull(decision.expectedIncrementalRecovery)}`
-                      : <span className="text-muted-foreground text-xs">unavailable</span>}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Intervention cost</span>
-                  <span className="font-medium font-mono text-red-600 dark:text-red-400">
-                    {(decision.incentiveCost != null || decision.interventionCost != null)
-                      ? `-${formatCurrencyFull((decision.incentiveCost ?? 0) + (decision.interventionCost ?? 0))}`
-                      : <span className="text-muted-foreground text-xs">unavailable</span>}
-                  </span>
-                </div>
-                
-                <div className="my-4 border-t border-dashed border-slate-200 dark:border-slate-800" />
-                
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-900 dark:text-slate-100">Expected net value</span>
-                  <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                    {decision.expectedIncrementalRecovery != null && decision.incentiveCost != null
-                      ? formatCurrencyFull(decision.expectedIncrementalRecovery - decision.incentiveCost)
-                      : decision.netExpectedValue != null
-                        ? formatCurrencyFull(decision.netExpectedValue)
-                        : <span className="text-muted-foreground text-xs font-normal">unavailable</span>}
-                  </span>
-                </div>
-                
-                {/* DECISION overall status */}
-                <div className="mt-6 pt-4 border-t-2 border-slate-900 dark:border-slate-100 flex flex-col gap-1.5">
-                  <div className="flex justify-between items-center">
-                    <span className="font-black tracking-widest text-slate-900 dark:text-slate-100 text-xs sm:text-sm">DECISION</span>
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "font-black tracking-widest text-xs px-2.5 py-1 rounded border uppercase",
-                        overallDecisionState === "ACT" ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800" :
-                        overallDecisionState === "DO_NOT_ACT" ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800" :
-                        overallDecisionState === "AWAITING_APPROVAL" ? "bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800" :
-                        "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800"
-                      )}>
-                        {overallDecisionState}
-                      </span>
-                      {overallDecisionState === "ACT" && <CheckCircle className="w-4 h-4 text-emerald-600" />}
-                      {overallDecisionState === "DO_NOT_ACT" && <Ban className="w-4 h-4 text-amber-600" />}
-                      {overallDecisionState === "AWAITING_APPROVAL" && <Clock className="w-4 h-4 text-sky-600" />}
-                      {overallDecisionState === "BLOCKED" && <XCircle className="w-4 h-4 text-rose-600" />}
-                    </div>
-                  </div>
-                  {evidence?.stateReason && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-                      {evidence.stateReason}
-                    </p>
-                  )}
-                </div>
-              </div>
-              
-              {/* Right Column: Evidence / Guardrails */}
-              <div className="p-6 bg-slate-50/30 dark:bg-slate-900/30">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Evidence & Guardrails</h3>
-                  {evidence?.decisionVersion && (
-                    <span className="text-[10px] text-muted-foreground font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                      {evidence.decisionVersion}
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-2.5">
-                  <EvidenceCheckRow
-                    name="Customer consent"
-                    check={evidence?.checks?.consent ?? {
-                      status: "NOT_CHECKED",
-                      reason: "Customer consent verification not available",
-                    }}
-                  />
-                  <EvidenceCheckRow
-                    name="DND check"
-                    check={evidence?.checks?.dnd ?? {
-                      status: "NOT_CHECKED",
-                      reason: "DND registry check not available",
-                    }}
-                  />
-                  <EvidenceCheckRow
-                    name="Contact limit"
-                    check={evidence?.checks?.contactLimit ?? {
-                      status: "NOT_CHECKED",
-                      reason: "Contact frequency policy check not available",
-                    }}
-                  />
-                  <EvidenceCheckRow
-                    name="Merchant policy"
-                    check={evidence?.checks?.policy ?? {
-                      status: policyPassed ? "PASSED" : "BLOCKED",
-                      reason: policyViolations.length > 0 ? policyViolations.join("; ") : (policyReason ?? "Merchant policy guardrails evaluated"),
-                    }}
-                  />
-                  <EvidenceCheckRow
-                    name="Economic gate"
-                    check={evidence?.checks?.economicGate ?? {
-                      status: ((decision.expectedIncrementalRecovery ?? 0) - (decision.incentiveCost ?? 0)) > 0 ? "PASSED" : "BLOCKED",
-                      reason: decision.economicReason ?? (decision.netExpectedValue != null ? `Net Expected Value: ${formatCurrencyFull(decision.netExpectedValue)}` : "Economic gate evaluated"),
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Customer & Payment Info ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Case Details</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Customer</p>
-              <p className="font-medium">{customerName}</p>
-              {customerEmail && <p className="text-xs text-muted-foreground mt-0.5">{customerEmail}</p>}
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Category</p>
-              <p className="font-medium">{formatCategory(c.category)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Detected</p>
-              <p className="font-medium">{formatDateTime(c.detectedAt)}</p>
-            </div>
-            {c.resolvedAt && (
-              <div>
-                <p className="text-xs text-muted-foreground">Resolved</p>
-                <p className="font-medium">{formatDateTime(c.resolvedAt)}</p>
-              </div>
+      {/* ── Main Two-Column Workbench ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* ── Left Column: Decision & Financial Evidence (8 cols) ── */}
+        <div className="lg:col-span-8 space-y-6 min-w-0">
+          {/* 1. Primary AI Recovery Decision Card */}
+          <Card
+            className={cn(
+              "overflow-hidden border transition-all shadow-xs",
+              overallState === "ACT"
+                ? "border-emerald-300/80 bg-emerald-50/20 dark:border-emerald-900/60 dark:bg-emerald-950/10"
+                : overallState === "BLOCKED"
+                ? "border-rose-300/80 bg-rose-50/20 dark:border-rose-900/60 dark:bg-rose-950/10"
+                : overallState === "AWAITING_APPROVAL"
+                ? "border-amber-300/80 bg-amber-50/20 dark:border-amber-900/60 dark:bg-amber-950/10"
+                : "border-border/80 bg-card"
             )}
-          </div>
-          {c.payment && (
-            <>
-              <Separator />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Payment ID</p>
-                  <p className="font-mono text-xs">{c.payment.externalId}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Method</p>
-                  <p className="font-medium capitalize">{c.payment.method}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <p className="text-xs text-muted-foreground">Failure Reason</p>
-                  <p className="text-xs">{c.payment.failureReason ?? c.payment.description ?? "N/A"}</p>
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Customer Value / CLV ── */}
-      {cv && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-teal-600" />
-              <CardTitle className="text-sm font-semibold">Customer Value Intelligence</CardTitle>
-              <ValueTierBadge tier={cv.tier} />
-            </div>
-            <p className="text-[10px] text-muted-foreground">Historical Customer Value (HCV) — based on verified payment data</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Historical Spend</p>
-                <p className="text-base font-bold mt-0.5">{formatCurrencyFull(cv.totalSuccessfulSpend)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{cv.successfulPaymentCount} successful payment{cv.successfulPaymentCount !== 1 ? "s" : ""}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Avg. Transaction</p>
-                <p className="text-base font-bold mt-0.5">{formatCurrencyFull(cv.avgTransactionValue)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{cv.totalPaymentCount} total, {cv.failedPaymentCount} failed</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Value Percentile</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <p className="text-base font-bold">P{cv.percentile}</p>
-                  <span className="text-[10px] text-muted-foreground">of {cv.populationSize} customers</span>
-                </div>
-                <div className="mt-1.5 h-1.5 rounded-full bg-muted overflow-hidden">
+          >
+            <CardHeader className="p-4 sm:p-5 pb-3 border-b border-border/40">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
                   <div
                     className={cn(
-                      "h-full rounded-full",
-                      cv.percentile >= 80 ? "bg-emerald-500" :
-                      cv.percentile >= 50 ? "bg-teal-500" :
-                      cv.percentile >= 20 ? "bg-zinc-400" : "bg-amber-500"
+                      "h-8 w-8 rounded-lg flex items-center justify-center shrink-0",
+                      overallState === "ACT"
+                        ? "bg-emerald-600 text-white"
+                        : overallState === "BLOCKED"
+                        ? "bg-rose-600 text-white"
+                        : overallState === "AWAITING_APPROVAL"
+                        ? "bg-amber-600 text-white"
+                        : "bg-zinc-800 text-white"
                     )}
-                    style={{ width: `${cv.percentile}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Value Weight</p>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <p className={cn(
-                    "text-base font-bold",
-                    cv.valueWeight >= 1.2 ? "text-emerald-600" :
-                    cv.valueWeight <= 0.8 ? "text-amber-600" : ""
-                  )}>{cv.valueWeight.toFixed(2)}x</p>
-                  <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs text-xs">
-                        Multiplicative weight applied to recovery signals. Range: 0.70x (P0) to 1.40x (P100). Median (P50) = 1.00x.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {cv.valueWeight >= 1.2 ? "Amplifies recovery signals" :
-                   cv.valueWeight <= 0.8 ? "Reduces recovery signals" :
-                   "Neutral recovery signal impact"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Per-Intervention Recovery Probability ── */}
-      {hasProbabilityData && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-violet-500" />
-                <CardTitle className="text-sm font-semibold">Recovery Probability Model</CardTitle>
-              </div>
-              <Badge variant="outline" className="text-[10px] font-mono">
-                v{interventionEstimates[0]?.modelVersion ?? baselineEstimate?.modelVersion ?? "—"}
-              </Badge>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              P(recover | case, intervention) — deterministic signal-based estimates, not LLM-generated
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Baseline row */}
-            {baselineEstimate && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">Baseline (no intervention)</span>
-                    <TooltipProvider delayDuration={200}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs text-xs">
-                          Probability the customer would recover on their own without any action from the system.
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
-                <ProbabilityBar probability={baselineEstimate.probability} confidence={baselineEstimate.confidence} isRecommended={false} isBaseline />
-                {/* Baseline factors */}
-                {(() => {
-                  const f = parseFactors(baselineEstimate.factorsJson)
-                  if (f.length === 0) return null
-                  return (
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 ml-1">
-                      {f.slice(0, 4).map((factor, i) => (
-                        <span key={i} className={cn(
-                          "text-[10px]",
-                          factor.direction === "positive" ? "text-emerald-600" :
-                          factor.direction === "negative" ? "text-red-500" : "text-muted-foreground"
-                        )}>
-                          {factor.direction === "positive" ? "+" : factor.direction === "negative" ? "−" : "~"}{factor.signal}
-                        </span>
-                      ))}
-                    </div>
-                  )
-                })()}
-              </div>
-            )}
-
-            {/* Separator between baseline and interventions */}
-            {baselineEstimate && interventionEstimates.length > 0 && (
-              <div className="flex items-center gap-2 pt-1">
-                <Separator className="flex-1" />
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Interventions</span>
-                <Separator className="flex-1" />
-              </div>
-            )}
-
-            {/* Intervention rows */}
-            <div className="space-y-3">
-              {interventionEstimates.map((est) => {
-                const isRecommended = decision?.recommendedAction === est.action
-                const isDisountCeilingHit = isDiscountAction && est.action === "offer_discount" && policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED"))
-                return (
-                  <div key={est.id} className={cn(
-                    "rounded-lg border p-3 space-y-2 transition-colors",
-                    isRecommended ? "border-violet-300 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20" :
-                    isDisountCeilingHit ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/10" :
-                    "border-transparent bg-muted/30"
-                  )}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-xs font-medium",
-                          isRecommended ? "text-violet-700 dark:text-violet-300" : ""
-                        )}>
-                          {formatAction(est.action)}
-                        </span>
-                        {isRecommended && (
-                          <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-[9px] px-1.5 py-0 h-4">
-                            AI Recommended
-                          </Badge>
-                        )}
-                        {isDisountCeilingHit && (
-                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4">
-                            Ceiling Exceeded
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <ProbabilityBar probability={est.probability} confidence={est.confidence} isRecommended={isRecommended} />
-                    {/* Uplift over baseline */}
-                    {baselineEstimate && est.probability > baselineEstimate.probability && (
-                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                        +{((est.probability - baselineEstimate.probability) * 100).toFixed(1)}pp uplift over baseline
-                      </p>
-                    )}
-                    {/* Intervention factors (expandable) */}
-                    {(() => {
-                      const f = parseFactors(est.factorsJson)
-                      if (f.length === 0) return null
-                      return (
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 ml-1">
-                          {f.slice(0, 5).map((factor, i) => (
-                            <span key={i} className={cn(
-                              "text-[10px]",
-                              factor.direction === "positive" ? "text-emerald-600 dark:text-emerald-400" :
-                              factor.direction === "negative" ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
-                            )}>
-                              {factor.direction === "positive" ? "+" : factor.direction === "negative" ? "−" : "~"}{factor.signal}
-                            </span>
-                          ))}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── AI Recovery Analysis ── */}
-      {decision && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Brain className="h-4 w-4 text-violet-500" />
-              <CardTitle className="text-sm font-semibold">AI Recovery Analysis</CardTitle>
-              <StatusBadge status={decision.status} showDot={false} />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {/* Autonomy & Governance: 4-Step Recovery Lifecycle */}
-            <div className="rounded-lg border bg-muted/30 px-4 py-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 border-b pb-2.5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider">Governance &amp; Autonomy Model</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Deterministic policy guardrails &amp; merchant authorization govern every action</p>
-                </div>
-                <Badge variant="secondary" className="w-fit text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400">
-                  <ShieldCheck className="h-3 w-3 mr-1" />
-                  {autonomy.label}
-                </Badge>
-              </div>
-
-              {/* 4-Step Governance Flow */}
-              <div className="flex items-start gap-1 sm:gap-3">
-                <TrustStep icon={Zap} label="AI Recommendation" status={aiStep} />
-                <div className="flex items-center pt-3">
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </div>
-                <TrustStep icon={ShieldCheck} label="Policy Gate" status={policyStep} />
-                <div className="flex items-center pt-3">
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </div>
-                <TrustStep icon={UserCheck} label="Merchant Approval" status={merchantStep} />
-                <div className="flex items-center pt-3">
-                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                </div>
-                <TrustStep icon={SquarePlay} label="Execution" status={executionStep} />
-              </div>
-
-              {/* Concise Governance Responsibilities */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
-                <div className="rounded-md border p-2.5 bg-card space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300">
-                    <Zap className="h-3.5 w-3.5" />
-                    <span>AI</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {autonomy.responsibilities.ai}
-                  </p>
-                </div>
-                <div className="rounded-md border p-2.5 bg-card space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    <span>Policy</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {autonomy.responsibilities.policy}
-                  </p>
-                </div>
-                <div className="rounded-md border p-2.5 bg-card space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                    <UserCheck className="h-3.5 w-3.5" />
-                    <span>Merchant</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {autonomy.responsibilities.merchant}
-                  </p>
-                </div>
-                <div className="rounded-md border p-2.5 bg-card space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
-                    <SquarePlay className="h-3.5 w-3.5" />
-                    <span>Executor</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    {autonomy.responsibilities.executor}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Decision Status Callout */}
-            {decision.status === "pending" && canApprove && (
-              <Alert className="border-amber-500/30 bg-amber-50 dark:bg-amber-950/20">
-                <Clock className="h-4 w-4 text-amber-600" />
-                <AlertTitle className="text-amber-800 dark:text-amber-300">Awaiting your approval to proceed</AlertTitle>
-                <AlertDescription className="text-amber-700/80 dark:text-amber-400/80">
-                  Review the AI recommendation and policy gate result below, then approve or reject this recovery action.
-                </AlertDescription>
-              </Alert>
-            )}
-            {decision.status === "approved" && (
-              <Alert className="border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20">
-                <CheckCircle className="h-4 w-4 text-emerald-600" />
-                <AlertTitle className="text-emerald-800 dark:text-emerald-300">Approved — ready to execute</AlertTitle>
-                <AlertDescription className="text-emerald-700/80 dark:text-emerald-400/80">
-                  This recovery action has been approved. Click &quot;Execute Recovery&quot; to start the process.
-                </AlertDescription>
-              </Alert>
-            )}
-            {decision.status === "rejected" && (
-              <Alert className="border-red-500/30 bg-red-50 dark:bg-red-950/20">
-                <XCircle className="h-4 w-4 text-red-600" />
-                <AlertTitle className="text-red-800 dark:text-red-300">Rejected by policy</AlertTitle>
-                <AlertDescription className="text-red-700/80 dark:text-red-400/80">
-                  {policyReason ?? "This recovery action was rejected. You can re-analyze the case to get a new recommendation."}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Recommended Action + Confidence */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground mb-1">Recommended Action</p>
-                <p className="font-semibold text-base">{formatAction(decision.recommendedAction)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Confidence</p>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-violet-500" style={{ width: `${decision.confidence * 100}%` }} />
-                  </div>
-                  <span className="text-sm font-semibold">{formatPercent(decision.confidence)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Discount Ceiling Info */}
-            {isDiscountAction && (
-              <div className={cn(
-                "rounded-lg border p-3 space-y-2",
-                policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED"))
-                  ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/10"
-                  : "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/10"
-              )}>
-                <div className="flex items-center gap-2">
-                  <Percent className={cn("h-4 w-4", policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED")) ? "text-red-600" : "text-emerald-600")} />
-                  <p className="text-xs font-semibold">Discount Ceiling</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Merchant Maximum</p>
-                    <p className="font-semibold">{maxDiscountPercent}%</p>
+                  >
+                    <Sparkles className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-muted-foreground">AI Requested</p>
-                    <p className={cn(
-                      "font-semibold",
-                      (aiDiscountPercent ?? 0) > maxDiscountPercent ? "text-red-600" : ""
-                    )}>{aiDiscountPercent != null ? `${aiDiscountPercent}%` : "N/A"}
-                    </p>
-                  </div>
-                </div>
-                {policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED")) && (
-                  <p className="text-xs text-red-600 mt-1">
-                    <AlertTriangle className="h-3 w-3 inline mr-1" />
-                    AI requested {aiDiscountPercent}% discount which exceeds the merchant ceiling of {maxDiscountPercent}%. Policy gate blocked this action.
-                  </p>
-                )}
-                {!policyViolations.some(v => v.includes("DISCOUNT_CEILING_EXCEEDED")) && aiDiscountPercent != null && aiDiscountPercent <= maxDiscountPercent && (
-                  <p className="text-xs text-emerald-600 mt-1">
-                    <CheckCircle className="h-3 w-3 inline mr-1" />
-                    Discount {aiDiscountPercent}% is within the merchant ceiling of {maxDiscountPercent}%.
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Diagnosis */}
-            {diagnosisText && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Diagnosis</p>
-                <p className="text-sm leading-relaxed">{diagnosisText}</p>
-              </div>
-            )}
-
-            {/* Economic Gate Result */}
-            {decision.economicDecision && decision.economicDecision === "DO_NOT_ACT" ? (
-              <div className="rounded-xl border border-red-500/30 bg-gradient-to-b from-red-50 to-white dark:from-red-950/30 dark:to-background shadow-lg overflow-hidden mt-4 relative">
-                <div className="absolute top-0 inset-x-0 h-1 bg-red-500" />
-                <div className="p-5 text-center relative z-10">
-                  <h3 className="text-sm font-bold tracking-widest flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
-                    <Ban className="h-4 w-4" />
-                    Expected recovery: {formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)} | 
-                    Cost: {formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))} | 
-                    NPV: {formatCurrencyFull(decision.netExpectedValue ?? 0)} | 
-                    Policy v3 | Decision: DO_NOT_ACT
-                  </h3>
-                  <p className="text-muted-foreground text-xs mt-1 font-medium">Intervention is economically unjustified</p>
-                </div>
-                <div className="px-5 pb-5 space-y-4">
-                  <div className="text-center pb-3 border-b border-red-200/50 dark:border-red-900/30">
-                    <p className="text-[10px] font-bold text-red-800 dark:text-red-300 uppercase tracking-widest mb-3">Economic Analysis</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
-                      <div className="group">
-                        <p className="text-[10px] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Expected Baseline</p>
-                        <p className="font-semibold text-sm transition-transform group-hover:translate-x-0.5">{formatCurrencyFull(decision.baselineExpectedRecovery ?? 0)}</p>
-                      </div>
-                      <div className="group">
-                        <p className="text-[10px] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Expected Incremental</p>
-                        <p className="font-semibold text-sm text-emerald-600 dark:text-emerald-400 transition-transform group-hover:translate-x-0.5">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)}</p>
-                      </div>
-                      <div className="group">
-                        <p className="text-[10px] text-muted-foreground uppercase transition-colors group-hover:text-foreground">Est. Cost</p>
-                        <p className="font-semibold text-sm text-amber-600 dark:text-amber-500 transition-transform group-hover:translate-x-0.5">-{formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground uppercase">Expected Net Value</p>
-                        <p className="font-bold text-base text-red-600">{formatCurrencyFull(decision.netExpectedValue ?? 0)}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-red-900 dark:text-red-200">{decision.economicReason}</p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      <span className="font-bold">Result:</span> No intervention executed. Customer was not contacted.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : decision.economicDecision === "ACT" ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-4 mt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="h-5 w-5 text-emerald-600" />
-                  <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
-                    Expected recovery: {formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)} | 
-                    Cost: {formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))} | 
-                    NPV: {formatCurrencyFull(decision.netExpectedValue ?? 0)} | 
-                    Policy v3 | Decision: ACT
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Expected Baseline</p>
-                    <p className="font-semibold">{formatCurrencyFull(decision.baselineExpectedRecovery ?? 0)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Expected Incremental</p>
-                    <p className="font-semibold text-emerald-600">+{formatCurrencyFull(decision.expectedIncrementalRecovery ?? 0)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Total Cost</p>
-                    <p className="font-semibold text-amber-600">-{formatCurrencyFull((decision.interventionCost ?? 0) + (decision.incentiveCost ?? 0))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Net Expected Value</p>
-                    <p className="font-bold text-emerald-600">+{formatCurrencyFull(decision.netExpectedValue ?? 0)}</p>
-                  </div>
-                </div>
-
-                {decision.economicReason && (
-                  <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-3 font-medium">{decision.economicReason}</p>
-                )}
-              </div>
-            ) : null}
-
-            {/* Policy Gate Result */}
-            {policyResult && (
-              <div className="rounded-lg border p-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className={cn("h-4 w-4", policyPassed ? "text-emerald-600" : "text-red-600")} />
-                  <p className="text-xs font-semibold">Policy Gate Result</p>
-                  <Badge variant={policyPassed ? "secondary" : "destructive"} className={cn(
-                    "text-[10px] ml-auto",
-                    policyPassed ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" : ""
-                  )}>
-                    {policyPassed ? "Passed" : "Rejected"}
-                  </Badge>
-                </div>
-                {policyViolations.length > 0 && (
-                  <ul className="space-y-1 ml-6">
-                    {policyViolations.map((v, i) => (
-                      <li key={i} className="text-xs text-red-600 flex items-start gap-1.5">
-                        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
-                        <span>{v}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {policyReason && policyViolations.length === 0 && (
-                  <p className="text-xs text-muted-foreground ml-6">{policyReason}</p>
-                )}
-              </div>
-            )}
-
-            {/* Why this recommendation? */}
-            {factors.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Why this recommendation?</p>
-                <ul className="space-y-1">
-                  {factors.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <span className={f.type === "positive" ? "text-emerald-500" : "text-red-500"}>{f.type === "positive" ? "+" : "-"}</span>
-                      <span>{f.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Recovery Timeline ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Recovery Timeline</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="relative space-y-0">
-            {/* Case Detection */}
-            <div className="flex gap-3 pb-4">
-              <div className="flex flex-col items-center">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30 shrink-0">
-                  <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
-                </div>
-                <div className="w-px flex-1 bg-border" />
-              </div>
-              <div className="pb-2">
-                <p className="text-xs font-medium">Failure Detected</p>
-                <p className="text-xs text-muted-foreground">{formatCategory(c.category)} · {formatCurrency(c.amountAtRisk)} at risk</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{formatRelativeTime(c.detectedAt)}</p>
-              </div>
-            </div>
-
-            {/* AI Decisions */}
-            {c.agentDecisions.map((dec) => (
-              <div key={dec.id} className="flex gap-3 pb-4">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/30 shrink-0">
-                    <Brain className="h-3.5 w-3.5 text-violet-600" />
-                  </div>
-                  <div className="w-px flex-1 bg-border" />
-                </div>
-                <div className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-medium">AI Recommended: {formatAction(dec.recommendedAction)}</p>
-                    <StatusBadge status={dec.status} showDot={false} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">{formatPercent(dec.confidence)} confidence</p>
-                  {dec.diagnosis && <p className="text-xs text-muted-foreground mt-0.5 italic">{dec.diagnosis.length > 100 ? dec.diagnosis.slice(0, 100) + "…" : dec.diagnosis}</p>}
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{formatRelativeTime(dec.createdAt)}</p>
-                  {dec.reviewedBy && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Reviewed by {dec.reviewedBy} {dec.reviewedAt ? `· ${formatRelativeTime(dec.reviewedAt)}` : ""}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* Recovery Attempts */}
-            {c.recoveryAttempts.map((att) => (
-              <div key={att.id} className="flex gap-3 pb-4">
-                <div className="flex flex-col items-center">
-                  <div className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-full shrink-0",
-                    att.status === "succeeded" ? "bg-emerald-100 dark:bg-emerald-900/30" :
-                    att.status === "failed" ? "bg-red-100 dark:bg-red-900/30" :
-                    att.status === "running" ? "bg-sky-100 dark:bg-sky-900/30" :
-                    "bg-zinc-100 dark:bg-zinc-800"
-                  )}>
-                    <SquarePlay className={cn(
-                      "h-3.5 w-3.5",
-                      att.status === "succeeded" ? "text-emerald-600" :
-                      att.status === "failed" ? "text-red-600" :
-                      att.status === "running" ? "text-sky-600 animate-pulse" :
-                      "text-zinc-400"
-                    )} />
-                  </div>
-                  <div className="w-px flex-1 bg-border" />
-                </div>
-                <div className="pb-2 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-medium">Attempt #{att.attemptNumber}: {formatAction(att.action)}</p>
-                    <StatusBadge status={att.status} showDot={false} />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {att.simulated ? "Simulated" : "Live"}
-                    {att.externalRef ? ` · Ref: ${att.externalRef}` : ""}
-                  </p>
-                  {/* Show clickable payment link URL when available */}
-                  {att.providerUrl && (
-                    <a
-                      href={att.providerUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-emerald-600 hover:underline flex items-center gap-1 mt-0.5"
-                    >
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                      {att.simulated ? "Dev stub link (not real)" : "Open payment link"}
-                    </a>
-                  )}
-                  {att.startedAt && <p className="text-[10px] text-muted-foreground mt-0.5">Started {formatRelativeTime(att.startedAt)}</p>}
-                  {att.completedAt && <p className="text-[10px] text-muted-foreground">Completed {formatRelativeTime(att.completedAt)}</p>}
-                  {att.failureReason && <p className="text-xs text-red-600 mt-1">{att.failureReason}</p>}
-                  {att.recoveredAmount > 0 && <p className="text-xs text-emerald-600 font-medium mt-1">Recovered {formatCurrencyFull(att.recoveredAmount)}</p>}
-                  {/* Reconciliation tracking (Feature 17) */}
-                  {att.finalReconciliationStatus && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[10px] text-muted-foreground">Reconciliation:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Recovery Recommendation
+                      </span>
                       <Badge
                         variant="outline"
                         className={cn(
-                          "text-[9px] px-1.5 py-0 font-medium",
-                          att.finalReconciliationStatus === "CONFIRMED" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" :
-                          att.finalReconciliationStatus === "EXHAUSTED" ? "text-red-500 border-red-500/30" :
-                          "text-amber-500 border-amber-500/30"
+                          "text-[10px] font-mono font-semibold px-2 py-0 h-4.5 rounded uppercase tracking-wider",
+                          overallState === "ACT"
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
+                            : overallState === "BLOCKED"
+                            ? "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300"
+                            : overallState === "AWAITING_APPROVAL"
+                            ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300"
+                            : "bg-zinc-100 text-zinc-800 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300"
                         )}
                       >
-                        {att.finalReconciliationStatus}
+                        {overallState.replace(/_/g, " ")}
                       </Badge>
-                      {(att.reconciliationAttempts ?? 0) > 0 && (
-                        <span className="text-[10px] text-muted-foreground font-mono">({att.reconciliationAttempts} checks)</span>
-                      )}
                     </div>
-                  )}
-                  {att.nextReconciliationAt && !att.finalReconciliationStatus && (
-                    <p className="text-[10px] text-amber-600 mt-0.5">
-                      Next reconciliation check scheduled for {formatDateTime(att.nextReconciliationAt)}
+                    <h2 className="text-lg font-semibold tracking-tight text-foreground capitalize mt-0.5">
+                      {formatAction(recommendedAction)}
+                      {discountPercent !== null && ` (${discountPercent}% Incentive)`}
+                    </h2>
+                  </div>
+                </div>
+
+                {/* Confidence Pill */}
+                {decision && (
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] font-medium uppercase text-muted-foreground">Confidence</p>
+                    <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                      {(decision.confidence * 100).toFixed(0)}%
                     </p>
-                  )}
-
-                  {/* Real Communication Delivery Outcome */}
-                  {(att.communicationEvent || att.externalRef) && (
-                    <div className="mt-2 p-2 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="h-3.5 w-3.5 text-slate-500" />
-                          <span className="text-[11px] font-semibold">
-                            {att.communicationEvent?.channel ? att.communicationEvent.channel.toUpperCase() : "EMAIL"} Dispatch
-                          </span>
-                        </div>
-                        {att.communicationEvent?.status ? (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[9px] px-1.5 py-0 font-bold uppercase tracking-wider",
-                              att.communicationEvent.status === "delivered" && "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800",
-                              att.communicationEvent.status === "failed" && "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800",
-                              att.communicationEvent.status === "sent" && "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800",
-                              att.communicationEvent.status === "queued" && "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800",
-                              att.communicationEvent.status === "blocked" && "bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700"
-                            )}
-                          >
-                            {att.communicationEvent.status}
-                          </Badge>
-                        ) : null}
-                      </div>
-
-                      <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
-                        {att.externalRef && (
-                          <span>
-                            Provider Msg ID: <span className="font-mono font-medium text-foreground">{att.externalRef}</span>
-                          </span>
-                        )}
-                        {att.communicationEvent?.template && (
-                          <span>Template: <span className="font-mono">{att.communicationEvent.template}</span></span>
-                        )}
-                      </div>
-
-                      {att.communicationEvent?.status === "failed" && att.failureReason && (
-                        <p className="text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1 font-medium mt-1">
-                          <AlertCircle className="h-3 w-3 shrink-0" />
-                          Delivery outcome: {att.failureReason}
-                        </p>
-                      )}
-
-                      {/* Interactive delivery callback simulation buttons for dev/test verification */}
-                      {att.externalRef && (
-                        <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
-                          <span className="text-[9px] text-muted-foreground">Test Webhook:</span>
-                          <button
-                            type="button"
-                            disabled={simulateDeliveryMutation.isPending}
-                            onClick={() => {
-                              simulateDeliveryMutation.mutate(
-                                {
-                                  messageId: att.externalRef!,
-                                  eventType: "failed",
-                                  reason: "Simulated bounce: Mailbox unreachable or rejected by recipient server",
-                                },
-                                {
-                                  onSuccess: () => toast.error("Delivery failure webhook received and applied"),
-                                }
-                              )
-                            }}
-                            className="text-[9px] px-1.5 py-0.5 rounded bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-950/50 dark:hover:bg-red-900/50 dark:text-red-300 font-medium transition-colors"
-                          >
-                            Simulate Failure
-                          </button>
-                          <button
-                            type="button"
-                            disabled={simulateDeliveryMutation.isPending}
-                            onClick={() => {
-                              simulateDeliveryMutation.mutate(
-                                {
-                                  messageId: att.externalRef!,
-                                  eventType: "delivered",
-                                },
-                                {
-                                  onSuccess: () => toast.success("Delivered webhook received and confirmed"),
-                                }
-                              )
-                            }}
-                            className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/50 dark:text-emerald-300 font-medium transition-colors"
-                          >
-                            Simulate Delivered
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            ))}
+            </CardHeader>
 
-            {/* Attributions */}
-            {c.recoveryAttributions.map((attr) => (
-              <div key={attr.id} className="flex gap-3 pb-2">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 shrink-0">
-                    <ExternalLink className="h-3.5 w-3.5 text-emerald-600" />
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-medium">Payment Verified</p>
-                    <StatusBadge status={attr.status} showDot={false} />
-                  </div>
-                  <p className="text-xs text-emerald-600 font-semibold">{formatCurrencyFull(attr.amount)} recovered</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Source: {attr.source} · {formatPercent(attr.confidence)} confidence
-                    {attr.payment && <> · <span className="font-mono">{attr.payment.externalId}</span></>}
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
+                {stateReason}
+              </p>
+
+              {/* Deciding Factors */}
+              {reasoning.aiOutput?.factors && Array.isArray(reasoning.aiOutput.factors) && reasoning.aiOutput.factors.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Key Decision Factors
                   </p>
-                  {attr.reason && <p className="text-[10px] text-muted-foreground mt-0.5">{attr.reason}</p>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {reasoning.aiOutput.factors.map((factor: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/40 p-2 rounded-md border border-border/40">
+                        <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                        <span className="leading-snug">{factor}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
 
-            {/* Incremental Revenues */}
-            {c.incrementalRevenues?.map((inc) => (
-              <div key={inc.id} className="flex gap-3 pb-2 mt-2 ml-4">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/30 shrink-0">
-                    <Zap className="h-3 w-3 text-indigo-600" />
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[11px] font-medium text-indigo-700 dark:text-indigo-400">Incremental Measurement</p>
-                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">{inc.attributionType}</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Recovered</p>
-                      <p className="text-xs font-medium">{formatCurrencyFull(inc.recoveredAmount)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Baseline Expected</p>
-                      <p className="text-xs font-medium">{formatCurrencyFull(inc.baselineExpectedAmount)}</p>
-                    </div>
-                    <div className="col-span-2 pt-1">
-                      <p className="text-[10px] text-muted-foreground">Incrementally Attributed</p>
-                      <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                        {formatCurrencyFull(inc.incrementalAmount)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              {/* Diagnostic Metadata Footer */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 border-t border-border/40 text-[11px] text-muted-foreground font-mono">
+                <span>Provider: <strong className="text-foreground font-semibold">{providerName}</strong></span>
+                <span>Model: <strong className="text-foreground">{modelName}</strong></span>
+                {decisionTimeMs ? <span>Latency: <strong className="text-foreground">{decisionTimeMs}ms</strong></span> : null}
+                {usedFallback && (
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-300 dark:text-amber-400">
+                    Deterministic Fallback Used {fallbackReason ? `(${fallbackReason})` : ""}
+                  </Badge>
+                )}
               </div>
-            ))}
+            </CardContent>
+          </Card>
 
-            {/* Empty timeline end */}
-            {c.agentDecisions.length === 0 && c.recoveryAttempts.length === 0 && c.recoveryAttributions.length === 0 && (
-              <div className="flex gap-3">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted shrink-0">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                </div>
+          {/* 2. Economic Reasoning & Value Breakdown (Fintech Ledger Grid) */}
+          <Card className="border border-border/80 bg-card shadow-xs">
+            <CardHeader className="p-4 sm:p-5 pb-3 border-b border-border/60">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">Waiting for AI analysis to begin…</p>
+                  <CardTitle className="text-sm font-semibold tracking-tight">Economic Evaluation</CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    Net Expected Value calculation based on estimated causal recovery lift
+                  </CardDescription>
+                </div>
+                {decision?.economicModelVersion && (
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    Model: {decision.economicModelVersion}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* 1. Baseline Recovery Expected */}
+                <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Baseline
+                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger><Info className="h-3 w-3 text-muted-foreground/60" /></TooltipTrigger>
+                        <TooltipContent className="text-xs max-w-xs">Expected recovery if no proactive intervention is executed (natural organic customer recovery).</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <p className="text-lg font-bold font-mono tabular-nums text-foreground">
+                    {decision?.baselineExpectedRecovery ? formatCurrency(decision.baselineExpectedRecovery) : "—"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Prob: {decision?.recoveryProbability ? `${(decision.recoveryProbability * 100).toFixed(0)}%` : "—"}
+                  </p>
+                </div>
+
+                {/* 2. Intervention Expected Recovery */}
+                <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Intervention
+                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger><Info className="h-3 w-3 text-muted-foreground/60" /></TooltipTrigger>
+                        <TooltipContent className="text-xs max-w-xs">Expected total recovery under the recommended recovery intervention.</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <p className="text-lg font-bold font-mono tabular-nums text-foreground">
+                    {decision?.expectedRecovery ? formatCurrency(decision.expectedRecovery) : "—"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Action: {formatAction(recommendedAction)}</p>
+                </div>
+
+                {/* 3. Expected Incremental Lift */}
+                <div className="p-3 rounded-lg border border-border/60 bg-emerald-500/5 dark:bg-emerald-950/20 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                      Incremental Lift
+                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger><Info className="h-3 w-3 text-emerald-600/60" /></TooltipTrigger>
+                        <TooltipContent className="text-xs max-w-xs">Additional revenue recovered directly attributed to this action beyond baseline.</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <p className="text-lg font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
+                    {decision?.expectedIncrementalRecovery ? `+${formatCurrency(decision.expectedIncrementalRecovery)}` : "—"}
+                  </p>
+                  <p className="text-[10px] text-emerald-600/80">Net Lift</p>
+                </div>
+
+                {/* 4. Net Expected Value */}
+                <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Net Value
+                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger><Info className="h-3 w-3 text-muted-foreground/60" /></TooltipTrigger>
+                        <TooltipContent className="text-xs max-w-xs">Incremental recovery minus cost of dispatch, delivery, and any merchant incentives offered.</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <p className="text-lg font-bold font-mono tabular-nums text-foreground">
+                    {decision?.netExpectedValue !== null && decision?.netExpectedValue !== undefined
+                      ? formatCurrency(decision.netExpectedValue)
+                      : "—"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Cost: {decision?.interventionCost ? formatCurrency(decision.interventionCost) : "₹0"}
+                  </p>
                 </div>
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* ── Audit Trail ── */}
-      {c.auditEvents.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Audit Trail</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {c.auditEvents.map((evt) => (
-                <div key={evt.id} className="flex gap-3 py-1.5">
-                  <div className="w-16 shrink-0 text-[10px] text-muted-foreground text-right pt-0.5">{formatRelativeTime(evt.createdAt)}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs"><span className="font-medium">{formatActorType(evt.actorType)}</span> <span className="text-muted-foreground">{evt.action}</span></p>
-                    {evt.details && <p className="text-xs text-muted-foreground mt-0.5 truncate">{evt.details}</p>}
+              {decision?.economicReason && (
+                <div className="p-2.5 rounded-lg border border-border/60 bg-muted/30 text-xs text-muted-foreground flex items-start gap-2">
+                  <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">{decision.economicReason}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 3. Collapsible Technical Probability Model (Progressive Disclosure) */}
+          <Card className="border border-border/70 bg-card shadow-xs">
+            <CardHeader
+              className="p-4 sm:p-5 cursor-pointer hover:bg-muted/30 transition-colors select-none"
+              onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <CardTitle className="text-sm font-semibold tracking-tight">
+                      Technical ML Probabilities & Candidate Ranking
+                    </CardTitle>
+                    <CardDescription className="text-xs text-muted-foreground">
+                      {c.probabilityEstimates.length} candidates evaluated against baseline
+                    </CardDescription>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                  {showTechnicalDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </div>
+            </CardHeader>
+
+            {showTechnicalDetails && (
+              <CardContent className="p-4 sm:p-5 pt-0 border-t border-border/60 space-y-4">
+                <div className="space-y-3 pt-3">
+                  {c.probabilityEstimates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">No probability estimates recorded for this case.</p>
+                  ) : (
+                    c.probabilityEstimates.map((est, i) => {
+                      const isRec = est.action === recommendedAction
+                      return (
+                        <div key={i} className={cn("p-3 rounded-lg border text-xs space-y-2", isRec ? "border-violet-300/80 bg-violet-50/20 dark:border-violet-900/40" : "border-border/60 bg-muted/20")}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground capitalize">{formatAction(est.action)}</span>
+                              {isRec && <Badge className="bg-violet-600 text-white text-[9px] px-1.5 py-0 h-4">Selected</Badge>}
+                              {est.isBaseline && <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">Baseline</Badge>}
+                            </div>
+                            <span className="font-mono font-bold text-foreground">
+                              {(est.probability * 100).toFixed(1)}% <span className="text-[10px] text-muted-foreground font-normal">({(est.confidence * 100).toFixed(0)}% conf)</span>
+                            </span>
+                          </div>
+
+                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full", isRec ? "bg-violet-600" : est.isBaseline ? "bg-zinc-400" : "bg-emerald-500")}
+                              style={{ width: `${Math.round(est.probability * 100)}%` }}
+                            />
+                          </div>
+
+                          {est.factorsJson != null && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              <span className="text-[10px] text-muted-foreground bg-background px-1.5 py-0.5 rounded border border-border/60">
+                                Model {est.modelVersion}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* 4. Chronological Case Timeline & Audit Trail */}
+          <Card className="border border-border/80 bg-card shadow-xs">
+            <CardHeader className="p-4 sm:p-5 pb-3 border-b border-border/60">
+              <CardTitle className="text-sm font-semibold tracking-tight">Case Timeline & Audit History</CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">
+                Immutable event stream for recovery diagnostics and regulatory verification
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="p-4 sm:p-5">
+              {c.auditEvents.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">No audit events recorded.</p>
+              ) : (
+                <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+                  {c.auditEvents.map((evt) => {
+                    const isExpanded = expandedEventId === evt.id
+                    return (
+                      <div key={evt.id} className="relative group text-xs">
+                        {/* Timeline Marker Dot */}
+                        <div className="absolute -left-6 top-1.5 h-4 w-4 rounded-full border-2 border-background bg-zinc-400 group-hover:bg-primary transition-colors flex items-center justify-center">
+                          <span className="h-1.5 w-1.5 rounded-full bg-white dark:bg-zinc-900" />
+                        </div>
+
+                        <div className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-foreground capitalize">{evt.action || evt.eventType.replace(/_/g, " ")}</span>
+                              <Badge variant="outline" className="text-[9px] font-mono px-1 py-0 h-4 uppercase">
+                                {evt.actorType}
+                              </Badge>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              {formatDateTime(evt.createdAt)}
+                            </span>
+                          </div>
+
+                          {evt.details && (
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              {evt.details}
+                            </p>
+                          )}
+
+                          {evt.id && (
+                            <div className="pt-1 flex items-center justify-between">
+                              <span className="font-mono text-[10px] text-muted-foreground/60 truncate">{evt.id}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Right Column: Actions, Guardrails & Context (4 cols) ── */}
+        <div className="lg:col-span-4 space-y-6 min-w-0">
+          {/* Action Operations Card */}
+          <Card className="border border-border/80 bg-card shadow-xs">
+            <CardHeader className="p-4 pb-3 border-b border-border/60">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Action Controls
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="p-4 space-y-3">
+              {/* Approval Controls */}
+              {canApprove && (
+                <div className="space-y-2">
+                  <div className="p-2.5 rounded-lg border border-amber-300/60 bg-amber-50/30 dark:border-amber-900/50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 shrink-0" />
+                    <span>Requires merchant authorization prior to dispatch.</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                      disabled={approveMutation.isPending}
+                      onClick={() => {
+                        approveMutation.mutate(
+                          decision.id,
+                          { onSuccess: () => toast.success("Decision approved successfully.") }
+                        )
+                      }}
+                    >
+                      {approveMutation.isPending ? <RotateCcw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />}
+                      Approve
+                    </Button>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="outline" className="w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200">
+                          <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                          Reject
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Reject Recovery Action?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Rejecting this decision will prevent automated recovery dispatch. The case will be closed as dismissed.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-rose-600 text-white hover:bg-rose-700"
+                            onClick={() => {
+                              rejectMutation.mutate(
+                                decision.id,
+                                { onSuccess: () => toast.success("Decision rejected.") }
+                              )
+                            }}
+                          >
+                            Confirm Rejection
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </div>
+              )}
+
+              {/* Execution Control */}
+              {canExecute && (
+                <Button
+                  size="sm"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+                  disabled={executeMutation.isPending}
+                  onClick={() => {
+                    executeMutation.mutate(
+                      c.id,
+                      { onSuccess: () => toast.success("Recovery action dispatched to provider pipeline.") }
+                    )
+                  }}
+                >
+                  {executeMutation.isPending ? <RotateCcw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+                  Execute Approved Intervention
+                </Button>
+              )}
+
+              {/* Re-analyze / Trigger Analysis */}
+              {canAnalyze && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-xs"
+                  disabled={analyzeMutation.isPending}
+                  onClick={() => {
+                    analyzeMutation.mutate(
+                      c.id,
+                      { onSuccess: () => toast.success("AI re-analyzed case successfully.") }
+                    )
+                  }}
+                >
+                  {analyzeMutation.isPending ? <RotateCcw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Brain className="h-3.5 w-3.5 mr-1.5" />}
+                  Re-evaluate with AI
+                </Button>
+              )}
+
+              {/* Stop Active Recovery */}
+              {canStop && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/20"
+                  disabled={stopMutation.isPending}
+                  onClick={() => {
+                    stopMutation.mutate(
+                      c.id,
+                      { onSuccess: () => toast.success("Recovery stopped.") }
+                    )
+                  }}
+                >
+                  {stopMutation.isPending ? <RotateCcw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Ban className="h-3.5 w-3.5 mr-1.5" />}
+                  Stop Recovery
+                </Button>
+              )}
+
+              {/* Test Mode Simulation Actions (Subtle Amber Section) */}
+              <div className="pt-3 border-t border-border/60 space-y-2">
+                <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  Test Simulation Triggers
+                </span>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-xs border-amber-300/80 bg-amber-50/30 text-amber-900 dark:text-amber-300 dark:border-amber-900/60 hover:bg-amber-100/50"
+                  disabled={simulatePaymentMutation.isPending}
+                  onClick={() => {
+                    simulatePaymentMutation.mutate(
+                      {
+                        paymentId: c.payment?.id || `sim_pay_${c.id}`,
+                        amount: c.amountAtRisk,
+                        method: c.payment?.method || "card",
+                        email: c.payment?.customer?.email || "customer@example.com",
+                      },
+                      { onSuccess: () => toast.success("Simulated customer payment captured successfully!") }
+                    )
+                  }}
+                >
+                  {simulatePaymentMutation.isPending ? <RotateCcw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <CreditCard className="h-3.5 w-3.5 mr-1.5" />}
+                  Simulate Payment Captured
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-xs border-border/60 text-muted-foreground hover:text-foreground"
+                  disabled={simulateDeliveryMutation.isPending}
+                  onClick={() => {
+                    const commId = c.recoveryAttempts?.find(a => a.communicationEvent)?.communicationEvent?.id || `sim_msg_${c.id}`
+                    simulateDeliveryMutation.mutate(
+                      { messageId: commId, eventType: "delivered" },
+                      { onSuccess: () => toast.success("Delivery status webhook simulated.") }
+                    )
+                  }}
+                >
+                  {simulateDeliveryMutation.isPending ? <RotateCcw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+                  Simulate Message Delivered
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Evidence & Guardrails Checklist */}
+          <Card className="border border-border/80 bg-card shadow-xs">
+            <CardHeader className="p-4 pb-3 border-b border-border/60">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Policy & Guardrails
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  Autonomous Gate
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-3 space-y-2">
+              <GuardrailRow name="Customer Consent & Opt-In" check={evidence?.checks?.consent} />
+              <GuardrailRow name="Do-Not-Disturb (DND)" check={evidence?.checks?.dnd} />
+              <GuardrailRow name="Contact Rate Limits" check={evidence?.checks?.contactLimit} />
+              <GuardrailRow name="Merchant Recovery Policy" check={evidence?.checks?.policy} />
+              <GuardrailRow name="Economic Gate (Lift > Cost)" check={evidence?.checks?.economicGate} />
+            </CardContent>
+          </Card>
+
+          {/* Customer & Payment Context */}
+          <Card className="border border-border/80 bg-card shadow-xs">
+            <CardHeader className="p-4 pb-3 border-b border-border/60">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Customer & Payment Details
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="p-4 space-y-3 text-xs">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Customer</span>
+                  <span className="font-semibold text-foreground">{customerName}</span>
+                </div>
+                {customerEmail && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Email</span>
+                    <span className="font-mono text-muted-foreground truncate max-w-[170px]">{customerEmail}</span>
+                  </div>
+                )}
+                {cv && (
+                  <>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-muted-foreground">Customer Value</span>
+                      <Badge variant="outline" className="text-[10px] font-mono uppercase bg-emerald-500/10 text-emerald-700 border-emerald-300">
+                        {cv.tier}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Historical Spend</span>
+                      <span className="font-mono font-medium text-foreground">{formatCurrency(cv.totalSuccessfulSpend)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <Separator className="opacity-60" />
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Original Payment</span>
+                  <span className="font-mono font-semibold text-foreground">{c.payment?.externalId || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Payment Method</span>
+                  <span className="font-mono uppercase text-foreground">{c.payment?.method || "card"}</span>
+                </div>
+                {c.payment?.failureCode && (
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-muted-foreground">Failure Code</span>
+                    <Badge variant="outline" className="text-[10px] font-mono text-rose-700 border-rose-300 bg-rose-50/50">
+                      {c.payment.failureCode}
+                    </Badge>
+                  </div>
+                )}
+                {c.payment?.failureReason && (
+                  <p className="text-[11px] text-muted-foreground pt-1 leading-normal italic">
+                    "{c.payment.failureReason}"
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
-}
-
-// ── Utility: Deduplicate probability estimates ──
-
-/**
- * Process raw probability estimates from the API.
- * Deduplicates by action (keeps latest per action).
- */
-function processProbabilityEstimates(estimates: ProbabilityEstimateItem[]): ProbabilityEstimateItem[] {
-  const seen = new Map<string, ProbabilityEstimateItem>()
-  // API returns ordered by createdAt desc, so first seen per action is the latest
-  for (const est of estimates) {
-    if (!seen.has(est.action)) {
-      seen.set(est.action, est)
-    }
-  }
-  return Array.from(seen.values())
 }

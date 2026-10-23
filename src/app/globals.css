@@ -117,7 +117,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased selection:bg-emerald-500/20 selection:text-emerald-900 dark:selection:text-emerald-100;
   }
   button,
   [type='button'],
@@ -126,4 +126,17 @@
   [role='button'] {
     cursor: pointer;
   }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Restrained financial operations card styling */
+.fintech-card {
+  @apply rounded-xl border border-border/80 bg-card text-card-foreground shadow-[0_1px_3px_0_rgba(0,0,0,0.02),0_1px_2px_-1px_rgba(0,0,0,0.02)] transition-all;
+}
+
+.fintech-card-subtle {
+  @apply rounded-lg border border-border/60 bg-muted/30 text-foreground;
 }

@@ -6,7 +6,8 @@ import {
   Activity,
   Settings,
   TrendingUp,
-  TrendingDown,
+  AlertTriangle,
+  Layers,
 } from "lucide-react"
 import {
   Sidebar,
@@ -34,7 +35,7 @@ interface NavItem {
   title: string
   icon: React.ComponentType<{ className?: string }>
   view: AppView
-  badge?: string | number
+  badgeKey?: "highPriority"
 }
 
 interface NavGroup {
@@ -48,17 +49,17 @@ const navGroups: NavGroup[] = [
     items: [{ title: "Dashboard", icon: LayoutDashboard, view: "dashboard" }],
   },
   {
-    label: "Recovery",
+    label: "Recovery Operations",
     items: [
-      { title: "Cases", icon: CreditCard, view: "cases" },
+      { title: "Recovery Cases", icon: CreditCard, view: "cases", badgeKey: "highPriority" },
       { title: "Revenue Recovered", icon: TrendingUp, view: "recovered" },
-      { title: "Revenue At Risk", icon: TrendingDown, view: "at-risk" },
+      { title: "Revenue At Risk", icon: AlertTriangle, view: "at-risk" },
     ],
   },
   {
-    label: "System",
+    label: "Platform",
     items: [
-      { title: "Activity", icon: Activity, view: "audit" },
+      { title: "Activity & Audit", icon: Activity, view: "audit" },
       { title: "Settings", icon: Settings, view: "settings" },
     ],
   },
@@ -67,48 +68,58 @@ const navGroups: NavGroup[] = [
 interface AppSidebarProps {
   currentView: AppView
   onNavigate: (view: AppView) => void
-  onNavigateCase?: (caseId: string) => void
   highPriorityCount?: number
 }
 
 export function AppSidebar({ currentView, onNavigate, highPriorityCount }: AppSidebarProps) {
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold shrink-0">
-            R
+    <Sidebar collapsible="icon" className="border-r border-border/70 bg-sidebar">
+      <SidebarHeader className="p-3.5 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs shrink-0 font-bold text-xs">
+            <span className="font-mono">R</span>
           </div>
-          <div className="group-data-[collapsible=icon]:hidden">
-            <p className="text-sm font-semibold leading-tight">Recovr</p>
-            <p className="text-xs text-muted-foreground">AI-Powered</p>
+          <div className="group-data-[collapsible=icon]:hidden min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">Recovr</span>
+              <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">v0.2</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground truncate leading-none mt-0.5">Revenue Recovery</p>
           </div>
         </div>
       </SidebarHeader>
 
-      <Separator />
+      <Separator className="opacity-60" />
 
-      <SidebarContent>
+      <SidebarContent className="px-1.5 py-2">
         {navGroups.map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.label} className="py-1">
+            <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-2 h-7">
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  // Deduplicate: Audit Log maps to same view as Activity
                   const isActive = currentView === item.view
+                  const badgeValue = item.badgeKey === "highPriority" && highPriorityCount && highPriorityCount > 0 ? highPriorityCount : null
+
                   return (
                     <SidebarMenuItem key={item.title + item.view}>
                       <SidebarMenuButton
                         isActive={isActive}
                         tooltip={item.title}
                         onClick={() => onNavigate(item.view)}
+                        className={`text-xs h-8.5 rounded-md px-2.5 font-normal transition-colors ${
+                          isActive
+                            ? "bg-accent text-accent-foreground font-medium shadow-2xs"
+                            : "text-sidebar-foreground/80 hover:bg-muted/60 hover:text-sidebar-foreground"
+                        }`}
                       >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                        {item.badge && (
-                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive/10 px-1.5 text-[10px] font-semibold text-destructive group-data-[collapsible=icon]:hidden">
-                            {item.badge}
+                        <item.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className="truncate">{item.title}</span>
+                        {badgeValue && (
+                          <span className="ml-auto flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-rose-500/10 px-1 text-[10px] font-mono font-semibold text-rose-600 dark:text-rose-400 group-data-[collapsible=icon]:hidden">
+                            {badgeValue}
                           </span>
                         )}
                       </SidebarMenuButton>

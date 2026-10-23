@@ -26,6 +26,7 @@ import {
   useUpdateRazorpayIntegration,
   useTestRazorpayWebhook,
 } from "@/lib/hooks/use-queries"
+import { cn } from "@/lib/utils"
 
 export function RazorpayIntegrationCard() {
   const { data, isLoading, refetch } = useRazorpayIntegration()
@@ -91,39 +92,35 @@ export function RazorpayIntegrationCard() {
   }
 
   const isConfigured = Boolean(integration?.id)
-  const isHealthy =
-    integration?.lastWebhookStatus === "success" ||
-    (integration?.webhookSuccessCount ?? 0) > (integration?.webhookFailureCount ?? 0)
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
+    <div className="space-y-4">
+      <Card className="border border-border/80 shadow-xs">
+        <CardHeader className="py-3 px-4 border-b border-border/60">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Webhook className="w-5 h-5 text-indigo-500" />
+                <CardTitle className="text-sm font-semibold tracking-tight text-foreground flex items-center gap-1.5">
+                  <Webhook className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   Razorpay Multi-Tenant Configuration
                 </CardTitle>
                 <Badge
-                  variant={
+                  variant="outline"
+                  className={cn(
+                    "h-4 px-1 text-[9px] font-mono uppercase font-bold",
                     integration?.status === "active"
-                      ? "default"
-                      : integration?.status === "inactive"
-                      ? "secondary"
-                      : "outline"
-                  }
-                  className="capitalize"
+                      ? "text-emerald-600 border-emerald-500/30 bg-emerald-500/5"
+                      : "text-muted-foreground"
+                  )}
                 >
                   {integration?.status || "Unconfigured"}
                 </Badge>
-                <Badge variant="outline" className="uppercase text-[10px] tracking-wide">
+                <Badge variant="outline" className="h-4 px-1 text-[9px] font-mono uppercase font-bold">
                   {integration?.environment || "Test"}
                 </Badge>
               </div>
-              <CardDescription>
-                Explicit merchant-account mapping, encrypted API secrets, and isolated webhook endpoints.
+              <CardDescription className="text-xs text-muted-foreground">
+                Dedicated webhook endpoints, isolated account mapping, and AES-256-GCM secret storage.
               </CardDescription>
             </div>
             <Button
@@ -131,23 +128,23 @@ export function RazorpayIntegrationCard() {
               size="sm"
               onClick={() => refetch()}
               disabled={isLoading}
-              className="h-8 gap-1"
+              className="h-7 text-xs border-border/80 shrink-0"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className={cn("w-3 h-3 mr-1", isLoading ? "animate-spin" : "")} />
               Refresh
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="p-4 space-y-4">
           {/* Dedicated Webhook Endpoint URL */}
-          <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+          <div className="rounded-lg border border-border/70 bg-muted/20 p-3.5 space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                Dedicated Merchant Webhook URL
+              <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Dedicated Merchant Webhook Endpoint
               </Label>
               {isConfigured && (
-                <span className="text-[11px] text-muted-foreground font-mono">
+                <span className="text-[10px] text-muted-foreground font-mono">
                   Slug: {integration?.webhookEndpointSlug}
                 </span>
               )}
@@ -159,59 +156,61 @@ export function RazorpayIntegrationCard() {
                   integration?.webhookEndpointUrl ||
                   "Configure and save your integration below to generate a dedicated webhook URL"
                 }
-                className="font-mono text-xs bg-background selection:bg-indigo-500/20"
+                className="font-mono text-xs h-8 bg-background selection:bg-emerald-500/20"
               />
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 onClick={handleCopyWebhookUrl}
                 disabled={!integration?.webhookEndpointUrl}
+                className="h-8 px-2.5 shrink-0 border-border/80"
                 title="Copy webhook URL"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               </Button>
             </div>
-            <p className="text-[12px] text-muted-foreground">
-              Paste this URL into your Razorpay Dashboard under <strong>Settings → Webhooks</strong>. Events sent to this
-              dedicated endpoint route exclusively to your merchant account with HMAC SHA-256 signature verification.
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Add this URL to your Razorpay Dashboard under <strong>Settings → Webhooks</strong>. Inbound events are validated against your merchant HMAC secret with replay protection.
             </p>
           </div>
 
-          <Separator />
+          <Separator className="border-border/60" />
 
           {/* Configuration Form */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="acc-id">Razorpay Account ID / MID</Label>
+              <Label htmlFor="acc-id" className="text-xs font-medium">Razorpay Account ID / Merchant ID</Label>
               <Input
                 id="acc-id"
                 placeholder="e.g. acc_123456789 or mid_sample"
+                className="h-8 text-xs font-mono bg-background"
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
               />
-              <p className="text-[11px] text-muted-foreground">
-                Matches the <code>account_id</code> header sent in partner and marketplace webhooks.
+              <p className="text-[10px] text-muted-foreground font-mono">
+                Matched against incoming partner webhook account_id header
               </p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="key-id">Key ID</Label>
+              <Label htmlFor="key-id" className="text-xs font-medium">API Key ID</Label>
               <Input
                 id="key-id"
                 placeholder="rzp_test_... or rzp_live_..."
+                className="h-8 text-xs font-mono bg-background"
                 value={keyId}
                 onChange={(e) => setKeyId(e.target.value)}
               />
-              <p className="text-[11px] text-muted-foreground">
-                Public identifier for payment link and recovery API calls.
+              <p className="text-[10px] text-muted-foreground font-mono">
+                Public client key for payment link creation
               </p>
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="key-secret">Key Secret</Label>
+                <Label htmlFor="key-secret" className="text-xs font-medium">API Key Secret</Label>
                 {integration?.isKeySecretConfigured && (
-                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
+                  <Badge variant="outline" className="text-[9px] font-mono text-emerald-600 border-emerald-500/30">
                     Encrypted at rest
                   </Badge>
                 )}
@@ -220,6 +219,7 @@ export function RazorpayIntegrationCard() {
                 id="key-secret"
                 type="password"
                 placeholder={integration?.isKeySecretConfigured ? "•••••••••••• (leave blank to keep)" : "Enter key secret"}
+                className="h-8 text-xs font-mono bg-background"
                 value={keySecret}
                 onChange={(e) => setKeySecret(e.target.value)}
               />
@@ -227,9 +227,9 @@ export function RazorpayIntegrationCard() {
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="webhook-secret">Webhook Secret</Label>
+                <Label htmlFor="webhook-secret" className="text-xs font-medium">Webhook HMAC Secret</Label>
                 {integration?.isWebhookSecretConfigured && (
-                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
+                  <Badge variant="outline" className="text-[9px] font-mono text-emerald-600 border-emerald-500/30">
                     Encrypted at rest
                   </Badge>
                 )}
@@ -238,45 +238,51 @@ export function RazorpayIntegrationCard() {
                 id="webhook-secret"
                 type="password"
                 placeholder={integration?.isWebhookSecretConfigured ? "•••••••••••• (leave blank to keep)" : "Enter webhook secret"}
+                className="h-8 text-xs font-mono bg-background"
                 value={webhookSecret}
                 onChange={(e) => setWebhookSecret(e.target.value)}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="environment">Environment</Label>
+              <Label htmlFor="environment" className="text-xs font-medium">Gateway Environment</Label>
               <Select value={environment} onValueChange={(val: "test" | "live") => setEnvironment(val)}>
-                <SelectTrigger id="environment">
+                <SelectTrigger id="environment" className="h-8 text-xs bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="test">Test Mode (Sandbox)</SelectItem>
-                  <SelectItem value="live">Live Production</SelectItem>
+                  <SelectItem value="test" className="text-xs">Test Mode (Sandbox)</SelectItem>
+                  <SelectItem value="live" className="text-xs">Live Production</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="status">Integration Status</Label>
+              <Label htmlFor="status" className="text-xs font-medium">Integration Status</Label>
               <Select value={status} onValueChange={(val: "active" | "inactive") => setStatus(val)}>
-                <SelectTrigger id="status">
+                <SelectTrigger id="status" className="h-8 text-xs bg-background">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active (Accepting Webhooks)</SelectItem>
-                  <SelectItem value="inactive">Inactive (Reject Incoming)</SelectItem>
+                  <SelectItem value="active" className="text-xs">Active (Accepting Webhooks)</SelectItem>
+                  <SelectItem value="inactive" className="text-xs">Inactive (Reject Incoming)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
         </CardContent>
-        <CardFooter className="flex items-center justify-between border-t bg-muted/10 px-6 py-4">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <CardFooter className="py-3 px-4 border-t border-border/60 bg-muted/20 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono">
             <KeyRound className="w-3.5 h-3.5 text-muted-foreground" />
-            <span>AES-256-GCM encrypted. Secrets are never logged or returned to the browser.</span>
+            <span>AES-256-GCM encrypted. Secrets are never logged or returned to browser.</span>
           </div>
-          <Button onClick={handleSave} disabled={updateMutation.isPending}>
-            {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={updateMutation.isPending}
+            className="h-7 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {updateMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
             Save Integration
           </Button>
         </CardFooter>
@@ -284,16 +290,16 @@ export function RazorpayIntegrationCard() {
 
       {/* Webhook Health & Diagnostics Card */}
       {isConfigured && (
-        <Card>
-          <CardHeader>
+        <Card className="border border-border/80 shadow-xs">
+          <CardHeader className="py-2.5 px-4 border-b border-border/60 bg-muted/20">
             <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-emerald-500" />
-                  Webhook Health & Delivery Telemetry
+              <div className="space-y-0.5">
+                <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  Webhook Health &amp; Telemetry
                 </CardTitle>
-                <CardDescription>
-                  Real-time status of incoming Razorpay event dispatch and HMAC validation.
+                <CardDescription className="text-[11px] text-muted-foreground">
+                  Real-time status of incoming Razorpay event dispatch and HMAC signature verification.
                 </CardDescription>
               </div>
               <Button
@@ -301,66 +307,56 @@ export function RazorpayIntegrationCard() {
                 size="sm"
                 onClick={handleTestWebhook}
                 disabled={testMutation.isPending || !integration?.isWebhookSecretConfigured}
-                className="gap-1.5"
+                className="h-7 text-xs font-medium border-border/80"
               >
                 {testMutation.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                 ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
                 )}
-                Test Webhook & Verify HMAC
+                Test HMAC Signature
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="rounded-md border p-3 bg-card space-y-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Last Webhook Status</span>
-                <div>
-                  <Badge
-                    variant={
-                      integration?.lastWebhookStatus === "success"
-                        ? "default"
-                        : integration?.lastWebhookStatus === "invalid_signature"
-                        ? "destructive"
-                        : "secondary"
-                    }
-                    className="capitalize text-xs font-mono"
-                  >
-                    {integration?.lastWebhookStatus || "None"}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="rounded-md border p-3 bg-card space-y-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Last Delivery Received</span>
-                <p className="text-xs font-medium">
-                  {integration?.lastWebhookAt
-                    ? new Date(integration.lastWebhookAt).toLocaleTimeString() +
-                      " " +
-                      new Date(integration.lastWebhookAt).toLocaleDateString()
-                    : "No webhooks yet"}
+          <CardContent className="p-3.5 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+              <div className="p-2 rounded border bg-card">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Last Status</span>
+                <p className="font-mono text-xs font-semibold mt-0.5 capitalize">
+                  {integration?.lastWebhookStatus || "None"}
                 </p>
               </div>
 
-              <div className="rounded-md border p-3 bg-card space-y-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Delivered / Accepted</span>
-                <p className="text-base font-semibold text-emerald-600">
+              <div className="p-2 rounded border bg-card">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Last Delivery</span>
+                <p className="font-mono text-[11px] text-muted-foreground mt-0.5">
+                  {integration?.lastWebhookAt
+                    ? new Date(integration.lastWebhookAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "None"}
+                </p>
+              </div>
+
+              <div className="p-2 rounded border bg-card">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Delivered</span>
+                <p className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
                   {integration?.webhookSuccessCount ?? 0}
                 </p>
               </div>
 
-              <div className="rounded-md border p-3 bg-card space-y-1">
-                <span className="text-[11px] font-medium text-muted-foreground">Verification Failures</span>
-                <p className={`text-base font-semibold ${(integration?.webhookFailureCount ?? 0) > 0 ? "text-rose-600" : "text-muted-foreground"}`}>
+              <div className="p-2 rounded border bg-card">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Failures</span>
+                <p className={cn(
+                  "font-mono text-xs font-bold mt-0.5",
+                  (integration?.webhookFailureCount ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+                )}>
                   {integration?.webhookFailureCount ?? 0}
                 </p>
               </div>
             </div>
 
             {integration?.lastError && (
-              <div className="rounded-md border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 p-3 text-xs text-rose-800 dark:text-rose-300 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+              <div className="rounded-md border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-900 dark:text-red-300 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
                 <div>
                   <span className="font-semibold">Last Error Recorded: </span>
                   {integration.lastError}
