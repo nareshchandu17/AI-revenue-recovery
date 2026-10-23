@@ -16,6 +16,7 @@
 
 import { OPEN_CASE_STATUSES } from "../detection/constants"
 import { db } from "@/lib/db"
+import { env } from "@/lib/config"
 import { getAIProvider, isAIAvailable } from "@/services/ai"
 import { logAudit } from "@/services/audit/log"
 import { validateAIDecision } from "./schemas"
@@ -109,6 +110,18 @@ export async function analyzeCase(
 
   // 4. Get AI decision (or override / fallback)
   let aiDecision: AIDecisionOutput
+  let diagnosticMetadata: {
+    provider: string
+    model: string
+    latencyMs: number
+    usage?: { promptTokens: number; completionTokens: number }
+  } = {
+    provider: env.AI_PROVIDER,
+    model: "scenario_override",
+    latencyMs: 0,
+    usage: undefined,
+  }
+
   if (params.overrideAIDecision) {
     aiDecision = {
       action: params.overrideAIDecision.action ?? "offer_discount",
@@ -124,7 +137,14 @@ export async function analyzeCase(
     } as AIDecisionOutput
   } else {
     try {
-      aiDecision = await callAI(augmentedContext)
+      const callResult = await callAI(augmentedContext)
+      aiDecision = callResult.output
+      diagnosticMetadata = {
+        provider: callResult.provider,
+        model: callResult.model,
+        latencyMs: callResult.latencyMs,
+        usage: callResult.usage,
+      }
     } catch (err) {
       // AI failed — use deterministic fallback
       const fallbackResult = await handleAIFailure(err, context, probabilityAssessment, policy)
@@ -228,6 +248,10 @@ export async function analyzeCase(
     usedFallback,
     decisionStatus,
     decisionEvidence,
+    provider: diagnosticMetadata.provider,
+    model: diagnosticMetadata.model,
+    decisionTimeMs: diagnosticMetadata.latencyMs,
+    usage: diagnosticMetadata.usage,
   })
 
   // 7. Persist probability estimates (linked to this decision)
@@ -319,6 +343,9 @@ export async function analyzeCase(
     decisionId: decision.id,
     decisionStatus,
     economicEvaluation,
+    provider: diagnosticMetadata.provider,
+    model: diagnosticMetadata.model,
+    decisionTimeMs: diagnosticMetadata.latencyMs,
   }
 }
 
@@ -390,7 +417,15 @@ export async function batchAnalyze(
 
 // --- Internal: AI Call -----------------------------------------------------
 
-async function callAI(context: RecoveryContext): Promise<AIDecisionOutput> {
+interface AICallResult {
+  output: AIDecisionOutput
+  provider: string
+  model: string
+  latencyMs: number
+  usage?: { promptTokens: number; completionTokens: number }
+}
+
+async function callAI(context: RecoveryContext): Promise<AICallResult> {
   if (!isAIAvailable()) {
     throw new AIProviderError("AI provider not configured")
   }
@@ -400,6 +435,7 @@ async function callAI(context: RecoveryContext): Promise<AIDecisionOutput> {
   const userMessage = buildUserMessage(context)
 
   let response
+  const startTime = Date.now()
   try {
     response = await provider.complete({
       systemPrompt,
@@ -413,6 +449,8 @@ async function callAI(context: RecoveryContext): Promise<AIDecisionOutput> {
       err instanceof Error ? err : undefined
     )
   }
+
+  const latencyMs = response.latencyMs ?? (Date.now() - startTime)
 
   if (!response.content || response.content.trim().length === 0) {
     throw new AIProviderError("AI returned empty response")
@@ -436,7 +474,15 @@ async function callAI(context: RecoveryContext): Promise<AIDecisionOutput> {
   }
 
   // Validate against Zod schema
-  return validateAIDecision(parsed)
+  const output = validateAIDecision(parsed)
+
+  return {
+    output,
+    provider: response.provider ?? provider.name,
+    model: response.model ?? provider.defaultModel ?? "unknown",
+    latencyMs,
+    usage: response.usage,
+  }
 }
 
 // --- Internal: AI Failure Handler -----------------------------------------
@@ -536,6 +582,10 @@ async function handleAIFailure(
     usedFallback: true,
     decisionStatus: fallbackDecisionStatus,
     decisionEvidence: fallbackEvidence,
+    provider: env.AI_PROVIDER,
+    model: "deterministic_fallback",
+    decisionTimeMs: 0,
+    fallbackReason: errorMsg,
   })
 
   // Update case status
@@ -584,6 +634,9 @@ async function handleAIFailure(
     usedFallback: true,
     decisionId: decision.id,
     decisionStatus: fallbackDecisionStatus,
+    provider: env.AI_PROVIDER,
+    model: "deterministic_fallback",
+    decisionTimeMs: 0,
   }
 }
 
@@ -661,6 +714,11 @@ interface PersistParams {
   usedFallback: boolean
   decisionStatus: "pending" | "approved" | "rejected"
   decisionEvidence?: any
+  provider?: string
+  model?: string
+  decisionTimeMs?: number
+  fallbackReason?: string | null
+  usage?: { promptTokens: number; completionTokens: number } | null
 }
 
 async function persistDecision(params: PersistParams) {
@@ -681,6 +739,12 @@ async function persistDecision(params: PersistParams) {
   const reasoningJson = JSON.stringify({
     promptVersion: PROMPT_VERSION,
     autonomyLevel: CURRENT_AUTONOMY_LEVEL,
+    provider: params.provider ?? env.AI_PROVIDER,
+    model: params.model ?? "unknown",
+    decisionTimeMs: params.decisionTimeMs ?? 0,
+    usedFallback,
+    fallbackReason: params.fallbackReason ?? null,
+    tokens: params.usage ?? null,
     aiOutput: {
       action: aiDecision.action,
       confidence: aiDecision.confidence,
@@ -698,7 +762,6 @@ async function persistDecision(params: PersistParams) {
       policyViolations: policyResult.policyViolations,
     },
     decisionEvidence,
-    usedFallback,
   })
 
   return db.agentDecision.create({

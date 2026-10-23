@@ -1,8 +1,8 @@
 /**
  * AI provider abstraction types.
  *
- * Future tasks will implement concrete adapters (OpenAI, Anthropic, Z.ai)
- * behind this interface so the recovery engine never couples to a specific LLM.
+ * Provides a uniform contract for all LLM providers (Z.ai, OpenAI, Anthropic)
+ * ensuring the revenue recovery engine never couples to any single vendor.
  */
 
 /** Input envelope for any AI call. */
@@ -35,14 +35,54 @@ export interface AIResponse {
     promptTokens: number
     completionTokens: number
   }
+  /** Diagnostic metadata about the model execution. */
+  model?: string
+  provider?: string
+  latencyMs?: number
+}
+
+/** Supported error codes for AI provider failures. */
+export type AIProviderErrorCode =
+  | "AI_TIMEOUT"
+  | "AI_AUTHENTICATION_FAILED"
+  | "AI_RATE_LIMITED"
+  | "AI_PROVIDER_UNAVAILABLE"
+  | "AI_BAD_REQUEST"
+  | "AI_OUTPUT_VALIDATION_ERROR"
+  | "AI_CONFIGURATION_ERROR"
+
+/** Structured error thrown by AI providers. */
+export class AIProviderError extends Error {
+  readonly code: AIProviderErrorCode
+  readonly provider: string
+  readonly status?: number
+  readonly retryable: boolean
+  readonly cause?: Error
+
+  constructor(params: {
+    message: string
+    code: AIProviderErrorCode
+    provider: string
+    status?: number
+    retryable?: boolean
+    cause?: Error
+  }) {
+    super(`[${params.provider}] ${params.message}`)
+    this.name = "AIProviderError"
+    this.code = params.code
+    this.provider = params.provider
+    this.status = params.status
+    this.retryable = params.retryable ?? false
+    this.cause = params.cause
+  }
 }
 
 /**
  * Contract every AI adapter must implement.
- * Add new providers by creating a class that satisfies this interface
- * and registering it in the provider registry (future task).
  */
 export interface AIProvider {
   readonly name: string
+  readonly defaultModel?: string
+  validateCredentials?(): { valid: boolean; reason?: string }
   complete(request: AIRequest): Promise<AIResponse>
 }

@@ -184,6 +184,9 @@ export interface AgentAnalysisResult {
   decisionId: string
   decisionStatus: "pending" | "approved" | "rejected"
   economicEvaluation?: EconomicEvaluation
+  provider?: string
+  model?: string
+  decisionTimeMs?: number
 }
 
 // --- Batch Analysis ---------------------------------------------------------
