@@ -43,14 +43,14 @@ export function RazorpayIntegrationCard() {
   const [status, setStatus] = useState<"active" | "inactive">("active")
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    if (integration) {
-      setAccountId(integration.accountId || "")
-      setKeyId(integration.keyId || "")
-      setEnvironment((integration.environment as "test" | "live") || "test")
-      setStatus((integration.status as "active" | "inactive") || "active")
-    }
-  }, [integration])
+  const [prevIntegrationId, setPrevIntegrationId] = useState<string | null>(null)
+  if (integration && integration.id !== prevIntegrationId) {
+    setPrevIntegrationId(integration.id)
+    setAccountId(integration.accountId || "")
+    setKeyId(integration.keyId || "")
+    setEnvironment((integration.environment as "test" | "live") || "test")
+    setStatus((integration.status as "active" | "inactive") || "active")
+  }
 
   const handleCopyWebhookUrl = () => {
     if (!integration?.webhookEndpointUrl) return

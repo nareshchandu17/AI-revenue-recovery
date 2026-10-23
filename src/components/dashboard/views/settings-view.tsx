@@ -40,7 +40,6 @@ export function SettingsView() {
       .finally(() => {
         setIsLoading(false)
       })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSave = async (sectionName = "Settings") => {

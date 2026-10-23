@@ -38,7 +38,7 @@ jobs:
         run: bun run db:push
 
       - name: Run tests
-        run: bun test
+        run: bun run test
 
       - name: TypeScript type check
         run: bun run tsc --noEmit
