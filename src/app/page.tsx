@@ -14,6 +14,7 @@ import { RevenueAtRiskView } from "@/components/dashboard/views/revenue-at-risk"
 import { AuditView } from "@/components/dashboard/views/audit-view"
 import { SettingsView } from "@/components/dashboard/views/settings-view"
 import { SignInPage } from "@/components/auth/sign-in-page"
+import { LandingPage } from "@/components/marketing/landing-page"
 import { useAuthStore } from "@/store/auth"
 import type { AuthUser } from "@/store/auth"
 
@@ -127,6 +128,8 @@ function AppContent() {
 // ── Root shell — handles auth gating ──────────────────────────────────────
 
 function HomeContent() {
+  const searchParams = useSearchParams()
+  const authMode = searchParams.get("auth")
   const { user, loading, initialized, setUser, setInitialized, setLoading } = useAuthStore()
   useInitAuth()
 
@@ -148,9 +151,10 @@ function HomeContent() {
     )
   }
 
-  // Not authenticated — show sign-in
+  // Public marketing page is the default route. Auth routes preserve the existing form.
   if (!user) {
-    return <SignInPage onSuccess={handleSignInSuccess} />
+    if (authMode !== "signin" && authMode !== "register") return <LandingPage />
+    return <SignInPage initialMode={authMode} onSuccess={handleSignInSuccess} />
   }
 
   // Authenticated — show app
