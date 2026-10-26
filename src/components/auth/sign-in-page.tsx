@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,12 +12,13 @@ import type { AuthUser } from "@/store/auth"
 
 interface SignInPageProps {
   onSuccess: (user: AuthUser) => void
+  initialMode?: Mode
 }
 
 type Mode = "signin" | "register"
 
-export function SignInPage({ onSuccess }: SignInPageProps) {
-  const [mode, setMode] = useState<Mode>("signin")
+export function SignInPage({ onSuccess, initialMode = "signin" }: SignInPageProps) {
+  const [mode, setMode] = useState<Mode>(initialMode)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
@@ -79,6 +81,7 @@ export function SignInPage({ onSuccess }: SignInPageProps) {
       <div className="w-full max-w-md space-y-6">
         {/* Brand */}
         <div className="text-center space-y-2">
+          <div className="mb-3"><Link href="/" className="text-xs font-medium text-muted-foreground transition-colors hover:text-emerald-700">← Back to Recovr</Link></div>
           <div className="flex items-center justify-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg">
               <Zap className="h-5 w-5 text-white" />
