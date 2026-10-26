@@ -3,13 +3,11 @@
 import Link from "next/link"
 import { motion, useReducedMotion } from "framer-motion"
 import {
-  ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
   Activity,
   BadgeCheck,
   Check,
-  ChevronDown,
   CircleHelp,
   Command,
   CreditCard,
