@@ -53,16 +53,12 @@ export async function evaluateAttribution(attributionId: string) {
   let incrementalAmount = 0
   let isPreempted = false
 
-  // If there's an attempt, check temporal ordering (Phase 10 & Phase 22)
-  if (recoveryAttempt) {
-    // payment.createdAt is when the payment was initiated/created by customer
-    // We compare it to attempt.attemptedAt (when the intervention was executed)
-    if (payment.createdAt < recoveryAttempt.attemptedAt) {
-      isPreempted = true
-    }
-  } else {
-    // If no attempt linked, it definitely wasn't caused by an intervention
-    isPreempted = true 
+  // Use the provider-confirmed capture timestamp, never payment creation time.
+  // A null capture timestamp means we cannot safely establish causal ordering.
+  if (!recoveryAttempt || !payment.capturedAt) {
+    isPreempted = true
+  } else if (payment.capturedAt.getTime() < recoveryAttempt.attemptedAt.getTime()) {
+    isPreempted = true
   }
 
   if (isPreempted) {
