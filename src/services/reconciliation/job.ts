@@ -12,7 +12,7 @@
  */
 
 import { db } from "@/lib/db"
-import { getRazorpayService } from "@/services/razorpay"
+import { getMerchantRazorpayService } from "@/services/razorpay"
 import { logAudit } from "@/services/audit/log"
 import { ingestWebhook } from "@/services/webhook/ingest"
 
@@ -141,10 +141,13 @@ export async function runReconciliationJob(
     })
 
     candidates = attemptsToReconcile.length
-    const rzpService = getRazorpayService()
-
     for (const attempt of attemptsToReconcile) {
       try {
+        // Resolve the correct tenant integration for every attempt. Resolution failures
+        // are handled by the per-attempt retry/backoff path below.
+        const merchantProvider = await getMerchantRazorpayService(attempt.recoveryCase.merchantId)
+        const rzpService = merchantProvider.service
+
         // 4. Verify provider supports the operation
         const isPaymentLink = attempt.action === "payment_link"
         const hasPaymentLinkRef = Boolean(
