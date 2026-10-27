@@ -95,7 +95,7 @@ export class ReminderExecutor implements ActionExecutor {
         summary: delivery.summary,
         simulated: isProviderSimulated || delivery.providerName === "dev-mock-mailer",
         details: {
-          method: delivery.providerName === "dev-mock-mailer" ? "simulated_delivery" : "provider_delivery",
+          method: delivery.providerName === "dev-mock-mailer" ? "simulated" : "real_delivery",
           action: "send_reminder",
           status: delivery.deliveryStatus,
           blockedReason: delivery.blockedReason,
@@ -112,7 +112,7 @@ export class ReminderExecutor implements ActionExecutor {
       success: true,
       externalRef,
       summary: isSimulated
-        ? `Payment link created via ${providerLabel}; customer notification was simulated (${delivery.providerName}). Link: ${paymentLinkUrl}`
+        ? `SIMULATED: Payment link created via ${providerLabel}; customer notification was simulated (${delivery.providerName}). Link: ${paymentLinkUrl}`
         : `${providerLabel} payment link; notification sent via ${delivery.providerName} to ${delivery.recipientEmail || "customer"} (status: ${delivery.deliveryStatus}). Link: ${paymentLinkUrl}`,
       simulated: isSimulated,
       details: {
