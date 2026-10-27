@@ -40,7 +40,7 @@ export async function POST(
 
     // Require authentication — merchantId comes from the session, NOT the request body
     const sessionUser = await requireAuth()
-    if (sessionUser.role === "viewer") {
+    if (!["owner", "operator"].includes(sessionUser.role)) {
       throw new ForbiddenError("Viewers cannot approve recovery actions")
     }
 
