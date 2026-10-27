@@ -145,7 +145,7 @@ export async function upsertMerchantIntegration(
 
   // Credentials are a matched set. Changing the key ID or switching test/live
   // mode requires supplying both the matching API secret and webhook secret.
-  const credentialSetChanged = Boolean(existing) && (
+  const credentialSetChanged = existing !== null && (
     environment !== existing.environment ||
     (keyId !== undefined && keyId !== existing.keyId)
   )
