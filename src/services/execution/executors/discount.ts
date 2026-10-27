@@ -49,10 +49,11 @@ export class DiscountExecutor implements ActionExecutor {
         throw new Error("Final amount after discount must be positive")
     }
 
-    const { getRazorpayService } = await import("@/services/razorpay")
-    const { isRazorpayConfigured } = await import("@/lib/config")
-    const rzp = getRazorpayService()
-    const isSimulated = !isRazorpayConfigured
+    const { getMerchantRazorpayService } = await import("@/services/razorpay")
+    const merchantProvider = await getMerchantRazorpayService(context.merchantId)
+    const rzp = merchantProvider.service
+    const isSimulated = merchantProvider.simulated
+    const providerLabel = isSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
 
     // Create the adjusted payment link reflecting the approved discount
     const referenceId = `rcv_disc_${context.recoveryCaseId.slice(-18)}_${context.attemptNumber}`
@@ -117,7 +118,7 @@ export class DiscountExecutor implements ActionExecutor {
       externalRef: linkResponse.id,
       summary: isSimulated
         ? `SIMULATED: Discount of ${discountPercent}% applied. Payment link created for adjusted ₹${(finalAmount / 100).toFixed(2)} ${context.currency} (saved ₹${(discountAmount / 100).toFixed(2)}) — ${linkResponse.short_url}`
-        : `Razorpay Test Mode: Discount of ${discountPercent}% applied. Payment link created for adjusted ₹${(finalAmount / 100).toFixed(2)} ${context.currency} (saved ₹${(discountAmount / 100).toFixed(2)}) — ${linkResponse.short_url}`,
+        : `${providerLabel}: Discount of ${discountPercent}% applied. Payment link created for adjusted ₹${(finalAmount / 100).toFixed(2)} ${context.currency} (saved ₹${(discountAmount / 100).toFixed(2)}) — ${linkResponse.short_url}`,
       simulated: isSimulated,
       details: {
         action: "offer_discount",
@@ -132,7 +133,7 @@ export class DiscountExecutor implements ActionExecutor {
         short_url: linkResponse.short_url,
         reference_id: referenceId,
         provider_status: linkResponse.status,
-        executionMode: isSimulated ? "simulated" : "real_provider",
+        executionMode: isSimulated ? "simulated" : `${merchantProvider.environment}_provider`,
       },
     }
   }
