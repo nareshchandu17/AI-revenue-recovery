@@ -81,6 +81,16 @@ export interface HighValueAlertParams {
   customerEmail?: string
 }
 
+export interface AlertDispatchResult {
+  dispatched: boolean
+  simulated?: boolean
+  delivered?: boolean
+  alertId?: string
+  deliveryStatus?: string
+  reason?: string
+  error?: string
+}
+
 export interface AnomalyAlertParams {
   merchantId: string
   anomalyId?: string
@@ -101,7 +111,7 @@ export interface DunningReminderParams {
 /**
  * Dispatch an alert when a high-value payment failure occurs (e.g. >= ₹500 / $500).
  */
-export async function dispatchHighValueAlert(params: HighValueAlertParams) {
+export async function dispatchHighValueAlert(params: HighValueAlertParams): Promise<AlertDispatchResult> {
   const { merchantId, caseId, paymentExternalId, amount, customerEmail } = params
   const merchant = await db.merchant.findUnique({
     where: { id: merchantId },
