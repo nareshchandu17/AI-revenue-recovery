@@ -37,7 +37,7 @@ export async function POST(
 
     // Require authentication — merchantId from session
     const sessionUser = await requireAuth()
-    if (sessionUser.role === "viewer") {
+    if (!["owner", "operator"].includes(sessionUser.role)) {
       throw new ForbiddenError("Viewers cannot reject recovery actions")
     }
 
