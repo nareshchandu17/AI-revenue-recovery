@@ -57,7 +57,11 @@ export function encryptSecret(plaintext: string): string {
 export function decryptSecret(encryptedPayload: string): string {
   if (!encryptedPayload) return ""
   if (!encryptedPayload.startsWith("enc:v1:")) {
-    // If not in encrypted format (e.g. legacy/plain during migration), return as-is
+    // Legacy plaintext values may exist from early prototypes. Do not silently
+    // treat them as encrypted in production; require credential re-entry/migration.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Legacy unencrypted provider secret detected. Re-enter or migrate the integration credentials before production use.")
+    }
     return encryptedPayload
   }
 
