@@ -81,6 +81,10 @@ export async function getMerchantRazorpayService(merchantId: string): Promise<Me
   const keySecret = integration.keySecretEncrypted ? decryptSecret(integration.keySecretEncrypted) : ""
   const environment = integration.environment === "live" ? "live" : "test"
 
+  if (environment === "live" && env.LIVE_RAZORPAY_ACTIONS_ENABLED !== "true") {
+    throw new Error("Live Razorpay actions are disabled. Enable LIVE_RAZORPAY_ACTIONS_ENABLED only after staging validation.")
+  }
+
   if (!keyId || !keySecret) {
     throw new Error("The active Razorpay integration has incomplete API credentials")
   }
