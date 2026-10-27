@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
 import { getDeliveryProvider } from "@/services/notifications/providers"
+import { deliverCustomerNotification } from "@/services/notifications/delivery-service"
 
 interface MerchantEmailDispatchResult {
   accepted: boolean
@@ -254,21 +255,68 @@ export async function dispatchAnomalyAlert(params: AnomalyAlertParams) {
 }
 
 /**
- * Dispatch dunning reminder email before canceling subscription or after recurring billing failure.
+ * Send a dunning reminder only when an existing recovery case and payment link
+ * are available. Delivery is delegated to the normal customer-notification path,
+ * which re-checks DND, consent, channel opt-outs, and contact frequency.
+ *
+ * This helper deliberately does not invent a checkout URL or bypass the recovery
+ * execution flow to create a new payment link.
  */
 export async function dispatchDunningReminder(params: DunningReminderParams) {
-  const { merchantId, customerId, subscriptionId, amount, customerEmail } = params
+  const { merchantId, customerId, subscriptionId, amount } = params
   const merchant = await db.merchant.findUnique({
     where: { id: merchantId },
-    select: { dunningEmails: true, name: true, supportEmail: true },
+    select: { dunningEmails: true },
   })
 
   if (!merchant || !merchant.dunningEmails) {
     return { dispatched: false, reason: "dunning_disabled_or_merchant_not_found" }
   }
+  if (!subscriptionId) {
+    return { dispatched: false, reason: "subscription_id_required" }
+  }
 
-  const title = `Dunning Notification: Subscription renewal reminder`
-  const message = `Payment reminder sent to ${customerEmail ?? "customer"} before subscription cancellation.`
+  const recoveryCase = await db.recoveryCase.findFirst({
+    where: {
+      merchantId,
+      subscriptionId,
+      status: { in: ["detected", "diagnosing", "diagnosed", "awaiting_approval", "executing"] },
+    },
+    include: {
+      recoveryAttempts: {
+        where: { status: "succeeded", providerUrl: { not: "" } },
+        orderBy: { attemptedAt: "desc" },
+        take: 1,
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  })
+
+  const paymentLinkUrl = recoveryCase?.recoveryAttempts[0]?.providerUrl
+  if (!recoveryCase || !paymentLinkUrl) {
+    return { dispatched: false, reason: "no_open_recovery_case_with_existing_payment_link" }
+  }
+
+  const delivery = await deliverCustomerNotification({
+    caseId: recoveryCase.id,
+    attemptId: recoveryCase.recoveryAttempts[0].id,
+    customerId,
+    merchantId,
+    amount: amount ?? recoveryCase.amountAtRisk,
+    currency: recoveryCase.currency,
+    paymentLinkUrl,
+    actionType: "send_reminder",
+    channel: "email",
+  })
+
+  const simulated = delivery.providerName === "dev-mock-mailer"
+  const actuallyDispatched = delivery.success && !simulated
+  const title = "Dunning Reminder Outcome"
+  const message = simulated
+    ? `SIMULATED: Dunning email flow result is ${delivery.deliveryStatus} for customer ${customerId}; no real email was sent.`
+    : delivery.success
+    ? `Dunning email flow reached provider status '${delivery.deliveryStatus}' for customer ${customerId}.`
+    : `Dunning email was not delivered for customer ${customerId}: ${delivery.blockedReason || delivery.summary}`
 
   const alert = await db.merchantAlert.create({
     data: {
@@ -276,33 +324,54 @@ export async function dispatchDunningReminder(params: DunningReminderParams) {
       type: "DUNNING_REMINDER",
       title,
       message,
-      severity: "warning",
+      severity: delivery.success ? "info" : "warning",
       delivered: true,
-      deliveryChannel: "email",
+      deliveryChannel: "in_app",
       metadataJson: JSON.stringify({
         customerId,
         subscriptionId,
-        amount,
-        customerEmail,
+        recoveryCaseId: recoveryCase.id,
+        amount: amount ?? recoveryCase.amountAtRisk,
+        recipientEmail: delivery.recipientEmail,
+        providerMessageId: delivery.messageId,
+        providerName: delivery.providerName,
+        deliveryStatus: delivery.deliveryStatus,
+        simulated,
+        success: delivery.success,
+        ...(delivery.blockedReason ? { blockedReason: delivery.blockedReason } : {}),
       }),
     },
   })
 
   await logAudit({
+    caseId: recoveryCase.id,
     actor: { type: "system" },
-    eventType: "DUNNING_EMAIL_DISPATCHED",
+    eventType: actuallyDispatched
+      ? "DUNNING_EMAIL_PROVIDER_ACCEPTED"
+      : simulated
+      ? "DUNNING_EMAIL_SIMULATED"
+      : "DUNNING_EMAIL_NOT_DISPATCHED",
     entityType: "merchant_alert",
     entityId: alert.id,
     action: "send_dunning_email",
-    details: `Dunning email reminder dispatched for customer ${customerId}`,
+    details: message,
     metadata: {
       alertId: alert.id,
       customerId,
       subscriptionId,
+      deliveryStatus: delivery.deliveryStatus,
+      simulated,
     },
   })
 
-  return { dispatched: true, alertId: alert.id }
+  return {
+    dispatched: actuallyDispatched,
+    simulated,
+    alertId: alert.id,
+    deliveryStatus: delivery.deliveryStatus,
+    messageId: delivery.messageId,
+    ...(delivery.blockedReason ? { blockedReason: delivery.blockedReason } : {}),
+  }
 }
 
 /**
