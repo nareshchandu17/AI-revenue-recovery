@@ -143,6 +143,19 @@ export async function upsertMerchantIntegration(
   const effectiveWebhookSecret = webhookSecret || (existing?.webhookSecretEncrypted ? decryptSecret(existing.webhookSecretEncrypted) : "")
   const expectedKeyPrefix = environment === "live" ? "rzp_live_" : "rzp_test_"
 
+  // Credentials are a matched set. Changing the key ID or switching test/live
+  // mode requires supplying both the matching API secret and webhook secret.
+  const credentialSetChanged = Boolean(existing) && (
+    environment !== existing.environment ||
+    (keyId !== undefined && keyId !== existing.keyId)
+  )
+  if (status === "active" && credentialSetChanged && (!keySecret || !webhookSecret)) {
+    throw new ValidationError(
+      "Changing the Razorpay key or environment requires the matching API secret and webhook secret.",
+      "RAZORPAY_CREDENTIALS_MUST_BE_REPLACED"
+    )
+  }
+
   if (status === "active") {
     if (!effectiveKeyId || !effectiveKeySecret || !effectiveWebhookSecret) {
       throw new ValidationError(
