@@ -51,7 +51,7 @@ export async function getMerchantRazorpayService(merchantId: string): Promise<Me
   // setRazorpayServiceInstance; never bypass this test seam with DB credentials.
   if (env.NODE_ENV === "test") {
     const service = getRazorpayService()
-    return { service, simulated: service instanceof DevRazorpayService, environment: "test" }
+    return { service, simulated: !isRazorpayConfigured, environment: "test" }
   }
 
   const integration = await db.razorpayIntegration.findFirst({
