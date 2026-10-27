@@ -23,6 +23,11 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string().default(""),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(""),
 
+  // Live money movement remains disabled until explicitly enabled after staging validation.
+  LIVE_RAZORPAY_ACTIONS_ENABLED: z.enum(["true", "false"]).default("false"),
+  // Refunds require a separate explicit opt-in because they are higher-risk financial operations.
+  LIVE_RAZORPAY_REFUNDS_ENABLED: z.enum(["true", "false"]).default("false"),
+
   // AI
   AI_PROVIDER: z.enum(["openai", "anthropic", "zai"]).default("zai"),
   OPENAI_API_KEY: z.string().default(""),
