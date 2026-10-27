@@ -47,6 +47,13 @@ export async function getMerchantRazorpayService(merchantId: string): Promise<Me
     throw new Error("Merchant ID is required to resolve a Razorpay client")
   }
 
+  // Test runs intentionally inject a deterministic provider through
+  // setRazorpayServiceInstance; never bypass this test seam with DB credentials.
+  if (env.NODE_ENV === "test") {
+    const service = getRazorpayService()
+    return { service, simulated: service instanceof DevRazorpayService, environment: "test" }
+  }
+
   const integration = await db.razorpayIntegration.findFirst({
     where: { merchantId, status: "active" },
     orderBy: { updatedAt: "desc" },
