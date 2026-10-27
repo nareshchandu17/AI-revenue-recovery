@@ -6,7 +6,7 @@
  * Rate limited. Requires authentication — merchantId derived from session.
  */
 import { z } from "zod/v4"
-import { ValidationError, errorResponse } from "@/lib/errors"
+import { ValidationError, ForbiddenError, errorResponse } from "@/lib/errors"
 import { executeRecovery } from "@/services/execution"
 import { rateLimitResponse } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
@@ -52,6 +52,9 @@ export async function POST(
 
     // Require authentication
     const sessionUser = await requireAuth()
+    if (sessionUser.role === "viewer") {
+      throw new ForbiddenError("Viewers cannot execute recovery actions")
+    }
 
     if (id === "demo_wow_01_case" || id === "demo_wow_02_case") {
       const { ensureDemoWowCases } = await import("@/services/recovery/demo-cases")
