@@ -357,7 +357,8 @@ describe("Communication Channels — genuine delivery & provider abstraction", (
     expect(result.delivered).toBe(false)
     expect(result.deliveryStatus).toBe("simulated")
 
-    const alert = await db.merchantAlert.findUnique({ where: { id: result.alertId } })
+    expect(result.alertId).toBeDefined()
+    const alert = await db.merchantAlert.findUnique({ where: { id: result.alertId! } })
     expect(alert?.delivered).toBe(false)
     const metadata = JSON.parse(alert?.metadataJson ?? "{}")
     expect(metadata.deliverySimulated).toBe(true)
