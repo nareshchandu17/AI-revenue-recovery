@@ -88,8 +88,12 @@ export function isReconciliationSchedulerRunning(): boolean {
  * Trigger an immediate on-demand reconciliation run with single-active-job guarantee.
  */
 export async function triggerReconciliationJob(
-  triggerSource: "manual" | "scheduler" | "worker" | "test" = "manual"
+  triggerSource: "manual" | "scheduler" | "worker" | "test" = "manual",
+  merchantId?: string
 ): Promise<ReconciliationJobResult> {
-  console.log(`[reconciliation:scheduler] On-demand trigger initiated from source: ${triggerSource}`)
-  return runReconciliationJob({ triggerSource, intervalMs: _configuredIntervalMs })
+  console.log(
+    `[reconciliation:scheduler] On-demand trigger initiated from source: ${triggerSource}`,
+    merchantId ? { merchantId } : {}
+  )
+  return runReconciliationJob({ triggerSource, intervalMs: _configuredIntervalMs, merchantId })
 }
