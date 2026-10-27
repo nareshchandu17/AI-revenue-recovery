@@ -31,37 +31,52 @@ export interface DeliveryWebhookResult {
 }
 
 export async function processDeliveryWebhook(
-  event: DeliveryWebhookEvent
+  event: DeliveryWebhookEvent,
+  options: { merchantId?: string } = {},
 ): Promise<DeliveryWebhookResult> {
   const { messageId, eventType, reason, timestamp } = event
+  const { merchantId } = options
+
+  if (!messageId.trim()) {
+    return { handled: false, messageId, error: "Message ID is required" }
+  }
 
   log.info(`Processing delivery webhook for message ${messageId}: eventType=${eventType}`)
 
-  // 1. Find RecoveryAttempt by externalRef
+  // 1. Match exact provider IDs only; substring matching can target unrelated attempts.
   let attempt: any = await db.recoveryAttempt.findFirst({
     where: {
-      OR: [
-        { externalRef: messageId },
-        { externalRef: { contains: messageId } },
-      ],
+      externalRef: messageId,
+      ...(merchantId ? { recoveryCase: { merchantId } } : {}),
     },
     include: { communicationEvent: true, recoveryCase: true },
   })
 
-  // 2. If not found by externalRef, search CommunicationEvent details
+  // 2. Provider message IDs are persisted in CommunicationEvent.details.
+  // Search candidates by text, then require an exact JSON field match.
   let commEvent: any = attempt?.communicationEvent ?? null
-  if (!attempt) {
-    const matchingComm = await db.communicationEvent.findFirst({
+  if (!commEvent) {
+    const candidates = await db.communicationEvent.findMany({
       where: {
-        details: {
-          contains: messageId,
-        },
+        details: { contains: messageId },
+        ...(merchantId ? { merchantId } : {}),
       },
       include: {
         recoveryAttempt: {
           include: { recoveryCase: true },
         },
       },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+
+    const matchingComm = candidates.find((candidate) => {
+      try {
+        const details = JSON.parse(candidate.details || "{}") as Record<string, unknown>
+        return details.providerMessageId === messageId
+      } catch {
+        return false
+      }
     })
 
     if (matchingComm) {
