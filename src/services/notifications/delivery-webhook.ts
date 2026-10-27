@@ -85,8 +85,31 @@ export async function processDeliveryWebhook(
     }
   }
 
+  // Merchant alert emails do not belong to a customer RecoveryAttempt. Match their
+  // persisted providerMessageId as an exact JSON field, not just a substring.
+  let merchantAlert: any = null
   if (!attempt && !commEvent) {
-    log.warn(`Delivery webhook message ${messageId} not matched to any attempt or communication event`)
+    const alertCandidates = await db.merchantAlert.findMany({
+      where: {
+        metadataJson: { contains: messageId },
+        ...(merchantId ? { merchantId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+
+    merchantAlert = alertCandidates.find((candidate) => {
+      try {
+        const metadata = JSON.parse(candidate.metadataJson || "{}") as Record<string, unknown>
+        return metadata.providerMessageId === messageId
+      } catch {
+        return false
+      }
+    }) ?? null
+  }
+
+  if (!attempt && !commEvent && !merchantAlert) {
+    log.warn(`Delivery webhook message ${messageId} not matched to an attempt, communication event or merchant alert`)
     return {
       handled: false,
       messageId,
@@ -130,7 +153,30 @@ export async function processDeliveryWebhook(
     })
   }
 
-  // 4. Update RecoveryAttempt if present
+  // 4. Update merchant alert delivery state if this callback belongs to an alert email.
+  if (merchantAlert) {
+    let metadata: Record<string, unknown> = {}
+    try {
+      metadata = JSON.parse(merchantAlert.metadataJson || "{}") as Record<string, unknown>
+    } catch {
+      metadata = {}
+    }
+
+    metadata.providerStatus = newStatus
+    metadata.providerEventType = eventType
+    metadata.providerDeliveryTimestamp = timestamp ? new Date(timestamp).toISOString() : new Date().toISOString()
+    if (reason) metadata.deliveryError = reason
+
+    await db.merchantAlert.update({
+      where: { id: merchantAlert.id },
+      data: {
+        delivered: newStatus === "delivered",
+        metadataJson: JSON.stringify(metadata),
+      },
+    })
+  }
+
+  // 5. Update RecoveryAttempt if present
   if (attempt) {
     if (newStatus === "failed") {
       await db.recoveryAttempt.update({
@@ -143,7 +189,7 @@ export async function processDeliveryWebhook(
     }
   }
 
-  // 5. Persist audit log
+  // 6. Persist audit log
   try {
     const metadataRecord: Record<string, unknown> = {
       messageId,
@@ -158,8 +204,8 @@ export async function processDeliveryWebhook(
       eventType: `communication.${eventType}`,
       action: `communication_${newStatus}`,
       details: `Delivery status updated to '${newStatus}' (${eventType}) for message ${messageId}.${reason ? ` Reason: ${reason}` : ""}`,
-      entityType: "CommunicationEvent",
-      entityId: commEvent?.id || attempt?.id || messageId,
+      entityType: merchantAlert ? "MerchantAlert" : "CommunicationEvent",
+      entityId: commEvent?.id || merchantAlert?.id || attempt?.id || messageId,
       metadata: metadataRecord,
     })
   } catch (auditErr) {
@@ -171,7 +217,7 @@ export async function processDeliveryWebhook(
     messageId,
     status: newStatus,
     attemptId: attempt?.id,
-    eventId: commEvent?.id,
+    eventId: commEvent?.id || merchantAlert?.id,
     caseId,
   }
 }
