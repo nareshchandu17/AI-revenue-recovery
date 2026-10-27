@@ -10,6 +10,7 @@
 
 import type { RecoveryAction } from "@prisma/client"
 import { getMerchantRazorpayService } from "@/services/razorpay"
+import { env } from "@/lib/config"
 import { db } from "@/lib/db"
 import type { ActionExecutor, ExecutorContext, ExecutorResult } from "../types"
 
@@ -21,6 +22,20 @@ export class RefundExecutor implements ActionExecutor {
     const isSimulated = merchantProvider.simulated
     const providerLabel = isSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
     const rzp = merchantProvider.service
+
+    if (merchantProvider.environment === "live" && env.LIVE_RAZORPAY_REFUNDS_ENABLED !== "true") {
+      return {
+        success: false,
+        externalRef: "",
+        summary: "BLOCKED: Live refunds are disabled by the production safety control.",
+        simulated: false,
+        details: {
+          action: "cancel_and_refund",
+          reason: "LIVE_REFUNDS_DISABLED",
+          executionMode: "blocked",
+        },
+      }
+    }
 
     // 1. Fetch case and payment from database
     const recoveryCase = await db.recoveryCase.findUnique({
