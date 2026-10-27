@@ -179,8 +179,18 @@ export async function ingestWebhook(
     where: { externalId: rpPayment.id },
   })
 
+  // Payment creation time is not capture time. Only provider capture events may
+  // establish capturedAt; older records remain unknown until a verified event arrives.
+  const captureEventAt = event === "payment.captured" || event === "payment_link.paid"
+    ? new Date((envelope.created_at ?? Math.floor(Date.now() / 1000)) * 1000)
+    : undefined
+
   // Detect duplicate webhook (same externalId, same status)
   if (previousPayment && previousPayment.status === rpPayment.status) {
+    // Backfill capture time if an older row had the state but no verified timestamp.
+    if (captureEventAt && !previousPayment.capturedAt) {
+      await db.payment.update({ where: { id: previousPayment.id }, data: { capturedAt: captureEventAt } })
+    }
     log.info("Duplicate webhook detected — same status, skipping", {
       externalPaymentId: rpPayment.id,
       status: rpPayment.status,
@@ -205,6 +215,7 @@ export async function ingestWebhook(
     failureReason: rpPayment.error_description ?? "",
     description: rpPayment.description ?? "",
     createdAt: new Date(rpPayment.created_at * 1000),
+    capturedAt: captureEventAt,
   }
 
   const payment = previousPayment
@@ -215,6 +226,7 @@ export async function ingestWebhook(
           method: paymentData.method,
           failureCode: paymentData.failureCode,
           failureReason: paymentData.failureReason,
+          ...(captureEventAt && !previousPayment.capturedAt ? { capturedAt: captureEventAt } : {}),
           updatedAt: new Date(rpPayment.created_at * 1000),
         },
       })
