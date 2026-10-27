@@ -37,7 +37,8 @@ describe('Incremental Revenue Service', () => {
     const mockAttributionId = 'attr_123'
     const now = new Date()
     const attemptedAt = new Date(now.getTime() - 1000 * 60 * 60) // 1 hour ago
-    const paymentCreatedAt = new Date(now.getTime() - 1000 * 60 * 30) // 30 mins ago
+    const paymentCreatedAt = new Date(now.getTime() - 1000 * 60 * 90) // 90 mins ago
+    const paymentCapturedAt = new Date(now.getTime() - 1000 * 60 * 30) // captured after intervention
 
     ;(db.incrementalRevenue.findFirst as any).mockResolvedValue(null)
     ;(db.incrementalRevenue.create as any).mockImplementation(async (args: any) => {
@@ -59,7 +60,8 @@ describe('Incremental Revenue Service', () => {
       },
       payment: {
         id: 'payment_1',
-        createdAt: paymentCreatedAt
+        createdAt: paymentCreatedAt,
+        capturedAt: paymentCapturedAt
       }
     } as any)
 
@@ -76,7 +78,8 @@ describe('Incremental Revenue Service', () => {
     const mockAttributionId = 'attr_124'
     const now = new Date()
     const attemptedAt = new Date(now.getTime() - 1000 * 60 * 30) // 30 mins ago
-    const paymentCreatedAt = new Date(now.getTime() - 1000 * 60 * 60) // 1 hour ago (PREEMPTED)
+    const paymentCreatedAt = new Date(now.getTime() - 1000 * 60 * 120) // created well before intervention
+    const paymentCapturedAt = new Date(now.getTime() - 1000 * 60 * 60) // captured before intervention
 
     ;(db.incrementalRevenue.findFirst as any).mockResolvedValue(null)
     ;(db.incrementalRevenue.create as any).mockImplementation(async (args: any) => {
@@ -98,7 +101,8 @@ describe('Incremental Revenue Service', () => {
       },
       payment: {
         id: 'payment_2',
-        createdAt: paymentCreatedAt
+        createdAt: paymentCreatedAt,
+        capturedAt: paymentCapturedAt
       }
     } as any)
 
@@ -110,4 +114,31 @@ describe('Incremental Revenue Service', () => {
     expect(result?.baselineExpectedAmount).toBe(4000) // 40% of 10000
     expect(result?.incrementalAmount).toBe(0) // 0 because preempted
   })
+  test('UNATTRIBUTED when capture timestamp is unknown', async () => {
+    const mockAttributionId = 'attr_unknown_capture'
+    const attemptedAt = new Date(Date.now() - 1000 * 60 * 10)
+
+    ;(db.incrementalRevenue.findFirst as any).mockResolvedValue(null)
+    ;(db.incrementalRevenue.create as any).mockImplementation(async (args: any) => {
+      return { id: 'inc_unknown_capture', ...args.data } as any
+    })
+    ;(db.recoveryAttribution.findUnique as any).mockResolvedValue({
+      id: mockAttributionId,
+      amount: 10000,
+      source: 'payment_link',
+      recoveryCase: {
+        id: 'case_unknown_capture',
+        amountAtRisk: 10000,
+        probabilityEstimates: [{ isBaseline: true, probability: 0.1 }]
+      },
+      recoveryAttempt: { id: 'attempt_unknown_capture', attemptedAt },
+      payment: { id: 'payment_unknown_capture', createdAt: new Date(Date.now() - 1000) , capturedAt: null }
+    } as any)
+
+    const result = await evaluateAttribution(mockAttributionId)
+    expect(result?.attributionType).toBe('UNATTRIBUTED')
+    expect(result?.incrementalAmount).toBe(0)
+    expect(result?.confidence).toBe('high')
+  })
+
 })
