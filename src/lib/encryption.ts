@@ -16,11 +16,20 @@ const AUTH_TAG_LENGTH = 16
  * Get or derive a 32-byte encryption key from environment.
  */
 function getMasterKey(): Buffer {
+  const configuredKey = process.env.ENCRYPTION_KEY
+  if (process.env.NODE_ENV === "production") {
+    if (!configuredKey || configuredKey.length < 32) {
+      throw new Error("ENCRYPTION_KEY is required in production and must be at least 32 characters.")
+    }
+    return crypto.createHash("sha256").update(configuredKey).digest()
+  }
+
+  // Development/test fallback only. Never use this key for real merchant credentials.
   const masterSecret =
-    process.env.ENCRYPTION_KEY ||
+    configuredKey ||
     process.env.APP_SECRET ||
     process.env.NEXTAUTH_SECRET ||
-    "ai-revenue-recovery-encryption-master-key-2026"
+    "recovr-local-development-encryption-key-only"
 
   return crypto.createHash("sha256").update(masterSecret).digest()
 }
