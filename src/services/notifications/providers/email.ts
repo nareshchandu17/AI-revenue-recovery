@@ -9,7 +9,7 @@
 
 import { randomUUID } from "crypto"
 import { logger } from "@/lib/logger"
-import type { DeliveryProvider, MessagePayload, ProviderSendResult, DeliveryWebhookPayload } from "./types"
+import { DeliveryConfigurationError, type DeliveryProvider, type MessagePayload, type ProviderSendResult, type DeliveryWebhookPayload } from "./types"
 
 export interface DevDispatchedEmail {
   providerMessageId: string
@@ -203,7 +203,15 @@ export function getEmailDeliveryProvider(): DeliveryProvider {
   if (_activeEmailProvider) return _activeEmailProvider
 
   const resendApiKey = process.env.RESEND_API_KEY
-  if (resendApiKey && resendApiKey.startsWith("re_")) {
+  if (process.env.NODE_ENV === "production") {
+    if (!resendApiKey || !resendApiKey.startsWith("re_")) {
+      throw new DeliveryConfigurationError(
+        "email",
+        "RESEND_API_KEY must be configured in production; mock delivery is development/test only.",
+      )
+    }
+    _activeEmailProvider = new ResendEmailProvider(resendApiKey)
+  } else if (resendApiKey && resendApiKey.startsWith("re_")) {
     _activeEmailProvider = new ResendEmailProvider(resendApiKey)
   } else {
     _activeEmailProvider = new DevEmailProvider()
