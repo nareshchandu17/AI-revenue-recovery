@@ -138,7 +138,7 @@ describe('Incremental Revenue Service', () => {
     const result = await evaluateAttribution(mockAttributionId)
     expect(result?.attributionType).toBe('UNATTRIBUTED')
     expect(result?.incrementalAmount).toBe(0)
-    expect(result?.confidence).toBe('high')
+    expect(result?.confidence).toBe('unavailable')
   })
 
 })
