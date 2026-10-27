@@ -51,7 +51,7 @@ export async function POST(
       if (cachedResponse) return cachedResponse
     }
 
-    if (sessionUser.role === "viewer") {
+    if (!["owner", "operator"].includes(sessionUser.role)) {
       throw new ForbiddenError("Viewers cannot execute recovery actions")
     }
 
