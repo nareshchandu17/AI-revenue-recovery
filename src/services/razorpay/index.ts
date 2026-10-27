@@ -1,13 +1,14 @@
 /**
- * Razorpay service singleton factory.
+ * Razorpay service factories.
  *
- * - **Production / configured**: returns `RazorpayServiceImpl` wrapping the real SDK.
- * - **Development / unconfigured**: returns a `DevRazorpayService` that simulates
- *   calls without hitting any external API.  This lets the entire pipeline
- *   (webhook → ingestion → DB) be tested end-to-end without real keys.
+ * The global factory is retained for local simulation and compatibility tests.
+ * Business actions should use getMerchantRazorpayService so provider calls use
+ * the authenticated merchant's own encrypted credentials and configured mode.
  */
 
 import { env, isRazorpayConfigured } from "@/lib/config"
+import { db } from "@/lib/db"
+import { decryptSecret } from "@/lib/encryption"
 import type { RazorpayService } from "./types"
 import { RazorpayServiceImpl } from "./razorpay-service"
 import { DevRazorpayService } from "./dev-razorpay-service"
@@ -23,7 +24,7 @@ export function getRazorpayService(): RazorpayService {
       })
     } else {
       console.warn(
-        "[razorpay] No keys configured — using dev stub. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET for production."
+        "[razorpay] No global keys configured — using development/test stub. Merchant actions should resolve their own integration."
       )
       _instance = new DevRazorpayService()
     }
@@ -31,7 +32,59 @@ export function getRazorpayService(): RazorpayService {
   return _instance
 }
 
-/** Testing helper: override singleton instance with DevRazorpayService or mock */
+export interface MerchantRazorpayService {
+  service: RazorpayService
+  simulated: boolean
+  environment: "test" | "live"
+}
+
+/**
+ * Resolve the active provider client for one merchant.
+ * Production never falls back to a shared global credential or simulator.
+ */
+export async function getMerchantRazorpayService(merchantId: string): Promise<MerchantRazorpayService> {
+  if (!merchantId) {
+    throw new Error("Merchant ID is required to resolve a Razorpay client")
+  }
+
+  const integration = await db.razorpayIntegration.findFirst({
+    where: { merchantId, status: "active" },
+    orderBy: { updatedAt: "desc" },
+  })
+
+  if (!integration) {
+    if (env.NODE_ENV === "production") {
+      throw new Error("No active Razorpay integration is configured for this merchant")
+    }
+    const service = getRazorpayService()
+    return {
+      service,
+      simulated: service instanceof DevRazorpayService,
+      environment: "test",
+    }
+  }
+
+  const keyId = integration.keyId
+  const keySecret = integration.keySecretEncrypted ? decryptSecret(integration.keySecretEncrypted) : ""
+  const environment = integration.environment === "live" ? "live" : "test"
+
+  if (!keyId || !keySecret) {
+    throw new Error("The active Razorpay integration has incomplete API credentials")
+  }
+
+  const expectedPrefix = environment === "live" ? "rzp_live_" : "rzp_test_"
+  if (!keyId.startsWith(expectedPrefix)) {
+    throw new Error(`Razorpay key ID does not match the configured ${environment} environment`)
+  }
+
+  return {
+    service: new RazorpayServiceImpl({ keyId, keySecret }),
+    simulated: false,
+    environment,
+  }
+}
+
+/** Testing helper: override singleton instance with DevRazorpayService or mock. */
 export function setRazorpayServiceInstance(instance: RazorpayService | null): void {
   _instance = instance
 }
