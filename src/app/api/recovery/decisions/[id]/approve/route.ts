@@ -8,7 +8,7 @@
  * Rate limited.
  */
 import { z } from "zod/v4"
-import { ValidationError, NotFoundError, ConflictError, errorResponse } from "@/lib/errors"
+import { ValidationError, NotFoundError, ConflictError, ForbiddenError, errorResponse } from "@/lib/errors"
 import { approveDecision } from "@/services/execution/approval"
 import { rateLimitResponse } from "@/lib/rate-limit"
 import { db } from "@/lib/db"
@@ -40,6 +40,9 @@ export async function POST(
 
     // Require authentication — merchantId comes from the session, NOT the request body
     const sessionUser = await requireAuth()
+    if (sessionUser.role === "viewer") {
+      throw new ForbiddenError("Viewers cannot approve recovery actions")
+    }
 
     let body: { note?: string } = {}
     try {
