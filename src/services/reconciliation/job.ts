@@ -27,6 +27,8 @@ export interface ReconciliationJobOptions {
   triggerSource?: "worker" | "scheduler" | "manual" | "test"
   intervalMs?: number
   force?: boolean
+  /** Restrict on-demand runs to one authenticated merchant. Background runs omit this. */
+  merchantId?: string
 }
 
 export interface ReconciliationJobResult {
@@ -116,6 +118,7 @@ export async function runReconciliationJob(
         status: { in: ["succeeded", "pending"] },
         recoveryCase: {
           status: { notIn: ["completed", "dismissed", "failed"] },
+          ...(options.merchantId ? { merchantId: options.merchantId } : {}),
         },
         updatedAt: { gte: cutoffDate },
         reconciliationAttempts: { lt: MAX_RECONCILIATION_ATTEMPTS },
@@ -492,7 +495,7 @@ async function deferReconciliation(
 /**
  * Fetch operational health and metrics for reconciliation jobs.
  */
-export async function getReconciliationHealth() {
+export async function getReconciliationHealth(merchantId?: string) {
   const [latestRun, activeRun, unresolvedAttemptsCount, unresolvedAttempts] = await Promise.all([
     db.reconciliationRun.findFirst({
       orderBy: { startedAt: "desc" },
@@ -506,6 +509,7 @@ export async function getReconciliationHealth() {
         status: { in: ["succeeded", "pending"] },
         recoveryCase: {
           status: { notIn: ["completed", "dismissed", "failed"] },
+          ...(merchantId ? { merchantId } : {}),
         },
         reconciliationAttempts: { gt: 0 },
         finalReconciliationStatus: { not: "CONFIRMED" },
@@ -516,6 +520,7 @@ export async function getReconciliationHealth() {
         status: { in: ["succeeded", "pending"] },
         recoveryCase: {
           status: { notIn: ["completed", "dismissed", "failed"] },
+          ...(merchantId ? { merchantId } : {}),
         },
         OR: [
           { finalReconciliationStatus: null },
