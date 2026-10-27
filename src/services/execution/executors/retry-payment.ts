@@ -14,8 +14,7 @@
  */
 
 import type { RecoveryAction } from "@prisma/client"
-import { isRazorpayConfigured } from "@/lib/config"
-import { getRazorpayService } from "@/services/razorpay"
+import { getMerchantRazorpayService } from "@/services/razorpay"
 import type { ActionExecutor, ExecutorContext, ExecutorResult } from "../types"
 
 export class RetryPaymentExecutor implements ActionExecutor {
@@ -23,8 +22,10 @@ export class RetryPaymentExecutor implements ActionExecutor {
 
   async execute(context: ExecutorContext): Promise<ExecutorResult> {
     const { db } = await import("@/lib/db")
-    const rzp = getRazorpayService()
-    const isSimulated = !isRazorpayConfigured
+    const merchantProvider = await getMerchantRazorpayService(context.merchantId)
+    const rzp = merchantProvider.service
+    const isSimulated = merchantProvider.simulated
+    const providerLabel = isSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
 
     // 1. Branch 1: If original payment is in "authorized" state, this is an authorized capture
     if (context.paymentExternalId) {
@@ -39,7 +40,7 @@ export class RetryPaymentExecutor implements ActionExecutor {
             success: captured.captured,
             externalRef: captured.id,
             summary: captured.captured
-              ? `Authorized payment ${context.paymentExternalId} captured successfully (${(context.amountAtRisk / 100).toFixed(2)} ${context.currency})`
+              ? `${providerLabel}: authorized payment ${context.paymentExternalId} captured successfully (${(context.amountAtRisk / 100).toFixed(2)} ${context.currency})`
               : `Authorized payment capture failed for ${context.paymentExternalId}`,
             simulated: isSimulated,
             details: {
@@ -47,7 +48,7 @@ export class RetryPaymentExecutor implements ActionExecutor {
               operationType: "capture_authorized_payment",
               paymentId: context.paymentExternalId,
               capturedStatus: captured.captured,
-              executionMode: isSimulated ? "simulated" : "real_provider",
+              executionMode: isSimulated ? "simulated" : `${merchantProvider.environment}_provider`,
             },
           }
         }
@@ -56,27 +57,12 @@ export class RetryPaymentExecutor implements ActionExecutor {
       }
     }
 
-    // 2. Branch 2: Subscription recurring retry
+    // Subscription retries use a supported payment link below; do not claim a
+    // recurring retry was scheduled when no provider operation exists.
     const recoveryCase = await db.recoveryCase.findUnique({
       where: { id: context.recoveryCaseId },
       select: { subscriptionId: true },
     })
-
-    if (recoveryCase?.subscriptionId) {
-      // In subscription retry flow, Razorpay recurring charge retry is triggered
-      return {
-        success: true,
-        externalRef: `sub_retry_${recoveryCase.subscriptionId}_${context.attemptNumber}`,
-        summary: `Subscription recurring charge retry scheduled for subscription ${recoveryCase.subscriptionId}`,
-        simulated: isSimulated,
-        details: {
-          action: "retry_payment",
-          operationType: "subscription_recurring_retry",
-          subscriptionId: recoveryCase.subscriptionId,
-          executionMode: isSimulated ? "simulated" : "real_provider",
-        },
-      }
-    }
 
     // 3. Branch 3: Failed one-time payment
     // Under card regulations (RBI/PCI), direct server-side re-charging without 2FA is not allowed.
@@ -100,7 +86,9 @@ export class RetryPaymentExecutor implements ActionExecutor {
     const linkResponse = await rzp.createPaymentLink({
       amount: context.amountAtRisk,
       currency: context.currency,
-      description: `Payment retry for failed transaction ${context.paymentExternalId || context.recoveryCaseId}`,
+      description: recoveryCase?.subscriptionId
+        ? `Payment link for overdue subscription ${recoveryCase.subscriptionId}`
+        : `Payment retry for failed transaction ${context.paymentExternalId || context.recoveryCaseId}`,
       customer: {
         name: customerName || undefined,
         email: customerEmail || undefined,
@@ -111,6 +99,7 @@ export class RetryPaymentExecutor implements ActionExecutor {
         recovery_case_id: context.recoveryCaseId,
         attempt_number: String(context.attemptNumber),
         original_payment_id: context.paymentExternalId || "",
+        ...(recoveryCase?.subscriptionId ? { subscription_id: recoveryCase.subscriptionId } : {}),
         action: "retry_payment",
       },
       notify: { sms: false, email: false },
@@ -138,7 +127,7 @@ export class RetryPaymentExecutor implements ActionExecutor {
       externalRef: linkResponse.id,
       summary: isSimulated
         ? `SIMULATED: Instant recovery retry payment link created for ₹${(context.amountAtRisk / 100).toFixed(2)} — ${linkResponse.short_url}. Dispatched to customer.`
-        : `Razorpay Test Mode: Instant recovery retry payment link created for ₹${(context.amountAtRisk / 100).toFixed(2)} — ${linkResponse.short_url}. Dispatched to customer.`,
+        : `${providerLabel}: Instant recovery retry payment link created for ₹${(context.amountAtRisk / 100).toFixed(2)} — ${linkResponse.short_url}.`,
       simulated: isSimulated,
       details: {
         action: "retry_payment",
