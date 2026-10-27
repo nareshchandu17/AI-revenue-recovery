@@ -32,13 +32,16 @@ async function dispatchMerchantEmail(
   message: string,
   idempotencyKey: string,
 ): Promise<MerchantEmailDispatchResult> {
-  const provider = getDeliveryProvider("email")
-  const simulated = provider.providerName === "dev-mock-mailer"
   if (!recipient) {
-    return { accepted: false, delivered: false, simulated, providerName: provider.providerName, providerStatus: "failed", error: "No recipient email configured" }
+    return { accepted: false, delivered: false, simulated: false, providerName: "unconfigured", providerStatus: "failed", error: "No recipient email configured" }
   }
 
+  let providerName = "unconfigured"
+  let simulated = false
   try {
+    const provider = getDeliveryProvider("email")
+    providerName = provider.providerName
+    simulated = provider.providerName === "dev-mock-mailer"
     const result = await provider.send({
       to: recipient,
       subject,
@@ -61,7 +64,7 @@ async function dispatchMerchantEmail(
       accepted: false,
       delivered: false,
       simulated,
-      providerName: provider.providerName,
+      providerName,
       providerStatus: "failed",
       error: err instanceof Error ? err.message : String(err),
     }
