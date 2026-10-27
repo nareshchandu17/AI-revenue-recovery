@@ -15,8 +15,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_URL: z.string().url().default("http://localhost:3000"),
 
-  // Session — must be at least 32 chars for iron-session
-  SESSION_SECRET: z.string().min(32).default("recovr-dev-session-secret-32chars-min!!"),
+  // Session secret is required in production; development retains a local-only default.
+  SESSION_SECRET: z.string().min(32).optional(),
 
   // Razorpay — all optional so the app boots without real keys
   RAZORPAY_KEY_ID: z.string().default(""),
@@ -45,7 +45,14 @@ if (!parsed.success) {
   throw new Error("Invalid environment variables — see server logs.")
 }
 
-export const env = parsed.data
+if (parsed.data.NODE_ENV === "production" && !parsed.data.SESSION_SECRET) {
+  throw new Error("[config] SESSION_SECRET is required in production and must be at least 32 characters.")
+}
+
+export const env = {
+  ...parsed.data,
+  SESSION_SECRET: parsed.data.SESSION_SECRET ?? "recovr-dev-session-secret-32chars-min!!",
+}
 
 // --- Convenience helpers --------------------------------------------------
 
