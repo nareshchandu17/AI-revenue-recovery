@@ -46,6 +46,21 @@ export async function attemptAttribution(
     externalPaymentId: providerPaymentId,
   })
 
+  // Trust the merchant resolved by the verified webhook integration, not notes
+  // or reference IDs supplied in the payment payload.
+  const sourcePayment = await db.payment.findUnique({
+    where: { id: paymentId },
+    select: { merchantId: true },
+  })
+  if (!sourcePayment || sourcePayment.merchantId !== merchantId) {
+    attributionLog.error("ATTRIBUTION_REJECTED", {
+      reason: "PAYMENT_TENANT_MISMATCH",
+      resolvedMerchantId: merchantId,
+      paymentMerchantId: sourcePayment?.merchantId ?? null,
+    })
+    return null
+  }
+
   // Audit: payment received for attribution
   await logAudit({
     actor: { type: 'webhook', source: 'razorpay' },
@@ -79,13 +94,13 @@ export async function attemptAttribution(
   }
 
   // 2. Try each attribution signal in order of confidence
-  const retryResult = await tryPaymentRetryAttribution(providerPaymentId, amount, attributionLog)
+  const retryResult = await tryPaymentRetryAttribution(providerPaymentId, amount, merchantId, attributionLog)
   if (retryResult) {
     if (retryResult.attributionId) await evaluateAttribution(retryResult.attributionId).catch(e => attributionLog.error("INCREMENTAL_EVAL_FAILED", { error: e }))
     return retryResult
   }
 
-  const deterministicResult = await tryDeterministicAttribution(providerReferenceId, providerNotes, paymentId, amount, attributionLog)
+  const deterministicResult = await tryDeterministicAttribution(providerReferenceId, providerNotes, paymentId, amount, merchantId, attributionLog)
   if (deterministicResult) {
     if (deterministicResult.attributionId) await evaluateAttribution(deterministicResult.attributionId).catch(e => attributionLog.error("INCREMENTAL_EVAL_FAILED", { error: e }))
     return deterministicResult
@@ -122,6 +137,7 @@ export async function attemptAttribution(
 async function tryPaymentRetryAttribution(
   providerPaymentId: string,
   amount: number,
+  merchantId: string,
   log: ReturnType<typeof logger.child>
 ): Promise<AttributionResult | null> {
   // Find the payment by its provider payment ID (stored in Payment.externalId)
@@ -130,6 +146,15 @@ async function tryPaymentRetryAttribution(
   })
   if (!payment) {
     log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'payment_retry', reason: 'NO_MATCHING_PAYMENT', providerPaymentId })
+    return null
+  }
+  if (payment.merchantId !== merchantId) {
+    log.error("ATTRIBUTION_REJECTED", {
+      signal: "payment_retry",
+      reason: "PAYMENT_TENANT_MISMATCH",
+      expectedMerchantId: merchantId,
+      actualMerchantId: payment.merchantId,
+    })
     return null
   }
 
@@ -174,6 +199,7 @@ async function tryDeterministicAttribution(
   providerNotes: Record<string, string> | null | undefined,
   paymentId: string,
   amount: number,
+  merchantId: string,
   log: ReturnType<typeof logger.child>
 ): Promise<AttributionResult | null> {
   // Primary: notes.recovery_case_id is always the raw case ID
@@ -196,7 +222,7 @@ async function tryDeterministicAttribution(
   let matchedAttemptId: string | undefined
   if (!caseId && providerReferenceId) {
     const attempt = await db.recoveryAttempt.findFirst({
-      where: { externalRef: providerReferenceId },
+      where: { externalRef: providerReferenceId, recoveryCase: { merchantId } },
       select: { id: true, recoveryCaseId: true },
     })
     if (attempt) {
@@ -224,6 +250,16 @@ async function tryDeterministicAttribution(
   if (!recoveryCase) {
     log.info('ATTRIBUTION_SIGNAL_FAILED', { signal: 'deterministic', reason: 'CASE_NOT_FOUND', caseId });
     return null;
+  }
+  if (recoveryCase.merchantId !== merchantId) {
+    log.error("ATTRIBUTION_REJECTED", {
+      signal: "deterministic",
+      reason: "CASE_TENANT_MISMATCH",
+      expectedMerchantId: merchantId,
+      actualMerchantId: recoveryCase.merchantId,
+      caseId,
+    })
+    return null
   }
 
   if (TERMINAL_CASE_SET.has(recoveryCase.status)) {

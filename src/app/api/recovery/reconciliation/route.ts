@@ -1,17 +1,16 @@
 /**
- * GET /api/recovery/reconciliation
- * Returns reconciliation job health, latest run stats, and unresolved attempts.
- *
- * POST /api/recovery/reconciliation
- * Triggers an on-demand reconciliation run with single-active-job protection.
+ * Merchant-scoped reconciliation health and manual trigger.
+ * The worker's scheduled run remains global; dashboard-triggered runs only
+ * reconcile the authenticated merchant's attempts.
  */
-
 import { getReconciliationHealth, triggerReconciliationJob } from "@/services/reconciliation"
-import { errorResponse } from "@/lib/errors"
+import { errorResponse, ForbiddenError } from "@/lib/errors"
+import { requireAuth } from "@/lib/auth"
 
 export async function GET() {
   try {
-    const health = await getReconciliationHealth()
+    const user = await requireAuth()
+    const health = await getReconciliationHealth(user.merchantId)
     return Response.json({ success: true, ...health })
   } catch (err) {
     return errorResponse(err)
@@ -20,7 +19,11 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const result = await triggerReconciliationJob("manual")
+    const user = await requireAuth()
+    if (!["owner", "operator"].includes(user.role)) {
+      throw new ForbiddenError("Viewers cannot trigger reconciliation")
+    }
+    const result = await triggerReconciliationJob("manual", user.merchantId)
     return Response.json({ success: true, result })
   } catch (err) {
     return errorResponse(err)

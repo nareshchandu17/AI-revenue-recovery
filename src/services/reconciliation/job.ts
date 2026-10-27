@@ -12,7 +12,7 @@
  */
 
 import { db } from "@/lib/db"
-import { getRazorpayService } from "@/services/razorpay"
+import { getMerchantRazorpayService } from "@/services/razorpay"
 import { logAudit } from "@/services/audit/log"
 import { ingestWebhook } from "@/services/webhook/ingest"
 
@@ -27,6 +27,8 @@ export interface ReconciliationJobOptions {
   triggerSource?: "worker" | "scheduler" | "manual" | "test"
   intervalMs?: number
   force?: boolean
+  /** Restrict on-demand runs to one authenticated merchant. Background runs omit this. */
+  merchantId?: string
 }
 
 export interface ReconciliationJobResult {
@@ -116,6 +118,7 @@ export async function runReconciliationJob(
         status: { in: ["succeeded", "pending"] },
         recoveryCase: {
           status: { notIn: ["completed", "dismissed", "failed"] },
+          ...(options.merchantId ? { merchantId: options.merchantId } : {}),
         },
         updatedAt: { gte: cutoffDate },
         reconciliationAttempts: { lt: MAX_RECONCILIATION_ATTEMPTS },
@@ -138,10 +141,13 @@ export async function runReconciliationJob(
     })
 
     candidates = attemptsToReconcile.length
-    const rzpService = getRazorpayService()
-
     for (const attempt of attemptsToReconcile) {
       try {
+        // Resolve the correct tenant integration for every attempt. Resolution failures
+        // are handled by the per-attempt retry/backoff path below.
+        const merchantProvider = await getMerchantRazorpayService(attempt.recoveryCase.merchantId)
+        const rzpService = merchantProvider.service
+
         // 4. Verify provider supports the operation
         const isPaymentLink = attempt.action === "payment_link"
         const hasPaymentLinkRef = Boolean(
@@ -492,7 +498,7 @@ async function deferReconciliation(
 /**
  * Fetch operational health and metrics for reconciliation jobs.
  */
-export async function getReconciliationHealth() {
+export async function getReconciliationHealth(merchantId?: string) {
   const [latestRun, activeRun, unresolvedAttemptsCount, unresolvedAttempts] = await Promise.all([
     db.reconciliationRun.findFirst({
       orderBy: { startedAt: "desc" },
@@ -506,6 +512,7 @@ export async function getReconciliationHealth() {
         status: { in: ["succeeded", "pending"] },
         recoveryCase: {
           status: { notIn: ["completed", "dismissed", "failed"] },
+          ...(merchantId ? { merchantId } : {}),
         },
         reconciliationAttempts: { gt: 0 },
         finalReconciliationStatus: { not: "CONFIRMED" },
@@ -516,6 +523,7 @@ export async function getReconciliationHealth() {
         status: { in: ["succeeded", "pending"] },
         recoveryCase: {
           status: { notIn: ["completed", "dismissed", "failed"] },
+          ...(merchantId ? { merchantId } : {}),
         },
         OR: [
           { finalReconciliationStatus: null },

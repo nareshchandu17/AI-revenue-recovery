@@ -16,6 +16,7 @@ import { DeliveryConfigurationError } from "../providers/types"
 import { renderRecoveryEmail, TEMPLATES_VERSION } from "../templates"
 import { deliverCustomerNotification } from "../delivery-service"
 import { processDeliveryWebhook } from "../delivery-webhook"
+import { dispatchHighValueAlert } from "../alert-service"
 import { db } from "@/lib/db"
 
 describe("Communication Channels — genuine delivery & provider abstraction", () => {
@@ -341,5 +342,62 @@ describe("Communication Channels — genuine delivery & provider abstraction", (
       })
       expect(commEvent?.status).toBe("delivered")
     })
+  }) 
+  test("merchant alert email in development is recorded as simulated, not delivered", async () => {
+    const result = await dispatchHighValueAlert({
+      merchantId: testMerchantId,
+      caseId: testCaseId,
+      paymentExternalId: testExternalPaymentId,
+      amount: 100000,
+      customerEmail: "ravi.kumar@example.com",
+    })
+
+    expect(result.dispatched).toBe(false)
+    expect(result.simulated).toBe(true)
+    expect(result.delivered).toBe(false)
+    expect(result.deliveryStatus).toBe("simulated")
+
+    expect(result.alertId).toBeDefined()
+    const alert = await db.merchantAlert.findUnique({ where: { id: result.alertId! } })
+    expect(alert?.delivered).toBe(false)
+    const metadata = JSON.parse(alert?.metadataJson ?? "{}")
+    expect(metadata.deliverySimulated).toBe(true)
+    expect(metadata.providerStatus).toBe("simulated")
   })
+
+  test("signed-provider delivery callback marks a merchant alert delivered", async () => {
+    const messageId = `msg_alert_delivery_${Date.now()}`
+    const alert = await db.merchantAlert.create({
+      data: {
+        merchantId: testMerchantId,
+        type: "HIGH_VALUE_FAILURE",
+        title: "Provider delivery callback test",
+        message: "Test only",
+        delivered: false,
+        deliveryChannel: "email",
+        metadataJson: JSON.stringify({
+          providerMessageId: messageId,
+          providerName: "resend",
+          providerStatus: "sent",
+        }),
+      },
+    })
+
+    const result = await processDeliveryWebhook({
+      messageId,
+      eventType: "delivered",
+      timestamp: new Date().toISOString(),
+    })
+
+    expect(result.handled).toBe(true)
+    expect(result.eventId).toBe(alert.id)
+
+    const updated = await db.merchantAlert.findUnique({ where: { id: alert.id } })
+    expect(updated?.delivered).toBe(true)
+    expect(JSON.parse(updated?.metadataJson ?? "{}").providerStatus).toBe("delivered")
+
+    await db.auditEvent.deleteMany({ where: { entityId: alert.id } })
+    await db.merchantAlert.delete({ where: { id: alert.id } })
+  })
+
 })

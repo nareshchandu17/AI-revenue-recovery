@@ -6,7 +6,7 @@
  * Protected against race conditions. Rate limited.
  */
 import { z } from "zod/v4"
-import { ValidationError, NotFoundError, ConflictError, errorResponse } from "@/lib/errors"
+import { ValidationError, NotFoundError, ConflictError, ForbiddenError, errorResponse } from "@/lib/errors"
 import { rejectDecision } from "@/services/execution/approval"
 import { rateLimitResponse } from "@/lib/rate-limit"
 import { db } from "@/lib/db"
@@ -37,6 +37,9 @@ export async function POST(
 
     // Require authentication — merchantId from session
     const sessionUser = await requireAuth()
+    if (!["owner", "operator"].includes(sessionUser.role)) {
+      throw new ForbiddenError("Viewers cannot reject recovery actions")
+    }
 
     let body: { reason?: string } = {}
     try {

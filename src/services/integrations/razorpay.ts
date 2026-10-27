@@ -13,6 +13,7 @@
 
 import crypto from "crypto"
 import { db } from "@/lib/db"
+import { ValidationError } from "@/lib/errors"
 import { encryptSecret, decryptSecret, maskSecret } from "@/lib/encryption"
 import { logAudit } from "@/services/audit/log"
 import { logger } from "@/lib/logger"
@@ -136,6 +137,39 @@ export async function upsertMerchantIntegration(
   const existing = await db.razorpayIntegration.findFirst({
     where: { merchantId },
   })
+
+  const effectiveKeyId = keyId !== undefined ? keyId : existing?.keyId ?? null
+  const effectiveKeySecret = keySecret || (existing?.keySecretEncrypted ? decryptSecret(existing.keySecretEncrypted) : "")
+  const effectiveWebhookSecret = webhookSecret || (existing?.webhookSecretEncrypted ? decryptSecret(existing.webhookSecretEncrypted) : "")
+  const expectedKeyPrefix = environment === "live" ? "rzp_live_" : "rzp_test_"
+
+  // Credentials are a matched set. Changing the key ID or switching test/live
+  // mode requires supplying both the matching API secret and webhook secret.
+  const credentialSetChanged = existing !== null && (
+    environment !== existing.environment ||
+    (keyId !== undefined && keyId !== existing.keyId)
+  )
+  if (status === "active" && credentialSetChanged && (!keySecret || !webhookSecret)) {
+    throw new ValidationError(
+      "Changing the Razorpay key or environment requires the matching API secret and webhook secret.",
+      "RAZORPAY_CREDENTIALS_MUST_BE_REPLACED"
+    )
+  }
+
+  if (status === "active") {
+    if (!effectiveKeyId || !effectiveKeySecret || !effectiveWebhookSecret) {
+      throw new ValidationError(
+        "An active Razorpay integration requires a key ID, key secret, and webhook signing secret.",
+        "RAZORPAY_CREDENTIALS_INCOMPLETE"
+      )
+    }
+    if (!effectiveKeyId.startsWith(expectedKeyPrefix)) {
+      throw new ValidationError(
+        `The API key ID must start with ${expectedKeyPrefix} for the selected ${environment} environment.`,
+        "RAZORPAY_ENVIRONMENT_KEY_MISMATCH"
+      )
+    }
+  }
 
   const updateData: Record<string, unknown> = {
     environment,

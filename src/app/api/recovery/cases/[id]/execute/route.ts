@@ -6,7 +6,7 @@
  * Rate limited. Requires authentication — merchantId derived from session.
  */
 import { z } from "zod/v4"
-import { ValidationError, errorResponse } from "@/lib/errors"
+import { ValidationError, ForbiddenError, errorResponse } from "@/lib/errors"
 import { executeRecovery } from "@/services/execution"
 import { rateLimitResponse } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
@@ -29,14 +29,6 @@ export async function POST(
   const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID()
   const idempotencyKey = request.headers.get("idempotency-key")
 
-  // Idempotency check
-  if (idempotencyKey) {
-    const cachedResponse = checkIdempotency(idempotencyKey)
-    if (cachedResponse) {
-      return cachedResponse
-    }
-  }
-
   // Rate limit
   try {
     const rateLimit = rateLimitResponse(clientIP, "execute")
@@ -52,6 +44,16 @@ export async function POST(
 
     // Require authentication
     const sessionUser = await requireAuth()
+    // Cache keys are tenant-scoped so another merchant cannot replay a cached response.
+    const scopedIdempotencyKey = idempotencyKey ? `${sessionUser.merchantId}:${idempotencyKey}` : undefined
+    if (scopedIdempotencyKey) {
+      const cachedResponse = checkIdempotency(scopedIdempotencyKey)
+      if (cachedResponse) return cachedResponse
+    }
+
+    if (!["owner", "operator"].includes(sessionUser.role)) {
+      throw new ForbiddenError("Viewers cannot execute recovery actions")
+    }
 
     if (id === "demo_wow_01_case" || id === "demo_wow_02_case") {
       const { ensureDemoWowCases } = await import("@/services/recovery/demo-cases")
@@ -93,8 +95,8 @@ export async function POST(
       ...result,
     }
     
-    if (idempotencyKey) {
-      return saveIdempotency(idempotencyKey, responseBody, 200, { "x-request-id": requestId })
+    if (scopedIdempotencyKey) {
+      return saveIdempotency(scopedIdempotencyKey, responseBody, 200, { "x-request-id": requestId })
     }
 
     return Response.json(responseBody, { headers: { "x-request-id": requestId } })

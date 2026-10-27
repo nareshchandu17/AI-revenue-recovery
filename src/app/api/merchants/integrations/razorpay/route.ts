@@ -1,86 +1,58 @@
 /**
- * GET /api/merchants/integrations/razorpay
- * POST /api/merchants/integrations/razorpay
+ * Merchant-scoped Razorpay integration management.
  *
- * Manage merchant's Razorpay integration and webhook setup.
- * Secrets are encrypted at rest and never exposed in responses.
+ * Tenant identity always comes from the authenticated session; request-supplied
+ * merchant IDs and headers are deliberately ignored.
  */
-
-import { NextRequest } from "next/server"
-import { errorResponse, ValidationError } from "@/lib/errors"
-import { getMerchantIntegration, upsertMerchantIntegration } from "@/services/integrations/razorpay"
+import { z } from "zod/v4"
+import { errorResponse, ForbiddenError, ValidationError } from "@/lib/errors"
 import { requireAuth } from "@/lib/auth"
-import { db } from "@/lib/db"
+import { getMerchantIntegration, upsertMerchantIntegration } from "@/services/integrations/razorpay"
 
-export async function GET(request: NextRequest) {
+const integrationBodySchema = z.object({
+  accountId: z.string().trim().max(255).nullable().optional(),
+  keyId: z.string().trim().max(255).nullable().optional(),
+  keySecret: z.string().trim().max(2048).nullable().optional(),
+  webhookSecret: z.string().trim().max(2048).nullable().optional(),
+  environment: z.enum(["test", "live"]).default("test"),
+  status: z.enum(["active", "inactive", "pending"]).default("active"),
+})
+
+export async function GET() {
   try {
-    let merchantId: string | null = null
-
-    try {
-      const user = await requireAuth()
-      merchantId = user.merchantId
-    } catch {
-      // Fallback to explicit query param for tests or dev
-      merchantId = request.nextUrl.searchParams.get("merchantId")
-    }
-
-    if (!merchantId) {
-      // Check if there is a merchant in query or header
-      const headerMerchantId = request.headers.get("x-merchant-id")
-      merchantId = headerMerchantId || null
-    }
-
-    if (!merchantId) {
-      const firstMerchant = await db.merchant.findFirst({ select: { id: true } })
-      merchantId = firstMerchant?.id ?? null
-    }
-
-    if (!merchantId) {
-      throw new ValidationError("Merchant ID required", "MISSING_MERCHANT_ID")
-    }
-
-    const integration = await getMerchantIntegration(merchantId)
-    return Response.json({
-      success: true,
-      integration,
-    })
+    const user = await requireAuth()
+    const integration = await getMerchantIntegration(user.merchantId)
+    return Response.json({ success: true, integration })
   } catch (err) {
     return errorResponse(err)
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    let merchantId: string | null = null
-
-    try {
-      const user = await requireAuth()
-      merchantId = user.merchantId
-    } catch {
-      // Fallback to body or header for onboarding/tests
+    const user = await requireAuth()
+    if (user.role !== "owner") {
+      throw new ForbiddenError("Only a merchant owner can manage payment-provider credentials")
     }
 
-    const body = await request.json().catch(() => ({}))
-    merchantId = body.merchantId || merchantId || request.headers.get("x-merchant-id")
+    let rawBody: unknown
+    try {
+      rawBody = await request.json()
+    } catch {
+      throw new ValidationError("Request body must be valid JSON")
+    }
 
-    if (!merchantId) {
-      throw new ValidationError("Merchant ID is required", "MISSING_MERCHANT_ID")
+    const parsed = integrationBodySchema.safeParse(rawBody)
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.issues[0]?.message ?? "Invalid integration payload")
     }
 
     const integration = await upsertMerchantIntegration({
-      merchantId,
-      accountId: body.accountId,
-      keyId: body.keyId,
-      keySecret: body.keySecret,
-      webhookSecret: body.webhookSecret,
-      environment: body.environment || "test",
-      status: body.status || "active",
+      merchantId: user.merchantId,
+      ...parsed.data,
     })
 
-    return Response.json({
-      success: true,
-      integration,
-    })
+    return Response.json({ success: true, integration })
   } catch (err) {
     return errorResponse(err)
   }

@@ -6,8 +6,7 @@
  */
 
 import type { RecoveryAction } from "@prisma/client"
-import { isRazorpayConfigured } from "@/lib/config"
-import { getRazorpayService } from "@/services/razorpay"
+import { getMerchantRazorpayService } from "@/services/razorpay"
 import { db } from "@/lib/db"
 import { deliverCustomerNotification } from "@/services/notifications/delivery-service"
 import type { ActionExecutor, ExecutorContext, ExecutorResult } from "../types"
@@ -16,8 +15,10 @@ export class AlternativePaymentExecutor implements ActionExecutor {
   readonly action: RecoveryAction = "update_payment_method"
 
   async execute(context: ExecutorContext): Promise<ExecutorResult> {
-    const rzp = getRazorpayService()
-    const isSimulated = !isRazorpayConfigured
+    const merchantProvider = await getMerchantRazorpayService(context.merchantId)
+    const rzp = merchantProvider.service
+    const isSimulated = merchantProvider.simulated
+    const providerLabel = isSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
     const referenceId = `rcv_alt_${context.recoveryCaseId.slice(-18)}_${context.attemptNumber}`
 
     // Load customer contact details
@@ -76,7 +77,7 @@ export class AlternativePaymentExecutor implements ActionExecutor {
       externalRef: linkResponse.id,
       summary: isSimulated
         ? `SIMULATED: Secure payment checkout link created for customer to select alternate payment method — ${linkResponse.short_url}`
-        : `Razorpay Test Mode: Secure payment checkout link created for customer to select alternate payment method — ${linkResponse.short_url}`,
+        : `${providerLabel}: Secure payment checkout link created for customer to select alternate payment method — ${linkResponse.short_url}`,
       simulated: isSimulated,
       details: {
         action: "update_payment_method",
@@ -89,7 +90,7 @@ export class AlternativePaymentExecutor implements ActionExecutor {
         reference_id: referenceId,
         provider_status: linkResponse.status,
         supportedMethods: ["upi", "card", "netbanking", "wallet"],
-        executionMode: isSimulated ? "simulated" : "real_provider",
+        executionMode: isSimulated ? "simulated" : `${merchantProvider.environment}_provider`,
       },
     }
   }

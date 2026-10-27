@@ -9,8 +9,8 @@
  */
 
 import type { RecoveryAction } from "@prisma/client"
-import { isRazorpayConfigured } from "@/lib/config"
-import { getRazorpayService } from "@/services/razorpay"
+import { getMerchantRazorpayService } from "@/services/razorpay"
+import { env } from "@/lib/config"
 import { db } from "@/lib/db"
 import type { ActionExecutor, ExecutorContext, ExecutorResult } from "../types"
 
@@ -18,8 +18,24 @@ export class RefundExecutor implements ActionExecutor {
   readonly action: RecoveryAction = "cancel_and_refund"
 
   async execute(context: ExecutorContext): Promise<ExecutorResult> {
-    const isSimulated = !isRazorpayConfigured
-    const rzp = getRazorpayService()
+    const merchantProvider = await getMerchantRazorpayService(context.merchantId)
+    const isSimulated = merchantProvider.simulated
+    const providerLabel = isSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
+    const rzp = merchantProvider.service
+
+    if (merchantProvider.environment === "live" && env.LIVE_RAZORPAY_REFUNDS_ENABLED !== "true") {
+      return {
+        success: false,
+        externalRef: "",
+        summary: "BLOCKED: Live refunds are disabled by the production safety control.",
+        simulated: false,
+        details: {
+          action: "cancel_and_refund",
+          reason: "LIVE_REFUNDS_DISABLED",
+          executionMode: "blocked",
+        },
+      }
+    }
 
     // 1. Fetch case and payment from database
     const recoveryCase = await db.recoveryCase.findUnique({
@@ -117,7 +133,7 @@ export class RefundExecutor implements ActionExecutor {
       externalRef: refundResponse.id,
       summary: isSimulated
         ? `SIMULATED: Refund of ₹${(refundAmount / 100).toFixed(2)} processed for payment ${payment.externalId} (Ref: ${refundResponse.id})`
-        : `Razorpay Test Mode: Refund of ₹${(refundAmount / 100).toFixed(2)} processed for payment ${payment.externalId} (Ref: ${refundResponse.id})`,
+        : `${providerLabel}: Refund of ₹${(refundAmount / 100).toFixed(2)} processed for payment ${payment.externalId} (Ref: ${refundResponse.id})`,
       simulated: isSimulated,
       details: {
         action: "cancel_and_refund",
@@ -127,7 +143,7 @@ export class RefundExecutor implements ActionExecutor {
         paymentId: payment.externalId,
         refundAmount,
         remainingBalance: remainingBalance - refundAmount,
-        executionMode: isSimulated ? "simulated" : "real_provider",
+        executionMode: isSimulated ? "simulated" : `${merchantProvider.environment}_provider`,
       },
     }
   }

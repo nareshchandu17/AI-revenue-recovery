@@ -1,54 +1,51 @@
 /**
- * POST /api/webhooks/delivery/simulate
- *
- * Dedicated test & simulation endpoint to trigger delivery callbacks for
- * real or simulated message IDs (e.g. simulating delivery failure or confirmed delivery).
- *
- * Request body:
- * {
- *   messageId: string,
- *   eventType: "delivered" | "failed" | "bounced",
- *   reason?: string
- * }
+ * Authenticated development-only endpoint for simulating delivery callbacks.
+ * Never enable simulated provider state changes in production.
  */
-
-import { NextRequest } from "next/server"
+import { z } from "zod/v4"
 import { processDeliveryWebhook } from "@/services/notifications/delivery-webhook"
+import { requireAuth } from "@/lib/auth"
+import { errorResponse, ForbiddenError, ValidationError } from "@/lib/errors"
 
-export async function POST(request: NextRequest) {
+const simulationSchema = z.object({
+  messageId: z.string().min(1).max(255),
+  eventType: z.enum(["delivered", "failed", "bounced", "sent"]).default("failed"),
+  reason: z.string().max(500).optional(),
+})
+
+export async function POST(request: Request) {
   try {
-    const body = await request.json()
-
-    if (!body.messageId) {
-      return Response.json(
-        { error: "messageId is required" },
-        { status: 400 }
-      )
+    if (process.env.NODE_ENV === "production") {
+      throw new ForbiddenError("Delivery simulation is disabled in production")
     }
 
-    const eventType = body.eventType || "failed"
-    const reason = body.reason || (eventType === "delivered" ? undefined : "Simulated provider failure: Mailbox full or rejected")
+    const user = await requireAuth()
+    if (!["owner", "operator"].includes(user.role)) {
+      throw new ForbiddenError("Viewers cannot simulate delivery events")
+    }
 
+    let rawBody: unknown
+    try { rawBody = await request.json() } catch {
+      throw new ValidationError("Request body must be valid JSON")
+    }
+    const parsed = simulationSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.issues[0]?.message ?? "Invalid simulation payload")
+    }
+
+    const { messageId, eventType, reason } = parsed.data
     const result = await processDeliveryWebhook({
-      messageId: body.messageId,
+      messageId,
       eventType,
       timestamp: new Date().toISOString(),
-      reason,
-      rawPayload: body,
-    })
+      reason: reason ?? (eventType === "delivered" || eventType === "sent" ? undefined : "Simulated provider failure"),
+    }, { merchantId: user.merchantId })
 
     if (!result.handled) {
-      return Response.json(
-        { error: result.error || "Message not found" },
-        { status: 404 }
-      )
+      return Response.json({ error: result.error || "Message not found" }, { status: 404 })
     }
-
-    return Response.json(result, { status: 200 })
-  } catch (err: any) {
-    return Response.json(
-      { error: err.message || "Failed to simulate delivery status" },
-      { status: 500 }
-    )
+    return Response.json(result)
+  } catch (err) {
+    return errorResponse(err)
   }
 }

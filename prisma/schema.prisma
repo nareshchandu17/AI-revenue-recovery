@@ -308,6 +308,8 @@ model Payment {
   amountRefunded   Int           @default(0) // in paise
   description      String        @default("")
   createdAt        DateTime      @default(now())
+  /** Provider-confirmed capture timestamp; null means the capture time is not verified. */
+  capturedAt        DateTime?
   updatedAt        DateTime      @updatedAt
 
   merchant              Merchant              @relation(fields: [merchantId], references: [id])

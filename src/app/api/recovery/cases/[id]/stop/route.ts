@@ -6,7 +6,7 @@
  * Rate limited.
  */
 
-import { NotFoundError, ConflictError, ValidationError, errorResponse } from "@/lib/errors"
+import { NotFoundError, ConflictError, ValidationError, ForbiddenError, errorResponse } from "@/lib/errors"
 import { db } from "@/lib/db"
 import { OPEN_CASE_STATUSES } from "@/services/recovery/detection/constants"
 import { logAudit } from "@/services/audit/log"
@@ -36,6 +36,9 @@ export async function POST(
 
     // Require authentication and verify merchant ownership
     const sessionUser = await requireAuth()
+    if (!["owner", "operator"].includes(sessionUser.role)) {
+      throw new ForbiddenError("Viewers cannot stop recovery actions")
+    }
 
     const recoveryCase = await db.recoveryCase.findUnique({ where: { id } })
     if (!recoveryCase || recoveryCase.merchantId !== sessionUser.merchantId) {

@@ -55,6 +55,8 @@ const razorpayPaymentEntitySchema = z.object({
 
 export const webhookEnvelopeSchema = z.object({
   event: z.string().min(1),
+  // Razorpay event creation time (seconds since epoch), distinct from payment.created_at.
+  created_at: z.number().int().nonnegative().optional(),
   payload: z
     .object({
       payment: z

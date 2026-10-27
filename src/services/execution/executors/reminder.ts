@@ -7,8 +7,7 @@
  */
 
 import type { RecoveryAction } from "@prisma/client"
-import { isRazorpayConfigured } from "@/lib/config"
-import { getRazorpayService } from "@/services/razorpay"
+import { getMerchantRazorpayService } from "@/services/razorpay"
 import { db } from "@/lib/db"
 import { deliverCustomerNotification } from "@/services/notifications/delivery-service"
 import type { ActionExecutor, ExecutorContext, ExecutorResult } from "../types"
@@ -17,6 +16,11 @@ export class ReminderExecutor implements ActionExecutor {
   readonly action: RecoveryAction = "send_reminder"
 
   async execute(context: ExecutorContext): Promise<ExecutorResult> {
+    const merchantProvider = await getMerchantRazorpayService(context.merchantId)
+    const rzp = merchantProvider.service
+    const isProviderSimulated = merchantProvider.simulated
+    const providerLabel = isProviderSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
+
     // 1. Locate existing approved payment link or short_url for this case
     let paymentLinkUrl = ""
     try {
@@ -36,7 +40,6 @@ export class ReminderExecutor implements ActionExecutor {
     // If no prior link exists, create a genuine payment link for the customer
     if (!paymentLinkUrl) {
       try {
-        const rzp = getRazorpayService()
         if (typeof rzp?.createPaymentLink === "function") {
           const referenceId = `rcv_rem_${context.recoveryCaseId.slice(-18)}_${context.attemptNumber}`
           let customerName = ""
@@ -90,9 +93,9 @@ export class ReminderExecutor implements ActionExecutor {
         success: false,
         externalRef: delivery.messageId,
         summary: delivery.summary,
-        simulated: !isRazorpayConfigured,
+        simulated: isProviderSimulated || delivery.providerName === "dev-mock-mailer",
         details: {
-          method: isRazorpayConfigured ? "real_delivery" : "simulated",
+          method: delivery.providerName === "dev-mock-mailer" ? "simulated" : "real_delivery",
           action: "send_reminder",
           status: delivery.deliveryStatus,
           blockedReason: delivery.blockedReason,
@@ -102,15 +105,15 @@ export class ReminderExecutor implements ActionExecutor {
       }
     }
 
-    const isSimulated = !isRazorpayConfigured
+    const isSimulated = isProviderSimulated || delivery.providerName === "dev-mock-mailer"
     const externalRef = isSimulated ? `simulated_reminder_${delivery.messageId}` : delivery.messageId
 
     return {
       success: true,
       externalRef,
       summary: isSimulated
-        ? `SIMULATED: Payment reminder delivered to customer (test mode) with link: ${paymentLinkUrl}`
-        : `Reminder delivered to ${delivery.recipientEmail || "customer"} with payment link ${paymentLinkUrl}. (Status: ${delivery.deliveryStatus})`,
+        ? `SIMULATED: Payment link created via ${providerLabel}; customer notification was simulated (${delivery.providerName}). Link: ${paymentLinkUrl}`
+        : `${providerLabel} payment link; notification sent via ${delivery.providerName} to ${delivery.recipientEmail || "customer"} (status: ${delivery.deliveryStatus}). Link: ${paymentLinkUrl}`,
       simulated: isSimulated,
       details: {
         method: isSimulated ? "simulated" : "real_delivery",
@@ -121,7 +124,7 @@ export class ReminderExecutor implements ActionExecutor {
         recipient: delivery.recipientEmail,
         paymentLinkUrl,
         dispatchedAt: delivery.dispatchedAt,
-        executionMode: isSimulated ? "simulated" : "real_provider",
+        executionMode: isSimulated ? "simulated_or_mock_delivery" : `${merchantProvider.environment}_provider`,
       },
     }
   }
