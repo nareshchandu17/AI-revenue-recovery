@@ -1,5 +1,73 @@
 import { db } from "@/lib/db"
 import { logAudit } from "@/services/audit/log"
+import { getDeliveryProvider } from "@/services/notifications/providers"
+
+interface MerchantEmailDispatchResult {
+  accepted: boolean
+  delivered: boolean
+  simulated: boolean
+  providerName: string
+  providerMessageId?: string
+  providerStatus: string
+  error?: string
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]!)
+}
+
+/**
+ * Send a merchant-facing email and report real provider state.
+ * DevEmailProvider is a simulation and must never be recorded as real delivery.
+ */
+async function dispatchMerchantEmail(
+  recipient: string,
+  subject: string,
+  message: string,
+  idempotencyKey: string,
+): Promise<MerchantEmailDispatchResult> {
+  const provider = getDeliveryProvider("email")
+  const simulated = provider.providerName === "dev-mock-mailer"
+  if (!recipient) {
+    return { accepted: false, delivered: false, simulated, providerName: provider.providerName, providerStatus: "failed", error: "No recipient email configured" }
+  }
+
+  try {
+    const result = await provider.send({
+      to: recipient,
+      subject,
+      textBody: message,
+      htmlBody: `<div><p>${escapeHtml(message)}</p></div>`,
+      idempotencyKey,
+    })
+    const accepted = !simulated && ["accepted", "sent", "delivered"].includes(result.status)
+    return {
+      accepted,
+      delivered: !simulated && result.status === "delivered",
+      simulated,
+      providerName: result.providerName,
+      providerMessageId: result.providerMessageId,
+      providerStatus: simulated ? "simulated" : result.status,
+      ...(result.error ? { error: result.error } : {}),
+    }
+  } catch (err) {
+    return {
+      accepted: false,
+      delivered: false,
+      simulated,
+      providerName: provider.providerName,
+      providerStatus: "failed",
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
 
 export interface HighValueAlertParams {
   merchantId: string
@@ -44,6 +112,7 @@ export async function dispatchHighValueAlert(params: HighValueAlertParams) {
   const title = `High-Value Payment Failure: ${amountDisplay}`
   const message = `A high-value payment of ${amountDisplay} failed${paymentExternalId ? ` (${paymentExternalId})` : ""}${customerEmail ? ` for ${customerEmail}` : ""}. AI recovery review recommended.`
 
+  const recipient = merchant.supportEmail || merchant.email
   const alert = await db.merchantAlert.create({
     data: {
       merchantId,
@@ -51,14 +120,40 @@ export async function dispatchHighValueAlert(params: HighValueAlertParams) {
       title,
       message,
       severity: "critical",
-      delivered: true,
+      delivered: false,
       deliveryChannel: "email",
       metadataJson: JSON.stringify({
         caseId,
         paymentExternalId,
         amount,
         customerEmail,
-        recipient: merchant.supportEmail || merchant.email,
+        recipient,
+        providerStatus: "pending",
+      }),
+    },
+  })
+
+  const delivery = await dispatchMerchantEmail(
+    recipient,
+    title,
+    message,
+    `merchant-alert-${merchantId}-high-value-${paymentExternalId || caseId || amount}`,
+  )
+  await db.merchantAlert.update({
+    where: { id: alert.id },
+    data: {
+      delivered: delivery.delivered,
+      metadataJson: JSON.stringify({
+        caseId,
+        paymentExternalId,
+        amount,
+        customerEmail,
+        recipient,
+        providerMessageId: delivery.providerMessageId,
+        providerName: delivery.providerName,
+        providerStatus: delivery.providerStatus,
+        deliverySimulated: delivery.simulated,
+        ...(delivery.error ? { deliveryError: delivery.error } : {}),
       }),
     },
   })
@@ -66,19 +161,37 @@ export async function dispatchHighValueAlert(params: HighValueAlertParams) {
   await logAudit({
     caseId,
     actor: { type: "system" },
-    eventType: "ALERT_HIGH_VALUE_DISPATCHED",
+    eventType: delivery.accepted
+      ? "ALERT_HIGH_VALUE_EMAIL_ACCEPTED"
+      : delivery.simulated
+      ? "ALERT_HIGH_VALUE_EMAIL_SIMULATED"
+      : "ALERT_HIGH_VALUE_EMAIL_FAILED",
     entityType: "merchant_alert",
     entityId: alert.id,
     action: "dispatch_high_value_alert",
-    details: `High-value failure alert dispatched for ${amountDisplay}`,
+    details: delivery.accepted
+      ? `High-value alert accepted by email provider for ${amountDisplay}`
+      : delivery.simulated
+      ? `High-value alert email simulated; not sent to a real inbox (${amountDisplay})`
+      : `High-value alert email dispatch failed for ${amountDisplay}`,
     metadata: {
       alertId: alert.id,
       amount,
       paymentExternalId,
+      providerName: delivery.providerName,
+      providerStatus: delivery.providerStatus,
+      simulated: delivery.simulated,
     },
   })
 
-  return { dispatched: true, alertId: alert.id }
+  return {
+    dispatched: delivery.accepted,
+    simulated: delivery.simulated,
+    delivered: delivery.delivered,
+    alertId: alert.id,
+    deliveryStatus: delivery.providerStatus,
+    ...(delivery.error ? { error: delivery.error } : {}),
+  }
 }
 
 /**
@@ -236,27 +349,63 @@ export async function runDailyDigest(merchantId?: string) {
         title,
         message,
         severity: "info",
-        delivered: true,
+        delivered: false,
         deliveryChannel: "email",
         metadataJson: JSON.stringify({
           recoveredAmount: totalRecovered,
           recoveredCount: recoveredData._count.id,
           activeCasesCount: openCases._count.id,
           activeCasesAtRisk: openCases._sum.amountAtRisk ?? 0,
+          providerStatus: "pending",
+        }),
+      },
+    })
+
+    const delivery = await dispatchMerchantEmail(
+      m.supportEmail || m.email,
+      title,
+      message,
+      `merchant-alert-${m.id}-daily-digest-${today.toISOString().slice(0, 10)}`,
+    )
+    await db.merchantAlert.update({
+      where: { id: alert.id },
+      data: {
+        delivered: delivery.delivered,
+        metadataJson: JSON.stringify({
+          recoveredAmount: totalRecovered,
+          recoveredCount: recoveredData._count.id,
+          activeCasesCount: openCases._count.id,
+          activeCasesAtRisk: openCases._sum.amountAtRisk ?? 0,
+          providerMessageId: delivery.providerMessageId,
+          providerName: delivery.providerName,
+          providerStatus: delivery.providerStatus,
+          deliverySimulated: delivery.simulated,
+          ...(delivery.error ? { deliveryError: delivery.error } : {}),
         }),
       },
     })
 
     await logAudit({
       actor: { type: "system" },
-      eventType: "ALERT_DAILY_DIGEST_DISPATCHED",
+      eventType: delivery.accepted
+        ? "ALERT_DAILY_DIGEST_EMAIL_ACCEPTED"
+        : delivery.simulated
+        ? "ALERT_DAILY_DIGEST_EMAIL_SIMULATED"
+        : "ALERT_DAILY_DIGEST_EMAIL_FAILED",
       entityType: "merchant_alert",
       entityId: alert.id,
       action: "dispatch_daily_digest",
-      details: `Daily digest dispatched for merchant ${m.id}: ${totalRecoveredDisplay} recovered`,
+      details: delivery.accepted
+        ? `Daily digest accepted by email provider for merchant ${m.id}: ${totalRecoveredDisplay} recovered`
+        : delivery.simulated
+        ? `Daily digest simulated; no real email sent for merchant ${m.id}`
+        : `Daily digest email failed for merchant ${m.id}`,
       metadata: {
         alertId: alert.id,
         totalRecovered,
+        providerName: delivery.providerName,
+        providerStatus: delivery.providerStatus,
+        simulated: delivery.simulated,
       },
     })
 
