@@ -52,18 +52,22 @@ export async function evaluateAttribution(attributionId: string) {
   let confidence = "unavailable"
   let incrementalAmount = 0
   let isPreempted = false
+  let captureTimingUnknown = false
 
   // Use the provider-confirmed capture timestamp, never payment creation time.
   // A null capture timestamp means we cannot safely establish causal ordering.
-  if (!recoveryAttempt || !payment.capturedAt) {
+  if (!recoveryAttempt) {
     isPreempted = true
+  } else if (!payment.capturedAt) {
+    isPreempted = true
+    captureTimingUnknown = true
   } else if (payment.capturedAt.getTime() < recoveryAttempt.attemptedAt.getTime()) {
     isPreempted = true
   }
 
   if (isPreempted) {
     attributionType = "UNATTRIBUTED" // Preempted payments are not incrementally caused by intervention
-    confidence = "high"
+    confidence = captureTimingUnknown ? "unavailable" : "high"
     incrementalAmount = 0
   } else if (
     attribution.source === "payment_retry" || 
