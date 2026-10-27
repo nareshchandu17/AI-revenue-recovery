@@ -56,12 +56,18 @@ export async function getMerchantRazorpayService(merchantId: string): Promise<Me
     if (env.NODE_ENV === "production") {
       throw new Error("No active Razorpay integration is configured for this merchant")
     }
-    const service = getRazorpayService()
-    return {
-      service,
-      simulated: service instanceof DevRazorpayService,
-      environment: "test",
+
+    // Global credentials are supported only as a local test-mode convenience.
+    // Never allow a global live key to bypass per-merchant credential scoping.
+    if (isRazorpayConfigured) {
+      if (!env.RAZORPAY_KEY_ID.startsWith("rzp_test_")) {
+        throw new Error("Global Razorpay credentials may only use rzp_test_ keys. Configure an explicit merchant integration for live mode.")
+      }
+      const service = getRazorpayService()
+      return { service, simulated: false, environment: "test" }
     }
+
+    return { service: new DevRazorpayService(), simulated: true, environment: "test" }
   }
 
   const keyId = integration.keyId
