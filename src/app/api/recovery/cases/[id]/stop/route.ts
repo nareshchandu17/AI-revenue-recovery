@@ -36,7 +36,7 @@ export async function POST(
 
     // Require authentication and verify merchant ownership
     const sessionUser = await requireAuth()
-    if (sessionUser.role === "viewer") {
+    if (!["owner", "operator"].includes(sessionUser.role)) {
       throw new ForbiddenError("Viewers cannot stop recovery actions")
     }
 
