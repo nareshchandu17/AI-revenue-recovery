@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     const user = await requireAuth()
-    if (user.role === "viewer") {
+    if (!["owner", "operator"].includes(user.role)) {
       throw new ForbiddenError("Viewers cannot simulate delivery events")
     }
 
