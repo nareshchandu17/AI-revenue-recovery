@@ -20,8 +20,7 @@
 
 import type { RecoveryAction } from "@prisma/client"
 import type { ActionExecutor, ExecutorContext, ExecutorResult } from "../types"
-import { getRazorpayService } from "@/services/razorpay"
-import { isRazorpayConfigured } from "@/lib/config"
+import { getMerchantRazorpayService } from "@/services/razorpay"
 import { db } from "@/lib/db"
 
 const MAX_REFERENCE_ID_LENGTH = 40
@@ -39,9 +38,11 @@ export class PaymentLinkExecutor implements ActionExecutor {
   readonly action: RecoveryAction = "payment_link"
 
   async execute(context: ExecutorContext): Promise<ExecutorResult> {
-    const rzp = getRazorpayService()
+    const merchantProvider = await getMerchantRazorpayService(context.merchantId)
+    const rzp = merchantProvider.service
+    const isSimulated = merchantProvider.simulated
+    const providerLabel = isSimulated ? "Simulation" : merchantProvider.environment === "live" ? "Razorpay Live Mode" : "Razorpay Test Mode"
     const referenceId = buildReferenceId(context.recoveryCaseId, context.attemptNumber)
-    const isSimulated = !isRazorpayConfigured
 
     // Load customer details for the link (name, email, contact)
     let customerName = ""
@@ -76,7 +77,7 @@ export class PaymentLinkExecutor implements ActionExecutor {
       return {
         success: true,
         externalRef: existingAttempt.externalRef,
-        summary: `Payment link already exists: ${existingAttempt.externalRef}${isSimulated ? " (simulated)" : " (Razorpay Test Mode)"}`,
+        summary: `Payment link already exists: ${existingAttempt.externalRef}${existingAttempt.simulated ? " (simulated)" : ` (${providerLabel})`}`,
         simulated: existingAttempt.simulated,
         details: {
           action: "payment_link",
@@ -129,7 +130,7 @@ export class PaymentLinkExecutor implements ActionExecutor {
       externalRef: linkResponse.id,
       summary: isSimulated
         ? `SIMULATED: Payment link created for ₹${(context.amountAtRisk / 100).toFixed(2)} ${context.currency} — ${linkResponse.short_url}. Dispatched to customer.`
-        : `Razorpay Test Mode: Payment link created for ₹${(context.amountAtRisk / 100).toFixed(2)} ${context.currency} — ${linkResponse.short_url}. Dispatched to customer.`,
+        : `${providerLabel}: Payment link created for ₹${(context.amountAtRisk / 100).toFixed(2)} ${context.currency} — ${linkResponse.short_url}.`,
       simulated: isSimulated,
       details: {
         action: "payment_link",
@@ -141,8 +142,8 @@ export class PaymentLinkExecutor implements ActionExecutor {
         short_url: linkResponse.short_url,
         reference_id: referenceId,
         provider_status: linkResponse.status,
-        executionMode: isSimulated ? "simulated" : "real_provider",
-        mode: isSimulated ? "SIMULATED" : "RAZORPAY_TEST_MODE",
+        executionMode: isSimulated ? "simulated" : `${merchantProvider.environment}_provider`,
+        mode: isSimulated ? "SIMULATED" : merchantProvider.environment === "live" ? "RAZORPAY_LIVE_MODE" : "RAZORPAY_TEST_MODE",
       },
     }
   }
