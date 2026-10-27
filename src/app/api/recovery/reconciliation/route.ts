@@ -20,7 +20,7 @@ export async function GET() {
 export async function POST() {
   try {
     const user = await requireAuth()
-    if (user.role === "viewer") {
+    if (!["owner", "operator"].includes(user.role)) {
       throw new ForbiddenError("Viewers cannot trigger reconciliation")
     }
     const result = await triggerReconciliationJob("manual", user.merchantId)
