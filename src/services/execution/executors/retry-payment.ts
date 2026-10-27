@@ -139,7 +139,7 @@ export class RetryPaymentExecutor implements ActionExecutor {
         short_url: linkResponse.short_url,
         reference_id: referenceId,
         provider_status: linkResponse.status,
-        executionMode: isSimulated ? "simulated" : "real_provider",
+        executionMode: isSimulated ? "simulated" : `${merchantProvider.environment}_provider`,
       },
     }
   }
